@@ -1030,5 +1030,60 @@ def _init_extra_tables():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
 
+    # ==================== 登录日志 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS sys_login_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        login_ip TEXT,
+        login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        logout_time TIMESTAMP,
+        status INTEGER DEFAULT 1,
+        browser TEXT,
+        os TEXT
+    )''')
+
+    # ==================== 系统配置 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS sys_config (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        config_key TEXT NOT NULL UNIQUE,
+        config_value TEXT,
+        config_type TEXT DEFAULT 'string',
+        description TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    # ==================== 系统公告 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS sys_announcement (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        content TEXT,
+        notice_type TEXT DEFAULT 'notice',
+        priority INTEGER DEFAULT 0,
+        status INTEGER DEFAULT 1,
+        publisher INTEGER,
+        publish_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expire_time TIMESTAMP
+    )''')
+
+    # ==================== IP白名单 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS sys_ip_whitelist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip_address TEXT NOT NULL,
+        description TEXT,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    # ==================== 打印模板 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS sys_print_template (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_name TEXT NOT NULL,
+        biz_type TEXT NOT NULL,
+        template_content TEXT,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
     db.commit()
     db.close()

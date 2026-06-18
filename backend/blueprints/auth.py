@@ -16,9 +16,27 @@ def login():
     db = get_db()
     user = db.execute("SELECT * FROM sys_user WHERE username=? AND password=?", (username, pwd_hash)).fetchone()
     if not user:
+        # 记录登录失败
+        db.execute("INSERT INTO sys_login_log (username, login_ip, status) VALUES (?,?,0)",
+                   (username, request.remote_addr))
+        db.commit()
         return jsonify({'code': 400, 'message': '用户名或密码错误'})
+    
     session['user_id'] = user['id']
     session['username'] = user['username']
+    
+    # 记录登录成功
+    db.execute("INSERT INTO sys_login_log (username, login_ip, status) VALUES (?,?,1)",
+               (username, request.remote_addr))
+    db.commit()
+    
+    # 记录在线用户
+    try:
+        from blueprints.sys_ext import record_online_user
+        record_online_user(user['id'], user['username'], request.remote_addr)
+    except:
+        pass
+    
     return jsonify({
         'code': 0,
         'data': {

@@ -35,7 +35,11 @@ var MENUS = [
     {k:'sys', t:'系统管理', sub:[
         {k:'sys/user',t:'用户管理'},{k:'sys/role',t:'角色管理'},
         {k:'sys/dept',t:'部门管理'},{k:'sys/dict',t:'数据字典'},{k:'sys/log',t:'系统日志'},
-        {k:'sys/backup',t:'数据备份'},{k:'sys/security',t:'安全设置'}
+        {k:'sys/backup',t:'数据备份'},{k:'sys/security',t:'安全设置'},
+        {k:'sys/login-log',t:'登录日志'},{k:'sys/config',t:'系统配置'},
+        {k:'sys/announcement',t:'系统公告'},{k:'sys/online',t:'在线用户'},
+        {k:'sys/monitor',t:'系统监控'},{k:'sys/ip-whitelist',t:'IP白名单'},
+        {k:'sys/print-template',t:'打印模板'}
     ]}
 ];
 

@@ -38,6 +38,7 @@ from blueprints.security import security_bp
 from blueprints.prod_ext import prod_ext_bp
 from blueprints.qm_ext import qm_ext_bp
 from blueprints.analytics import analytics_bp
+from blueprints.sys_ext import sys_ext_bp
 
 FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
 ADMIN_DIR = os.path.join(BASE_DIR, 'admin')
@@ -75,6 +76,7 @@ def create_app():
     app.register_blueprint(prod_ext_bp)
     app.register_blueprint(qm_ext_bp)
     app.register_blueprint(analytics_bp)
+    app.register_blueprint(sys_ext_bp)
 
     # 静态文件路由
     @app.route('/')
