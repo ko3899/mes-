@@ -1,0 +1,91 @@
+/* 菜单模块 */
+var MENUS = [
+    {k:'home', t:'工作台', home:true},
+    {k:'base', t:'基础数据', sub:[
+        {k:'base/workshop',t:'车间设置'},{k:'base/process',t:'工序管理'},
+        {k:'base/product',t:'产品定义'},{k:'base/bom',t:'物料清单'},
+        {k:'base/defect',t:'不良品项'},{k:'base/unit',t:'单位管理'},{k:'base/route',t:'工艺路线'},
+        {k:'base/supplier',t:'供应商管理'},{k:'base/customer',t:'客户管理'}
+    ]},
+    {k:'inv', t:'库存管理', sub:[
+        {k:'inv/inbound',t:'入库单'},{k:'inv/outbound',t:'出库单'},{k:'inv/balance',t:'库存余额'}
+    ]},
+    {k:'prod', t:'生产管理', sub:[
+        {k:'prod/sales',t:'销售订单'},{k:'prod/plan',t:'生产计划'},
+        {k:'prod/workorder',t:'工单管理'},{k:'prod/task',t:'任务管理'},{k:'prod/report',t:'报工管理'},
+        {k:'prod/transfer',t:'工序转移'},{k:'prod/material',t:'生产领料'},
+        {k:'prod/outsource',t:'委外加工'},{k:'prod/serial',t:'序列号'},{k:'prod/labor',t:'工时统计'},{k:'prod/packing',t:'包装管理'}
+    ]},
+    {k:'qm', t:'质量管理', sub:[
+        {k:'qm/incoming',t:'来料检验'},{k:'qm/process',t:'过程检验'},{k:'qm/outgoing',t:'出货检验'},
+        {k:'qm/first',t:'首件检验'},{k:'qm/defect',t:'不良品处理'},{k:'qm/8d',t:'8D报告'},{k:'qm/supplier-eval',t:'供方评审'},{k:'qm/statistics',t:'质量统计'}
+    ]},
+    {k:'analytics', t:'数据分析', sub:[
+        {k:'analytics/oee',t:'OEE分析'},{k:'analytics/capacity',t:'产能分析'},
+        {k:'analytics/delivery',t:'交期预警'},{k:'analytics/inventory',t:'库存分析'}
+    ]},
+    {k:'eqp', t:'设备管理', sub:[{k:'eqp/ledger',t:'设备台账'},{k:'eqp/repair',t:'维修单'},{k:'eqp/maintenance',t:'保养计划'},{k:'eqp/check',t:'保养记录'}]},
+    {k:'trace', t:'物料追溯', sub:[{k:'trace/batch',t:'批次管理'},{k:'trace/query',t:'追溯查询'}]},
+    {k:'flow', t:'审批管理', sub:[{k:'flow/def',t:'流程定义'},{k:'flow/instance',t:'我的审批'},{k:'flow/pending',t:'待我审批'}]},
+    {k:'sched', t:'排班管理', sub:[{k:'sched/team',t:'班组管理'},{k:'sched/plan',t:'排班计划'}]},
+    {k:'tool', t:'工具管理', sub:[{k:'tool/ledger',t:'工具台账'},{k:'tool/borrow',t:'工具领用'}]},
+    {k:'report', t:'报表管理', sub:[{k:'report/production',t:'生产报表'},{k:'report/spc',t:'SPC分析'},{k:'report/cost',t:'成本核算'}]},
+    {k:'notifications', t:'消息通知', home:true},
+    {k:'doc', t:'文档管理', sub:[{k:'doc/list',t:'文档列表'}]},
+    {k:'sys', t:'系统管理', sub:[
+        {k:'sys/user',t:'用户管理'},{k:'sys/role',t:'角色管理'},
+        {k:'sys/dept',t:'部门管理'},{k:'sys/dict',t:'数据字典'},{k:'sys/log',t:'系统日志'},
+        {k:'sys/backup',t:'数据备份'},{k:'sys/security',t:'安全设置'}
+    ]}
+];
+
+var openMenus = {base:1,inv:1,prod:1,qm:1,eqp:1,trace:1,flow:1,sched:1,tool:1,report:1,sys:1};
+
+function buildMenu() {
+    var h = '';
+    MENUS.forEach(function(m) {
+        if(m.home) {
+            h += '<div class="menu-title" data-page="home">' + m.t + '</div>';
+            return;
+        }
+        var op = openMenus[m.k];
+        h += '<div class="menu-title" data-menu="' + m.k + '">' + m.t + '<span class="arr">' + (op ? '&#9660;' : '&#9654;') + '</span></div>';
+        h += '<div class="sub' + (op ? ' show' : '') + '" id="sub_' + m.k + '">';
+        m.sub.forEach(function(s) {
+            h += '<div class="menu-title" data-page="' + s.k + '">' + s.t + '</div>';
+        });
+        h += '</div>';
+    });
+    var sideBar = document.getElementById('sideBar');
+    sideBar.innerHTML = h;
+
+    var items = sideBar.querySelectorAll('.menu-title');
+    for(var i = 0; i < items.length; i++) {
+        items[i].onclick = function() {
+            var page = this.getAttribute('data-page');
+            var menu = this.getAttribute('data-menu');
+            if(page) {
+                goPage(page);
+            } else if(menu) {
+                openMenus[menu] = !openMenus[menu];
+                buildMenu();
+            }
+        };
+    }
+}
+
+function goPage(key) {
+    curPage = key;
+    var items = document.querySelectorAll('.menu-title');
+    for(var i = 0; i < items.length; i++) {
+        items[i].classList.remove('active');
+        if(items[i].getAttribute('data-page') === key) items[i].classList.add('active');
+    }
+    var bc = '工作台';
+    MENUS.forEach(function(m) {
+        if(m.k === key) { bc = m.t; return; }
+        if(m.sub) m.sub.forEach(function(s) { if(s.k === key) bc = m.t + ' / ' + s.t; });
+    });
+    document.getElementById('bread').textContent = bc;
+    renderPage(key);
+}

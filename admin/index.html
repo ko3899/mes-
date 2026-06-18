@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MES工厂管家</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<link rel="stylesheet" href="/admin/static/css/style.css">
+</head>
+<body>
+
+<!-- Login -->
+<div id="loginPage" class="login-bg">
+<div class="login-box">
+<h2>MES工厂管家</h2>
+<input id="lu" type="text" placeholder="用户名" value="admin">
+<input id="lp" type="password" placeholder="密码" value="admin123">
+<button id="loginBtn">登 录</button>
+<div id="lerr" class="login-err"></div>
+</div>
+</div>
+
+<!-- App -->
+<div id="appPage" class="app" style="display:none">
+<div class="sidebar" id="sideBar"></div>
+<div class="main">
+<div class="header">
+<div class="left">
+<button class="toggle" id="toggleBtn">&#9776;</button>
+<span id="bread">工作台</span>
+</div>
+<div style="display:flex;align-items:center;gap:16px">
+<div style="position:relative;cursor:pointer" onclick="goPage('notifications')">
+🔔 <span id="notifBadge" style="display:none;position:absolute;top:-8px;right:-8px;background:#f5222d;color:white;border-radius:50%;width:18px;height:18px;font-size:11px;text-align:center;line-height:18px">0</span>
+</div>
+<div class="user" id="logoutBtn">
+<div class="avatar" id="uav">A</div>
+<span id="uname">管理员</span>
+</div>
+</div>
+</div>
+<div class="content" id="pageContent"></div>
+</div>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="modal-mask">
+<div class="modal">
+<div class="modal-hd"><h3 id="mTitle">标题</h3><button class="close" id="modalCloseBtn">&times;</button></div>
+<div class="modal-bd" id="mBody"></div>
+<div class="modal-ft">
+<button class="btn btn-gray" id="modalCancelBtn">取消</button>
+<button class="btn btn-blue" id="mSave">保存</button>
+</div>
+</div>
+</div>
+
+<!-- JS Modules -->
+<script src="/admin/static/js/api.js"></script>
+<script src="/admin/static/js/modal.js"></script>
+<script src="/admin/static/js/menu.js"></script>
+<script src="/admin/static/js/crud.js"></script>
+<script src="/admin/static/js/pages/home.js"></script>
+<script src="/admin/static/js/pages/business.js"></script>
+<script src="/admin/static/js/pages/more.js"></script>
+<script src="/admin/static/js/pages/more2.js"></script>
+<script src="/admin/static/js/pages/more3.js"></script>
+<script src="/admin/static/js/pages/flow_spc.js"></script>
+<script src="/admin/static/js/pages/extensions.js"></script>
+<script src="/admin/static/js/pages/prod_ext.js"></script>
+<script src="/admin/static/js/pages/qm_ext.js"></script>
+<script src="/admin/static/js/pages/analytics.js"></script>
+<script src="/admin/static/js/notification.js"></script>
+<script src="/admin/static/js/app.js"></script>
+</body>
+</html>

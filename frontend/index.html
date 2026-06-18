@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>MES采集终端</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Microsoft YaHei",sans-serif;font-size:14px;color:#333;background:#f5f5f5;min-height:100vh}
+
+/* Login */
+.login-bg{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#1890ff,#096dd9);padding:20px}
+.login-box{width:100%;max-width:360px;background:#fff;border-radius:12px;padding:40px 24px;box-shadow:0 8px 32px rgba(0,0,0,0.15)}
+.login-box h2{text-align:center;margin-bottom:8px;color:#333;font-size:22px}
+.login-box .sub{text-align:center;color:#999;margin-bottom:28px;font-size:13px}
+.login-box input{width:100%;height:44px;border:1px solid #e8e8e8;border-radius:8px;padding:0 14px;margin-bottom:14px;font-size:15px;background:#fafafa}
+.login-box input:focus{border-color:#1890ff;outline:none;background:#fff}
+.login-box button{width:100%;height:46px;background:#1890ff;color:#fff;border:none;border-radius:8px;font-size:16px;cursor:pointer;margin-top:4px}
+.login-box button:hover{background:#40a9ff}
+.login-box button:active{background:#096dd9}
+.login-err{color:#f5222d;text-align:center;margin-top:12px;font-size:13px}
+
+/* App */
+.app{display:none;flex-direction:column;min-height:100vh}
+.header{height:52px;background:#1890ff;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;position:sticky;top:0;z-index:10}
+.header .left{display:flex;align-items:center;gap:10px}
+.header .logo{font-size:17px;font-weight:bold}
+.header .user{display:flex;align-items:center;gap:8px;font-size:13px}
+.header .avatar{width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.2);text-align:center;line-height:30px}
+.header .logout{background:rgba(255,255,255,0.15);border:none;color:#fff;padding:4px 12px;border-radius:4px;font-size:12px;cursor:pointer}
+
+/* Nav tabs */
+.nav-tabs{display:flex;background:#fff;border-bottom:1px solid #e8e8e8;overflow-x:auto;position:sticky;top:52px;z-index:9}
+.nav-tab{flex:1;min-width:80px;padding:12px 8px;text-align:center;font-size:13px;color:#666;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.nav-tab.active{color:#1890ff;border-bottom-color:#1890ff;font-weight:bold}
+.nav-tab .icon{font-size:20px;display:block;margin-bottom:4px}
+
+/* Content */
+.content{flex:1;padding:12px}
+
+/* Cards */
+.card{background:#fff;border-radius:8px;padding:16px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.card-title{font-size:15px;font-weight:bold;margin-bottom:12px;color:#333;display:flex;justify-content:space-between;align-items:center}
+.card-title .badge{background:#1890ff;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px}
+
+/* Task cards */
+.task-card{border-left:3px solid #1890ff}
+.task-card .task-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.task-card .task-no{font-weight:bold;color:#1890ff}
+.task-card .task-status{font-size:12px;padding:2px 8px;border-radius:4px}
+.task-card .task-info{font-size:13px;color:#666;line-height:1.8}
+.task-card .task-actions{margin-top:12px;display:flex;gap:8px}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 16px;border-radius:6px;font-size:14px;cursor:pointer;border:none;transition:all 0.2s}
+.btn:active{transform:scale(0.97)}
+.btn-blue{background:#1890ff;color:#fff}
+.btn-green{background:#52c41a;color:#fff}
+.btn-orange{background:#fa8c16;color:#fff}
+.btn-red{background:#f5222d;color:#fff}
+.btn-gray{background:#f5f5f5;color:#666;border:1px solid #e8e8e8}
+.btn-block{width:100%;display:flex}
+.btn-lg{height:44px;font-size:15px}
+.btn-sm{height:30px;padding:0 12px;font-size:12px}
+
+/* Form */
+.form-group{margin-bottom:14px}
+.form-label{display:block;margin-bottom:6px;font-size:13px;color:#555}
+.form-input{width:100%;height:40px;border:1px solid #e8e8e8;border-radius:6px;padding:0 12px;font-size:14px;background:#fafafa}
+.form-input:focus{border-color:#1890ff;outline:none;background:#fff}
+.form-select{width:100%;height:40px;border:1px solid #e8e8e8;border-radius:6px;padding:0 12px;font-size:14px;background:#fafafa;appearance:none}
+.form-textarea{width:100%;height:80px;border:1px solid #e8e8e8;border-radius:6px;padding:10px 12px;font-size:14px;background:#fafafa;resize:vertical}
+
+/* Tags */
+.tag{display:inline-block;padding:3px 8px;border-radius:4px;font-size:12px}
+.tag-wait{background:#e6f7ff;color:#1890ff}
+.tag-run{background:#fff7e6;color:#fa8c16}
+.tag-done{background:#f6ffed;color:#52c41a}
+.tag-err{background:#fff2f0;color:#f5222d}
+
+/* Quick actions grid */
+.quick-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.quick-item{background:#fff;border-radius:8px;padding:20px 12px;text-align:center;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.06);transition:all 0.2s}
+.quick-item:active{transform:scale(0.96);box-shadow:0 2px 8px rgba(0,0,0,0.12)}
+.quick-item .qi-icon{font-size:28px;margin-bottom:8px}
+.quick-item .qi-text{font-size:13px;color:#333}
+
+/* Modal */
+.modal-mask{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:100;display:none;align-items:flex-end;justify-content:center}
+.modal-mask.show{display:flex}
+.modal{background:#fff;border-radius:12px 12px 0 0;width:100%;max-width:500px;max-height:85vh;display:flex;flex-direction:column;animation:slideUp 0.2s ease}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.modal-hd{padding:16px;border-bottom:1px solid #e8e8e8;display:flex;justify-content:space-between;align-items:center}
+.modal-hd h3{font-size:16px}
+.modal-hd .close{background:none;border:none;font-size:24px;cursor:pointer;color:#999;padding:0 4px}
+.modal-bd{padding:16px;overflow-y:auto;flex:1}
+.modal-ft{padding:12px 16px;border-top:1px solid #e8e8e8;display:flex;gap:10px}
+.modal-ft .btn{flex:1}
+
+/* Result page */
+.result-page{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#fff;z-index:200;flex-direction:column;align-items:center;justify-content:center}
+.result-page.show{display:flex}
+.result-icon{font-size:64px;margin-bottom:16px}
+.result-text{font-size:18px;font-weight:bold;margin-bottom:8px}
+.result-desc{color:#999;font-size:14px;margin-bottom:24px}
+.result-btn{width:200px;height:44px;background:#1890ff;color:#fff;border:none;border-radius:8px;font-size:15px;cursor:pointer}
+
+/* Empty */
+.empty{text-align:center;padding:40px 20px;color:#999}
+.empty .icon{font-size:48px;margin-bottom:12px}
+
+/* Stats bar */
+.stats-bar{display:flex;background:#fff;border-radius:8px;padding:12px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.stats-item{flex:1;text-align:center;border-right:1px solid #e8e8e8}
+.stats-item:last-child{border-right:none}
+.stats-item .num{font-size:20px;font-weight:bold;color:#1890ff}
+.stats-item .label{font-size:11px;color:#999;margin-top:4px}
+
+/* Number pad */
+.numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.numpad button{height:48px;border:1px solid #e8e8e8;background:#fff;border-radius:8px;font-size:18px;cursor:pointer}
+.numpad button:active{background:#f0f0f0}
+.numpad .confirm{background:#1890ff;color:#fff;border-color:#1890ff}
+
+/* Toast */
+.toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.7);color:#fff;padding:12px 24px;border-radius:8px;font-size:14px;z-index:999;display:none}
+.toast.show{display:block;animation:fadeIn 0.2s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+/* Scan input */
+.scan-area{background:#fff;border-radius:8px;padding:16px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.scan-input{width:100%;height:48px;border:2px dashed #1890ff;border-radius:8px;padding:0 16px;font-size:16px;text-align:center;background:#f0f8ff}
+.scan-input:focus{border-style:solid;outline:none}
+.scan-hint{color:#999;font-size:12px;text-align:center;margin-top:8px}
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div id="loginPage" class="login-bg">
+<div class="login-box">
+<h2>MES采集终端</h2>
+<div class="sub">工厂数据采集系统</div>
+<input id="lu" type="text" placeholder="工号/用户名" value="admin">
+<input id="lp" type="password" placeholder="密码" value="admin123">
+<button id="loginBtn">登 录</button>
+<div id="lerr" class="login-err"></div>
+</div>
+</div>
+
+<!-- App -->
+<div id="appPage" class="app">
+<div class="header">
+<div class="left">
+<span class="logo">MES采集</span>
+</div>
+<div class="user">
+<div class="avatar" id="uav">A</div>
+<span id="uname">-</span>
+<button class="logout" id="logoutBtn">退出</button>
+</div>
+</div>
+<div class="nav-tabs" id="navTabs">
+<div class="nav-tab active" data-tab="home"><span class="icon">&#9750;</span>首页</div>
+<div class="nav-tab" data-tab="scan"><span class="icon">&#128247;</span>扫码</div>
+<div class="nav-tab" data-tab="task"><span class="icon">&#9776;</span>任务</div>
+<div class="nav-tab" data-tab="report"><span class="icon">&#9998;</span>报工</div>
+<div class="nav-tab" data-tab="quality"><span class="icon">&#10003;</span>质检</div>
+<div class="nav-tab" data-tab="material"><span class="icon">&#9783;</span>物料</div>
+</div>
+<div class="content" id="pageContent"></div>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="modal-mask">
+<div class="modal">
+<div class="modal-hd"><h3 id="mTitle">标题</h3><button class="close" id="modalCloseBtn">&times;</button></div>
+<div class="modal-bd" id="mBody"></div>
+<div class="modal-ft" id="mFoot">
+<button class="btn btn-gray" id="modalCancelBtn">取消</button>
+<button class="btn btn-blue" id="mSave">确定</button>
+</div>
+</div>
+</div>
+
+<!-- Result -->
+<div id="resultPage" class="result-page">
+<div class="result-icon" id="resultIcon">&#10003;</div>
+<div class="result-text" id="resultText">操作成功</div>
+<div class="result-desc" id="resultDesc">数据已保存</div>
+<button class="result-btn" id="resultBtn">返回</button>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script>
+var curUser = null;
+var curTab = 'home';
+var modalHandler = null;
+
+// API
+function api(url, opts) {
+  opts = opts || {};
+  var o = {headers:{'Content-Type':'application/json'}};
+  if(opts.method) o.method = opts.method;
+  if(opts.body) o.body = JSON.stringify(opts.body);
+  return fetch(url, o).then(function(r){return r.json()}).then(function(d){
+    if(d.code === 401) { doLogout(); return null; }
+    return d;
+  }).catch(function(e){ console.error(e); return null; });
+}
+
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function(){ t.classList.remove('show'); }, 2000);
+}
+
+function showResult(icon, text, desc, callback) {
+  document.getElementById('resultIcon').innerHTML = icon;
+  document.getElementById('resultIcon').style.color = icon === '&#10003;' ? '#52c41a' : '#f5222d';
+  document.getElementById('resultText').textContent = text;
+  document.getElementById('resultDesc').textContent = desc;
+  document.getElementById('resultPage').classList.add('show');
+  document.getElementById('resultBtn').onclick = function() {
+    document.getElementById('resultPage').classList.remove('show');
+    if(callback) callback();
+  };
+}
+
+// Init
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('loginBtn').onclick = doLogin;
+  document.getElementById('lu').onkeydown = function(e) { if(e.key === 'Enter') document.getElementById('lp').focus(); };
+  document.getElementById('lp').onkeydown = function(e) { if(e.key === 'Enter') doLogin(); };
+  document.getElementById('logoutBtn').onclick = doLogout;
+  document.getElementById('modalCloseBtn').onclick = closeModal;
+  document.getElementById('modalCancelBtn').onclick = closeModal;
+  document.getElementById('modal').onclick = function(e) { if(e.target === this) closeModal(); };
+
+  // Nav tabs
+  var tabs = document.querySelectorAll('.nav-tab');
+  for(var i = 0; i < tabs.length; i++) {
+    tabs[i].onclick = function() {
+      var tab = this.getAttribute('data-tab');
+      switchTab(tab);
+    };
+  }
+});
+
+function doLogin() {
+  var u = document.getElementById('lu').value;
+  var p = document.getElementById('lp').value;
+  if(!u || !p) { document.getElementById('lerr').textContent = '请输入工号和密码'; return; }
+  document.getElementById('lerr').textContent = '登录中...';
+  api('/api/login', {method:'POST', body:{username:u, password:p}}).then(function(r) {
+    if(!r) { document.getElementById('lerr').textContent = '网络错误'; return; }
+    if(r.code !== 0) { document.getElementById('lerr').textContent = r.message; return; }
+    curUser = r.data;
+    document.getElementById('loginPage').style.display = 'none';
+    document.getElementById('appPage').style.display = 'flex';
+    document.getElementById('uname').textContent = curUser.real_name || curUser.username;
+    document.getElementById('uav').textContent = (curUser.real_name || curUser.username).charAt(0);
+    switchTab('home');
+  });
+}
+
+function doLogout() {
+  api('/api/logout', {method:'POST'});
+  curUser = null;
+  document.getElementById('loginPage').style.display = '';
+  document.getElementById('appPage').style.display = 'none';
+}
+
+function switchTab(tab) {
+  curTab = tab;
+  var tabs = document.querySelectorAll('.nav-tab');
+  for(var i = 0; i < tabs.length; i++) {
+    tabs[i].classList.toggle('active', tabs[i].getAttribute('data-tab') === tab);
+  }
+  renderTab(tab);
+}
+
+function renderTab(tab) {
+  var el = document.getElementById('pageContent');
+  switch(tab) {
+    case 'home': renderHome(el); break;
+    case 'scan': renderScan(el); break;
+    case 'task': renderTask(el); break;
+    case 'report': renderReport(el); break;
+    case 'quality': renderQuality(el); break;
+    case 'material': renderMaterial(el); break;
+    default: el.innerHTML = '<div class="empty"><div class="icon">&#128194;</div>功能开发中</div>';
+  }
+}
+
+// Home
+function renderHome(el) {
+  el.innerHTML = '<div class="stats-bar">'
+    + '<div class="stats-item"><div class="num" id="st1">-</div><div class="label">待完成任务</div></div>'
+    + '<div class="stats-item"><div class="num" id="st2">-</div><div class="label">今日报工</div></div>'
+    + '<div class="stats-item"><div class="num" id="st3">-</div><div class="label">待检验</div></div>'
+    + '</div>'
+    + '<div class="card"><div class="card-title">快捷操作</div>'
+    + '<div class="quick-grid">'
+    + '<div class="quick-item" onclick="switchTab(\'scan\')"><div class="qi-icon">&#128247;</div><div class="qi-text">扫码报工</div></div>'
+    + '<div class="quick-item" onclick="switchTab(\'report\')"><div class="qi-icon">&#9998;</div><div class="qi-text">生产报工</div></div>'
+    + '<div class="quick-item" onclick="switchTab(\'quality\')"><div class="qi-icon">&#10003;</div><div class="qi-text">质量检验</div></div>'
+    + '<div class="quick-item" onclick="switchTab(\'task\')"><div class="qi-icon">&#9776;</div><div class="qi-text">我的任务</div></div>'
+    + '</div></div>'
+    + '<div class="card"><div class="card-title">今日动态</div>'
+    + '<div id="todayList" style="font-size:13px;color:#666;line-height:2">加载中...</div></div>';
+
+  api('/api/prod/task/list?size=100').then(function(r) {
+    if(r && r.data) {
+      var list = Array.isArray(r.data) ? r.data : (r.data.list || []);
+      var pending = list.filter(function(t){return t.status < 3;}).length;
+      document.getElementById('st1').textContent = pending;
+    }
+  });
+  api('/api/prod/report/list?size=100').then(function(r) {
+    if(r && r.data) {
+      var list = Array.isArray(r.data) ? r.data : (r.data.list || []);
+      document.getElementById('st2').textContent = list.length;
+    }
+  });
+  api('/api/qm/incoming/list?size=100').then(function(r) {
+    if(r && r.data) {
+      var list = Array.isArray(r.data) ? r.data : (r.data.list || []);
+      var pending = list.filter(function(t){return t.status === 0;}).length;
+      document.getElementById('st3').textContent = pending;
+    }
+  });
+
+  document.getElementById('todayList').innerHTML = '<div>&#8226; 系统已就绪</div><div>&#8226; 欢迎回来，' + (curUser ? curUser.real_name : '') + '</div>';
+}
+
+// Scan - 扫码功能
+function renderScan(el) {
+  el.innerHTML = '<div class="scan-area">'
+    + '<input id="scanInput" class="scan-input" type="text" placeholder="扫描条码或输入编号..." autofocus>'
+    + '<div class="scan-hint">支持工单号、任务号、产品条码</div>'
+    + '</div>'
+    + '<div id="scanResult"></div>';
+
+  var scanInput = document.getElementById('scanInput');
+  scanInput.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+      var code = this.value.trim();
+      if (code) {
+        handleBarcodeScan(code);
+        this.value = '';
+      }
+    }
+  });
+  scanInput.focus();
+}
+
+function handleBarcodeScan(code) {
+  var el = document.getElementById('scanResult');
+
+  if(code.startsWith('WO') || code.startsWith('wo')) {
+    // 工单条码
+    api('/api/prod/workorder/list?keyword=' + encodeURIComponent(code)).then(function(r) {
+      if(r && r.data) {
+        var list = r.data.list || r.data;
+        if(list.length) {
+          var wo = list[0];
+          el.innerHTML = '<div class="card">'
+            + '<div class="card-title">工单: ' + wo.order_no + '</div>'
+            + '<div class="task-info">产品: ' + (wo.product_name||wo.product_id) + '<br>'
+            + '计划: ' + wo.planned_qty + ' | 完成: ' + wo.completed_qty + '<br>'
+            + '状态: ' + (wo.status === 3 ? '已完成' : wo.status ? '进行中' : '待开始') + '</div>'
+            + '<div class="task-actions">'
+            + '<button class="btn btn-green" onclick="quickReportByWO(' + wo.id + ',' + wo.product_id + ')">快速报工</button>'
+            + '</div></div>';
+        } else {
+          el.innerHTML = '<div class="card"><div class="empty">未找到工单: ' + code + '</div></div>';
+        }
+      }
+    });
+  } else if(code.startsWith('TK') || code.startsWith('tk')) {
+    // 任务条码
+    api('/api/prod/task/list?keyword=' + encodeURIComponent(code)).then(function(r) {
+      if(r && r.data) {
+        var list = r.data.list || r.data;
+        if(list.length) {
+          var t = list[0];
+          el.innerHTML = '<div class="card">'
+            + '<div class="card-title">任务: ' + t.task_no + '</div>'
+            + '<div class="task-info">工序: ' + (t.process_name||t.process_id) + '<br>'
+            + '进度: ' + t.completed_qty + '/' + t.planned_qty + '</div>'
+            + '<div class="task-actions">'
+            + '<button class="btn btn-green" onclick="reportTask(' + t.id + ',' + t.workorder_id + ',' + t.process_id + ')">报工</button>'
+            + '</div></div>';
+        } else {
+          el.innerHTML = '<div class="card"><div class="empty">未找到任务: ' + code + '</div></div>';
+        }
+      }
+    });
+  } else {
+    el.innerHTML = '<div class="card"><div class="empty">未知条码格式: ' + code + '</div></div>';
+  }
+}
+
+function quickReportByWO(workorderId, productId) {
+  api('/api/prod/task/list?size=100').then(function(r) {
+    if(r && r.data) {
+      var list = r.data.list || r.data;
+      var tasks = list.filter(function(t) { return t.workorder_id == workorderId && t.status < 3; });
+      if(tasks.length) {
+        reportTask(tasks[0].id, tasks[0].workorder_id, tasks[0].process_id);
+      } else {
+        showToast('该工单没有可报工的任务');
+      }
+    }
+  });
+}
+
+// Task
+function renderTask(el) {
+  el.innerHTML = '<div class="card"><div class="card-title">我的任务 <span class="badge" id="taskCount">0</span></div></div>'
+    + '<div id="taskList"><div class="empty"><div class="icon">&#128194;</div>加载中...</div></div>';
+  taskLoad();
+}
+
+function taskLoad() {
+  api('/api/prod/task/list?size=50').then(function(r) {
+    if(!r) return;
+    var list = Array.isArray(r.data) ? r.data : (r.data && r.data.list ? r.data.list : []);
+    var el = document.getElementById('taskList');
+    document.getElementById('taskCount').textContent = list.length;
+
+    if(!list.length) {
+      el.innerHTML = '<div class="empty"><div class="icon">&#128194;</div>暂无任务</div>';
+      return;
+    }
+
+    var h = '';
+    list.forEach(function(t) {
+      var statusCls = t.status === 3 ? 'tag-done' : (t.status ? 'tag-run' : 'tag-wait');
+      var statusTxt = t.status === 3 ? '已完成' : (t.status ? '进行中' : '待开始');
+      var progress = t.planned_qty > 0 ? Math.round(t.completed_qty / t.planned_qty * 100) : 0;
+
+      h += '<div class="card task-card">'
+        + '<div class="task-header"><span class="task-no">' + t.task_no + '</span>'
+        + '<span class="tag ' + statusCls + '">' + statusTxt + '</span></div>'
+        + '<div class="task-info">'
+        + '工单：' + (t.workorder_no || t.workorder_id) + '<br>'
+        + '工序：' + (t.process_name || t.process_id) + '<br>'
+        + '进度：' + t.completed_qty + ' / ' + t.planned_qty + ' (' + progress + '%)'
+        + '</div>';
+
+      if(t.status < 3) {
+        h += '<div class="task-actions">'
+          + '<button class="btn btn-blue btn-sm" onclick="startTask(' + t.id + ')">开始</button>'
+          + '<button class="btn btn-green btn-sm" onclick="reportTask(' + t.id + ',' + t.workorder_id + ',' + t.process_id + ')">报工</button>'
+          + '</div>';
+      }
+      h += '</div>';
+    });
+    el.innerHTML = h;
+  });
+}
+
+function startTask(id) {
+  api('/api/prod/task/update', {method:'POST', body:{id:id, status:1}}).then(function(r) {
+    if(r && r.code === 0) { showToast('任务已开始'); taskLoad(); }
+    else alert(r ? r.message : '操作失败');
+  });
+}
+
+function reportTask(taskId, workorderId, processId) {
+  document.getElementById('mTitle').textContent = '生产报工';
+  document.getElementById('mBody').innerHTML =
+    '<div class="form-group"><label class="form-label">合格数量<span style="color:red">*</span></label>'
+    + '<input id="f_qty" class="form-input" type="number" placeholder="输入合格数量"></div>'
+    + '<div class="form-group"><label class="form-label">不良数量</label>'
+    + '<input id="f_defect" class="form-input" type="number" placeholder="输入不良数量" value="0"></div>'
+    + '<div class="form-group"><label class="form-label">备注</label>'
+    + '<textarea id="f_remark" class="form-textarea" placeholder="可选"></textarea></div>';
+
+  modalHandler = function() {
+    var qty = document.getElementById('f_qty').value;
+    var defect = document.getElementById('f_defect').value || 0;
+    var remark = document.getElementById('f_remark').value;
+    if(!qty || qty <= 0) { alert('请输入合格数量'); return; }
+
+    api('/api/prod/report/add', {method:'POST', body:{
+      task_id: taskId,
+      workorder_id: workorderId,
+      process_id: processId,
+      qualified_qty: Number(qty),
+      defect_qty: Number(defect),
+      remark: remark
+    }}).then(function(r) {
+      if(r && r.code === 0) {
+        closeModal();
+        showResult('&#10003;', '报工成功', '合格:' + qty + ' 不良:' + defect, function(){ taskLoad(); });
+      } else {
+        alert(r ? r.message : '报工失败');
+      }
+    });
+  };
+  document.getElementById('modal').classList.add('show');
+}
+
+// Report
+function renderReport(el) {
+  el.innerHTML = '<div class="card"><div class="card-title">可报工任务</div>'
+    + '<div id="reportTaskList"><div class="empty">加载中...</div></div></div>'
+    + '<div class="card"><div class="card-title">最近报工记录</div>'
+    + '<div id="reportList"><div class="empty">加载中...</div></div></div>';
+
+  reportTaskLoad();
+  reportLoad();
+}
+
+function reportTaskLoad() {
+  api('/api/prod/task/list?size=50').then(function(r) {
+    if(!r) return;
+    var list = Array.isArray(r.data) ? r.data : (r.data && r.data.list ? r.data.list : []);
+    var el = document.getElementById('reportTaskList');
+    var canReport = list.filter(function(t){ return t.status < 3; });
+    if(!canReport.length) { el.innerHTML = '<div class="empty">暂无可报工任务</div>'; return; }
+    var h = '';
+    canReport.forEach(function(t) {
+      var progress = t.planned_qty > 0 ? Math.round(t.completed_qty / t.planned_qty * 100) : 0;
+      h += '<div style="padding:12px 0;border-bottom:1px solid #f0f0f0">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center">'
+        + '<div><span style="color:#1890ff;font-weight:bold">' + t.task_no + '</span>'
+        + '<div style="font-size:12px;color:#666;margin-top:4px">工单:' + (t.workorder_no||'-') + ' 工序:' + (t.process_name||'-') + '</div>'
+        + '<div style="font-size:12px;color:#999;margin-top:2px">进度:' + t.completed_qty + '/' + t.planned_qty + ' (' + progress + '%)</div></div>'
+        + '<button class="btn btn-green btn-sm" onclick="reportTask(' + t.id + ',' + t.workorder_id + ',' + t.process_id + ')">报工</button>'
+        + '</div></div>';
+    });
+    el.innerHTML = h;
+  });
+}
+
+function reportLoad() {
+  api('/api/prod/report/list?size=10').then(function(r) {
+    if(!r) return;
+    var list = Array.isArray(r.data) ? r.data : (r.data && r.data.list ? r.data.list : []);
+    var el = document.getElementById('reportList');
+    if(!list.length) { el.innerHTML = '<div class="empty">暂无记录</div>'; return; }
+    var h = '';
+    list.forEach(function(r2) {
+      h += '<div style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:13px">'
+        + '<div style="display:flex;justify-content:space-between">'
+        + '<span style="color:#1890ff">' + r2.report_no + '</span>'
+        + '<span style="color:#999">' + (r2.report_time || '') + '</span></div>'
+        + '<div style="color:#666;margin-top:4px">合格:' + r2.qualified_qty + ' 不良:' + r2.defect_qty + '</div>'
+        + '</div>';
+    });
+    el.innerHTML = h;
+  });
+}
+
+// Quality
+function renderQuality(el) {
+  el.innerHTML = '<div class="card"><div class="card-title">来料检验</div>'
+    + '<div class="form-group"><label class="form-label">供应商<span style="color:red">*</span></label>'
+    + '<input id="q_supplier" class="form-input" type="text" placeholder="供应商名称"></div>'
+    + '<div class="form-group"><label class="form-label">检验结果</label>'
+    + '<select id="q_result" class="form-select"><option value="合格">合格</option><option value="不合格">不合格</option></select></div>'
+    + '<div class="form-group"><label class="form-label">备注</label>'
+    + '<textarea id="q_remark" class="form-textarea" placeholder="可选"></textarea></div>'
+    + '<button class="btn btn-green btn-block btn-lg" onclick="submitQuality()">提交检验</button>'
+    + '</div>'
+    + '<div class="card"><div class="card-title">待检验列表</div>'
+    + '<div id="qualityList"><div class="empty">加载中...</div></div></div>';
+
+  qualityLoad();
+}
+
+function qualityLoad() {
+  api('/api/qm/incoming/list?size=10').then(function(r) {
+    if(!r) return;
+    var list = Array.isArray(r.data) ? r.data : (r.data && r.data.list ? r.data.list : []);
+    var el = document.getElementById('qualityList');
+    if(!list.length) { el.innerHTML = '<div class="empty">暂无待检</div>'; return; }
+    var h = '';
+    list.forEach(function(q) {
+      var statusCls = q.status ? 'tag-done' : 'tag-wait';
+      var statusTxt = q.status ? '已检' : '待检';
+      h += '<div style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:13px">'
+        + '<div style="display:flex;justify-content:space-between">'
+        + '<span>' + q.inspect_no + '</span>'
+        + '<span class="tag ' + statusCls + '">' + statusTxt + '</span></div>'
+        + '<div style="color:#666;margin-top:4px">供应商:' + (q.supplier||'-') + ' 结果:' + (q.result||'-') + '</div>'
+        + '</div>';
+    });
+    el.innerHTML = h;
+  });
+}
+
+function submitQuality() {
+  var supplier = document.getElementById('q_supplier').value;
+  var result = document.getElementById('q_result').value;
+  var remark = document.getElementById('q_remark').value;
+
+  if(!supplier) { alert('请输入供应商'); return; }
+
+  api('/api/qm/incoming/add', {method:'POST', body:{
+    supplier: supplier,
+    result: result,
+    remark: remark,
+    status: 1
+  }}).then(function(r) {
+    if(r && r.code === 0) {
+      showResult('&#10003;', '检验提交成功', result, function(){ renderQuality(document.getElementById('pageContent')); });
+    } else {
+      showResult('&#10007;', '提交失败', r ? r.message : '网络错误', null);
+    }
+  });
+}
+
+// Material
+function renderMaterial(el) {
+  el.innerHTML = '<div class="card"><div class="card-title">物料领用</div>'
+    + '<div class="form-group"><label class="form-label">物料/工具ID<span style="color:red">*</span></label>'
+    + '<input id="m_tid" class="form-input" type="number" placeholder="输入ID或扫描条码"></div>'
+    + '<div class="form-group"><label class="form-label">领用数量<span style="color:red">*</span></label>'
+    + '<input id="m_qty" class="form-input" type="number" placeholder="输入数量"></div>'
+    + '<div class="form-group"><label class="form-label">备注</label>'
+    + '<textarea id="m_remark" class="form-textarea" placeholder="可选"></textarea></div>'
+    + '<button class="btn btn-orange btn-block btn-lg" onclick="borrowMaterial()">确认领用</button>'
+    + '</div>'
+    + '<div class="card"><div class="card-title">库存查询</div>'
+    + '<div class="form-group"><input id="m_search" class="form-input" type="text" placeholder="输入产品名称搜索"></div>'
+    + '<button class="btn btn-blue btn-block" onclick="searchInventory()">查询</button>'
+    + '<div id="invList" style="margin-top:12px"></div></div>';
+}
+
+function borrowMaterial() {
+  var tid = document.getElementById('m_tid').value;
+  var qty = document.getElementById('m_qty').value;
+  var remark = document.getElementById('m_remark').value;
+
+  if(!tid || !qty) { alert('请填写必填项'); return; }
+
+  api('/api/tool/borrow/add', {method:'POST', body:{
+    tool_id: Number(tid),
+    borrow_qty: Number(qty),
+    remark: remark
+  }}).then(function(r) {
+    if(r && r.code === 0) {
+      showResult('&#10003;', '领用成功', '工具ID:' + tid + ' 数量:' + qty, null);
+    } else {
+      showResult('&#10007;', '领用失败', r ? r.message : '网络错误', null);
+    }
+  });
+}
+
+function searchInventory() {
+  var kw = document.getElementById('m_search').value;
+  api('/api/inv/balance/list').then(function(r) {
+    if(!r) return;
+    var list = Array.isArray(r.data) ? r.data : [];
+    var el = document.getElementById('invList');
+    if(kw) list = list.filter(function(item){return (item.product_name||'').indexOf(kw) >= 0;});
+    if(!list.length) { el.innerHTML = '<div class="empty">无匹配结果</div>'; return; }
+    var h = '';
+    list.forEach(function(item) {
+      h += '<div style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:13px">'
+        + '<div>' + (item.product_name||'ID:'+item.product_id) + '</div>'
+        + '<div style="color:#1890ff;font-weight:bold;margin-top:4px">库存: ' + item.quantity + '</div>'
+        + '</div>';
+    });
+    el.innerHTML = h;
+  });
+}
+
+// Modal
+function closeModal() {
+  document.getElementById('modal').classList.remove('show');
+  modalHandler = null;
+}
+
+document.getElementById('mSave').onclick = function() {
+  if(modalHandler) modalHandler();
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+[Unit]
+Description=MES工厂管家 - 制造执行系统
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/mes-factory-manager
+Environment="MES_HOST=0.0.0.0"
+Environment="MES_PORT=8080"
+Environment="MES_WORKERS=4"
+ExecStart=/usr/bin/python3 /opt/mes-factory-manager/production.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
