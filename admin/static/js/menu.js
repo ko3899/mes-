@@ -14,12 +14,19 @@ var MENUS = [
         {k:'prod/sales',t:'销售订单'},{k:'prod/plan',t:'生产计划'},
         {k:'prod/workorder',t:'工单管理'},{k:'prod/task',t:'任务管理'},{k:'prod/report',t:'报工管理'},
         {k:'prod/transfer',t:'工序转移'},{k:'prod/material',t:'生产领料'},
-        {k:'prod/outsource',t:'委外加工'},{k:'prod/serial',t:'序列号'},{k:'prod/labor',t:'工时统计'},{k:'prod/packing',t:'包装管理'}
+        {k:'prod/outsource',t:'委外加工'},{k:'prod/serial',t:'序列号'},{k:'prod/labor',t:'工时统计'},{k:'prod/packing',t:'包装管理'},
+        {k:'site/workstation',t:'工位管理'},{k:'site/andon',t:'安灯系统'},{k:'site/rework',t:'返工报废'}
     ]},
     {k:'qm', t:'质量管理', sub:[
         {k:'qm/incoming',t:'来料检验'},{k:'qm/process',t:'过程检验'},{k:'qm/outgoing',t:'出货检验'},
-        {k:'qm/first',t:'首件检验'},{k:'qm/defect',t:'不良品处理'},{k:'qm/8d',t:'8D报告'},{k:'qm/supplier-eval',t:'供方评审'},{k:'qm/statistics',t:'质量统计'}
+        {k:'qm/first',t:'首件检验'},{k:'qm/defect',t:'不良品处理'},{k:'qm/8d',t:'8D报告'},{k:'qm/supplier-eval',t:'供方评审'},{k:'qm/statistics',t:'质量统计'},
+        {k:'qm/capa',t:'CAPA'},{k:'qm/control-plan',t:'控制计划'},{k:'qm/eco',t:'工程变更'}
     ]},
+    {k:'eqp2', t:'模具工装', sub:[{k:'eqp/mold',t:'模具管理'},{k:'eqp/fixture',t:'工装夹具'}]},
+    {k:'util', t:'公共事业', sub:[{k:'util/energy',t:'能耗管理'},{k:'util/environment',t:'环境监控'}]},
+    {k:'hr', t:'人力资源', sub:[{k:'hr/training',t:'培训管理'},{k:'hr/skill-matrix',t:'技能矩阵'}]},
+    {k:'5s', t:'5S管理', sub:[{k:'5s/audit',t:'5S检查'}]},
+    {k:'svc', t:'售后管理', sub:[{k:'svc/complaint',t:'客诉管理'},{k:'svc/return',t:'退换货'}]},
     {k:'analytics', t:'数据分析', sub:[
         {k:'analytics/oee',t:'OEE分析'},{k:'analytics/capacity',t:'产能分析'},
         {k:'analytics/delivery',t:'交期预警'},{k:'analytics/inventory',t:'库存分析'}

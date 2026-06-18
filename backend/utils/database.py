@@ -1085,5 +1085,234 @@ def _init_extra_tables():
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
 
+    # ==================== 工位管理 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS base_workstation (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        station_name TEXT NOT NULL,
+        code TEXT NOT NULL UNIQUE,
+        workshop_id INTEGER,
+        process_id INTEGER,
+        equipment_id INTEGER,
+        capacity REAL DEFAULT 0,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workshop_id) REFERENCES base_workshop(id),
+        FOREIGN KEY (process_id) REFERENCES base_process(id)
+    )''')
+
+    # ==================== 安灯系统 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_andon (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        andon_no TEXT NOT NULL UNIQUE,
+        workstation_id INTEGER,
+        andon_type TEXT NOT NULL,
+        description TEXT,
+        priority INTEGER DEFAULT 1,
+        status INTEGER DEFAULT 0,
+        caller INTEGER,
+        responder INTEGER,
+        call_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        response_time TIMESTAMP,
+        resolve_time TIMESTAMP,
+        remark TEXT
+    )''')
+
+    # ==================== 返工报废 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_rework (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rework_no TEXT NOT NULL UNIQUE,
+        workorder_id INTEGER,
+        task_id INTEGER,
+        quantity REAL NOT NULL,
+        rework_type TEXT DEFAULT '返工',
+        reason TEXT,
+        status INTEGER DEFAULT 0,
+        operator INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    # ==================== CAPA ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS qm_capa (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        capa_no TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        source TEXT,
+        problem_desc TEXT,
+        root_cause TEXT,
+        corrective_action TEXT,
+        preventive_action TEXT,
+        responsible TEXT,
+        due_date TEXT,
+        effectiveness TEXT,
+        status INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    # ==================== 控制计划 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS qm_control_plan (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        plan_name TEXT NOT NULL,
+        product_id INTEGER,
+        process_id INTEGER,
+        characteristic TEXT,
+        method TEXT,
+        frequency TEXT,
+        reaction_plan TEXT,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    # ==================== 工程变更 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS qm_eco (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        eco_no TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        change_type TEXT,
+        description TEXT,
+        reason TEXT,
+        impact TEXT,
+        applicant INTEGER,
+        approver INTEGER,
+        status INTEGER DEFAULT 0,
+        apply_date TEXT,
+        effective_date TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    # ==================== 模具管理 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS eqp_mold (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mold_name TEXT NOT NULL,
+        code TEXT NOT NULL UNIQUE,
+        mold_type TEXT,
+        product_id INTEGER,
+        manufacturer TEXT,
+        purchase_date TEXT,
+        total_life INTEGER DEFAULT 0,
+        used_life INTEGER DEFAULT 0,
+        location TEXT,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    # ==================== 工装夹具 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS eqp_fixture (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fixture_name TEXT NOT NULL,
+        code TEXT NOT NULL UNIQUE,
+        fixture_type TEXT,
+        process_id INTEGER,
+        calibration_date TEXT,
+        next_calibration TEXT,
+        location TEXT,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    # ==================== 能耗管理 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS util_energy (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        record_date TEXT NOT NULL,
+        workshop_id INTEGER,
+        energy_type TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        unit TEXT,
+        cost REAL DEFAULT 0,
+        remark TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    # ==================== 环境监控 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS util_environment (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workshop_id INTEGER,
+        temperature REAL,
+        humidity REAL,
+        cleanliness TEXT,
+        record_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        remark TEXT
+    )''')
+
+    # ==================== 培训管理 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS hr_training (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        training_name TEXT NOT NULL,
+        training_type TEXT,
+        trainer TEXT,
+        trainee_ids TEXT,
+        start_date TEXT,
+        end_date TEXT,
+        content TEXT,
+        status INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS hr_training_record (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        training_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        score REAL,
+        result TEXT,
+        remark TEXT,
+        FOREIGN KEY (training_id) REFERENCES hr_training(id)
+    )''')
+
+    # ==================== 技能矩阵 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS hr_skill_matrix (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        process_id INTEGER NOT NULL,
+        skill_level INTEGER DEFAULT 0,
+        cert_date TEXT,
+        expiry_date TEXT,
+        evaluator INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    # ==================== 5S管理 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS sys_5s_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        audit_no TEXT NOT NULL UNIQUE,
+        workshop_id INTEGER,
+        audit_date TEXT NOT NULL,
+        sort_score INTEGER DEFAULT 0,
+        set_in_order_score INTEGER DEFAULT 0,
+        shine_score INTEGER DEFAULT 0,
+        standardize_score INTEGER DEFAULT 0,
+        sustain_score INTEGER DEFAULT 0,
+        total_score REAL DEFAULT 0,
+        findings TEXT,
+        corrective TEXT,
+        auditor INTEGER,
+        status INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    # ==================== 售后管理 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS svc_complaint (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        complaint_no TEXT NOT NULL UNIQUE,
+        customer_id INTEGER,
+        product_id INTEGER,
+        complaint_type TEXT,
+        description TEXT,
+        severity TEXT,
+        status INTEGER DEFAULT 0,
+        handler INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS svc_return (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        return_no TEXT NOT NULL UNIQUE,
+        complaint_id INTEGER,
+        customer_id INTEGER,
+        product_id INTEGER,
+        quantity REAL DEFAULT 0,
+        reason TEXT,
+        status INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
     db.commit()
     db.close()

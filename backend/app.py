@@ -39,6 +39,13 @@ from blueprints.prod_ext import prod_ext_bp
 from blueprints.qm_ext import qm_ext_bp
 from blueprints.analytics import analytics_bp
 from blueprints.sys_ext import sys_ext_bp
+from blueprints.site import site_bp
+from blueprints.qm_plus import qm_plus_bp
+from blueprints.eqp_plus import eqp_plus_bp
+from blueprints.util import util_bp
+from blueprints.hr import hr_bp
+from blueprints.five_s import five_s_bp
+from blueprints.svc import svc_bp
 
 FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
 ADMIN_DIR = os.path.join(BASE_DIR, 'admin')
@@ -77,6 +84,13 @@ def create_app():
     app.register_blueprint(qm_ext_bp)
     app.register_blueprint(analytics_bp)
     app.register_blueprint(sys_ext_bp)
+    app.register_blueprint(site_bp)
+    app.register_blueprint(qm_plus_bp)
+    app.register_blueprint(eqp_plus_bp)
+    app.register_blueprint(util_bp)
+    app.register_blueprint(hr_bp)
+    app.register_blueprint(five_s_bp)
+    app.register_blueprint(svc_bp)
 
     # 静态文件路由
     @app.route('/')
