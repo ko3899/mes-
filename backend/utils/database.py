@@ -119,6 +119,7 @@ def init_db():
         workshop_id INTEGER,
         description TEXT,
         standard_time REAL,
+        sort_order INTEGER DEFAULT 0,
         status INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (workshop_id) REFERENCES base_workshop(id)
@@ -769,6 +770,12 @@ def _init_extra_tables():
     """初始化新增功能的表"""
     db = sqlite3.connect(DB_PATH)
     db.execute("PRAGMA foreign_keys = ON")
+
+    # 给 base_process 表添加 sort_order 字段（如果不存在）
+    try:
+        db.execute("ALTER TABLE base_process ADD COLUMN sort_order INTEGER DEFAULT 0")
+    except:
+        pass  # 字段已存在
 
     db.execute('''CREATE TABLE IF NOT EXISTS inv_batch (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

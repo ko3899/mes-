@@ -33,13 +33,30 @@ def base_workshop_delete():
 @base_data_bp.route('/api/base/process/list')
 @login_required
 def base_process_list():
-    return jsonify(crud_list('base_process', request.args))
+    db = get_db()
+    rows = db.execute("SELECT p.*, ws.workshop_name FROM base_process p LEFT JOIN base_workshop ws ON p.workshop_id=ws.id ORDER BY p.sort_order ASC, p.id ASC").fetchall()
+    return jsonify({'code': 0, 'data': [dict(r) for r in rows]})
 
 
 @base_data_bp.route('/api/base/process/add', methods=['POST'])
 @login_required
 def base_process_add():
-    return jsonify(crud_add('base_process', request.json))
+    d = request.json
+    db = get_db()
+    # 自动排序：获取当前最大排序号
+    max_order = db.execute("SELECT COALESCE(MAX(sort_order), 0) as max_order FROM base_process").fetchone()['max_order']
+    d['sort_order'] = max_order + 1
+    # 添加到 crud_add
+    keys = [k for k in d.keys() if k != 'id']
+    vals = [d[k] for k in keys]
+    placeholders = ','.join(['?'] * len(keys))
+    columns = ','.join(keys)
+    try:
+        cursor = db.execute(f"INSERT INTO base_process ({columns}) VALUES ({placeholders})", vals)
+        db.commit()
+        return jsonify({'code': 0, 'data': {'id': cursor.lastrowid}, 'message': '添加成功'})
+    except Exception as e:
+        return jsonify({'code': 400, 'message': str(e)})
 
 
 @base_data_bp.route('/api/base/process/update', methods=['POST'])
@@ -52,6 +69,46 @@ def base_process_update():
 @login_required
 def base_process_delete():
     return jsonify(crud_delete('base_process', request.json.get('id')))
+
+
+@base_data_bp.route('/api/base/process/reorder', methods=['POST'])
+@login_required
+def base_process_reorder():
+    """工序调序"""
+    d = request.json
+    process_id = d.get('id')
+    direction = d.get('direction')  # 'up' 或 'down'
+    
+    if not process_id or direction not in ('up', 'down'):
+        return jsonify({'code': 400, 'message': '参数错误'})
+    
+    db = get_db()
+    current = db.execute("SELECT * FROM base_process WHERE id=?", (process_id,)).fetchone()
+    if not current:
+        return jsonify({'code': 404, 'message': '工序不存在'})
+    
+    current_order = current['sort_order']
+    
+    if direction == 'up':
+        # 找到上一个工序
+        prev = db.execute("SELECT * FROM base_process WHERE sort_order < ? ORDER BY sort_order DESC LIMIT 1", (current_order,)).fetchone()
+        if prev:
+            # 交换排序号
+            db.execute("UPDATE base_process SET sort_order=? WHERE id=?", (prev['sort_order'], process_id))
+            db.execute("UPDATE base_process SET sort_order=? WHERE id=?", (current_order, prev['id']))
+            db.commit()
+            return jsonify({'code': 0, 'message': '上移成功'})
+    else:
+        # 找到下一个工序
+        next_proc = db.execute("SELECT * FROM base_process WHERE sort_order > ? ORDER BY sort_order ASC LIMIT 1", (current_order,)).fetchone()
+        if next_proc:
+            # 交换排序号
+            db.execute("UPDATE base_process SET sort_order=? WHERE id=?", (next_proc['sort_order'], process_id))
+            db.execute("UPDATE base_process SET sort_order=? WHERE id=?", (current_order, next_proc['id']))
+            db.commit()
+            return jsonify({'code': 0, 'message': '下移成功'})
+    
+    return jsonify({'code': 0, 'message': '已在边界位置'})
 
 
 @base_data_bp.route('/api/base/product/list')

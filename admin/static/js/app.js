@@ -231,6 +231,7 @@ function renderPage(key) {
     var special = {
         'base/bom': function(e){renderBom(e)},
         'base/route': function(e){renderRoute(e)},
+        'base/process': function(e){renderProcess(e)},
         'base/supplier': function(e){renderSupplier(e)},
         'base/customer': function(e){renderCustomer(e)},
         'inv/inbound': function(e){renderInv(e,'in')},
