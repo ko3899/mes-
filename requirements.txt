@@ -1,3 +1,10 @@
 flask>=2.3.0
 openpyxl>=3.1.0
 waitress>=2.1.0
+psutil>=5.9.0
+
+# MySQL 支持（可选）
+# pymysql>=1.1.0
+
+# PostgreSQL 支持（可选）
+# psycopg2-binary>=2.9.0
