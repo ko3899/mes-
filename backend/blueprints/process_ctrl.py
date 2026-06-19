@@ -6,6 +6,31 @@ from utils.helpers import login_required, crud_list, crud_add, crud_update, crud
 process_bp = Blueprint('process', __name__)
 
 
+# ==================== 站点配置 ====================
+@process_bp.route('/api/process/station-config/list')
+@login_required
+def station_config_list():
+    return jsonify(crud_list('base_station_config', request.args))
+
+
+@process_bp.route('/api/process/station-config/add', methods=['POST'])
+@login_required
+def station_config_add():
+    return jsonify(crud_add('base_station_config', request.json))
+
+
+@process_bp.route('/api/process/station-config/update', methods=['POST'])
+@login_required
+def station_config_update():
+    return jsonify(crud_update('base_station_config', request.json))
+
+
+@process_bp.route('/api/process/station-config/delete', methods=['POST'])
+@login_required
+def station_config_delete():
+    return jsonify(crud_delete('base_station_config', request.json.get('id')))
+
+
 # ==================== 过站 ====================
 @process_bp.route('/api/process/pass-station', methods=['POST'])
 @login_required
@@ -20,6 +45,26 @@ def pass_station():
         return jsonify({'code': 400, 'message': 'SN和站点必填'})
     
     db = get_db()
+    
+    # 检查站点配置
+    station_config = db.execute("SELECT * FROM base_station_config WHERE station=? AND status=1", (station,)).fetchone()
+    if station_config:
+        allow_repeat = station_config['allow_repeat']
+        max_pass_count = station_config['max_pass_count']
+        
+        if not allow_repeat:
+            # 检查该SN是否已过此站
+            existing = db.execute("SELECT COUNT(*) as c FROM prod_station_record WHERE sn=? AND station=? AND action='过站'",
+                                  (sn, station)).fetchone()['c']
+            if existing > 0:
+                return jsonify({'code': 400, 'message': f'该SN已通过站点 {station}，不允许重复过站'})
+        
+        if max_pass_count > 0:
+            # 检查过站次数是否超限
+            pass_count = db.execute("SELECT COUNT(*) as c FROM prod_station_record WHERE sn=? AND station=? AND action='过站'",
+                                    (sn, station)).fetchone()['c']
+            if pass_count >= max_pass_count:
+                return jsonify({'code': 400, 'message': f'站点 {station} 最大过站次数 {max_pass_count} 已达上限'})
     
     # 查找或创建流转记录
     flow = db.execute("SELECT * FROM prod_station_flow WHERE sn=? ORDER BY id DESC LIMIT 1", (sn,)).fetchone()

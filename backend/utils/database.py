@@ -1130,6 +1130,17 @@ def _init_extra_tables():
     )''')
 
     # ==================== 制程管控 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS base_station_config (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        station TEXT NOT NULL UNIQUE,
+        station_name TEXT,
+        allow_repeat INTEGER DEFAULT 1,
+        max_pass_count INTEGER DEFAULT 0,
+        description TEXT,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
     db.execute('''CREATE TABLE IF NOT EXISTS prod_station_flow (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         flow_no TEXT NOT NULL UNIQUE,

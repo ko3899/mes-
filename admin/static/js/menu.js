@@ -2,7 +2,7 @@
 var MENUS = [
     {k:'home', t:'工作台', home:true},
     {k:'process', t:'制程管控', sub:[
-        {k:'process/flow',t:'过站记录'},{k:'process/record',t:'操作记录'},
+        {k:'process/station-config',t:'站点配置'},{k:'process/flow',t:'过站记录'},{k:'process/record',t:'操作记录'},
         {k:'process/box',t:'箱号管理'},{k:'process/lock',t:'锁料管理'},
         {k:'process/defect',t:'不良品接收'},{k:'process/material',t:'料号维护'},
         {k:'process/exception',t:'异常处理'},{k:'process/statistics',t:'制程统计'}

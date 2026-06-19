@@ -357,6 +357,7 @@ function renderPage(key) {
         'process/material': function(e){renderMaterialManage(e)},
         'process/exception': function(e){renderExceptionManage(e)},
         'process/statistics': function(e){renderProcessStats(e)},
+        'process/station-config': function(e){renderStationConfig(e)},
         'qm/first': function(e){renderFirstInspect(e)},
         'qm/defect': function(e){renderDefectProcess(e)},
         'qm/8d': function(e){render8DReport(e)},

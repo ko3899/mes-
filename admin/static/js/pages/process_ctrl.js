@@ -1,5 +1,68 @@
 /* 制程管控页面 - 过站/跳站/出站/重工/关箱/拆箱/锁料/解料/返线/不良品/料号/异常 */
 
+// 站点配置
+function renderStationConfig(el) {
+    el.innerHTML = '<div class="card"><div class="card-title"><span>站点配置</span><button class="btn btn-blue" id="scAddBtn">+ 新增站点</button></div>'
+        + '<p style="color:#666;font-size:13px;margin-bottom:12px">配置每个站点的过站规则：允许重复过站、最大过站次数</p>'
+        + '<table><thead><tr><th>ID</th><th>站点编码</th><th>站点名称</th><th>允许重复过站</th><th>最大过站次数</th><th>描述</th><th>状态</th><th>操作</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody></table></div>';
+    document.getElementById('scAddBtn').onclick = scAdd;
+    scLoad();
+}
+function scLoad() {
+    api('/api/process/station-config/list?size=100').then(function(r) {
+        if(!r) return;
+        var list = r.data?.list||[];
+        var tb = document.getElementById('tb');
+        if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无站点配置，请添加</td></tr>'; return; }
+        tb.innerHTML = list.map(function(s) {
+            var repeatTag = s.allow_repeat ? '<span class="tag tag-ok">允许</span>' : '<span class="tag tag-no">禁止</span>';
+            var maxTag = s.max_pass_count > 0 ? s.max_pass_count + '次' : '不限';
+            return '<tr><td>'+s.id+'</td><td><code>'+s.station+'</code></td><td>'+s.station_name+'</td>'
+                +'<td>'+repeatTag+'</td><td>'+maxTag+'</td><td>'+(s.description||'-')+'</td>'
+                +'<td><span class="tag '+(s.status?'tag-ok':'tag-draft')+'">'+(s.status?'启用':'停用')+'</span></td>'
+                +'<td class="actions"><button class="btn btn-blue btn-sm" onclick=\'scEdit('+escapeJson(s)+')\'>编辑</button>'
+                +'<button class="btn btn-red btn-sm" onclick="scDel('+s.id+')">删除</button></td></tr>';
+        }).join('');
+    });
+}
+function scAdd() {
+    document.getElementById('mTitle').textContent = '新增站点配置';
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>站点编码<span style="color:red">*</span></label><input id="f_station" placeholder="如: SMT01"></div>'
+        + '<div class="form-item"><label>站点名称</label><input id="f_name" placeholder="如: SMT贴片区"></div></div>'
+        + '<div class="form-row"><div class="form-item"><label>允许重复过站</label><select id="f_repeat"><option value="1">允许</option><option value="0">禁止</option></select></div>'
+        + '<div class="form-item"><label>最大过站次数</label><input id="f_max" type="number" value="0" placeholder="0=不限"></div></div>'
+        + '<div class="form-row"><div class="form-item" style="flex:1"><label>描述</label><textarea id="f_desc"></textarea></div></div>';
+    modalSaveHandler = function() {
+        var d = {station:document.getElementById('f_station').value, station_name:document.getElementById('f_name').value,
+            allow_repeat:parseInt(document.getElementById('f_repeat').value), max_pass_count:parseInt(document.getElementById('f_max').value),
+            description:document.getElementById('f_desc').value};
+        if(!d.station) { alert('请输入站点编码'); return; }
+        api('/api/process/station-config/add',{method:'POST',body:d}).then(function(r) {
+            if(r&&r.code===0) { closeModal(); scLoad(); } else alert(r?r.message:'保存失败');
+        });
+    };
+    document.getElementById('modal').classList.add('show');
+}
+function scEdit(row) {
+    document.getElementById('mTitle').textContent = '编辑站点配置';
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>站点编码</label><input value="'+row.station+'" disabled></div>'
+        + '<div class="form-item"><label>站点名称</label><input id="f_name" value="'+row.station_name+'"></div></div>'
+        + '<div class="form-row"><div class="form-item"><label>允许重复过站</label><select id="f_repeat"><option value="1"'+(row.allow_repeat?' selected':'')+'>允许</option><option value="0"'+(!row.allow_repeat?' selected':'')+'>禁止</option></select></div>'
+        + '<div class="form-item"><label>最大过站次数</label><input id="f_max" type="number" value="'+row.max_pass_count+'" placeholder="0=不限"></div></div>'
+        + '<div class="form-row"><div class="form-item" style="flex:1"><label>描述</label><textarea id="f_desc">'+(row.description||'')+'</textarea></div></div>';
+    modalSaveHandler = function() {
+        var d = {id:row.id, station_name:document.getElementById('f_name').value,
+            allow_repeat:parseInt(document.getElementById('f_repeat').value), max_pass_count:parseInt(document.getElementById('f_max').value),
+            description:document.getElementById('f_desc').value};
+        api('/api/process/station-config/update',{method:'POST',body:d}).then(function(r) {
+            if(r&&r.code===0) { closeModal(); scLoad(); } else alert(r?r.message:'保存失败');
+        });
+    };
+    document.getElementById('modal').classList.add('show');
+}
+function scDel(id) { if(!confirm('确定删除？')) return; api('/api/process/station-config/delete',{method:'POST',body:{id:id}}).then(function(){scLoad()}); }
+
 // 过站记录
 function renderProcessFlow(el) {
     el.innerHTML = '<div class="card"><div class="card-title"><span>过站记录</span>'
