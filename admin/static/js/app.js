@@ -71,6 +71,44 @@ function batchDelete() {
     });
 }
 
+// 记录对比
+function compareRecords() {
+    if(selectedRows.size !== 2) { alert('请选择2条记录进行对比'); return; }
+    var ids = Array.from(selectedRows);
+    document.getElementById('mTitle').textContent = '记录对比';
+    document.getElementById('mBody').innerHTML = '<div style="text-align:center;padding:20px"><div class="loading"></div> 加载中...</div>';
+    modalSaveHandler = function() { closeModal(); };
+    document.getElementById('modal').classList.add('show');
+    
+    // 获取选中记录详情
+    var results = [];
+    ids.forEach(function(id, i) {
+        api(curApiBase + '/list?size=1').then(function(r) {
+            if(r && r.data) {
+                var list = r.data.list || r.data;
+                var record = list.find(function(item) { return String(item.id) === String(id); });
+                if(record) results.push(record);
+            }
+            if(results.length === 2) {
+                showCompareResult(results[0], results[1]);
+            }
+        });
+    });
+}
+
+function showCompareResult(r1, r2) {
+    var h = '<table style="width:100%"><thead><tr><th>字段</th><th>记录1</th><th>记录2</th><th>差异</th></tr></thead><tbody>';
+    var allKeys = new Set([...Object.keys(r1), ...Object.keys(r2)]);
+    allKeys.forEach(function(key) {
+        var v1 = String(r1[key] || '');
+        var v2 = String(r2[key] || '');
+        var diff = v1 !== v2 ? '<span style="color:#f5222d">✗ 不同</span>' : '<span style="color:#52c41a">✓ 相同</span>';
+        h += '<tr><td style="font-weight:bold">' + key + '</td><td>' + v1 + '</td><td>' + v2 + '</td><td>' + diff + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    document.getElementById('mBody').innerHTML = h;
+}
+
 // 表格排序
 function sortTable(key) {
     var th = document.querySelector('th[data-sort="'+key+'"]');

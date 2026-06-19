@@ -135,16 +135,30 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-// 看板轮播（可选）
+// 看板轮播
 var carouselTimer = null;
+var carouselPages = ['kanban', 'kanban/stats'];
+var carouselIdx = 0;
+var carouselInterval = 30000; // 30秒
+
 function startCarousel() {
-    var pages = ['kanban', 'kanban/stats'];
-    var idx = 0;
+    if(carouselTimer) clearInterval(carouselTimer);
     carouselTimer = setInterval(function() {
-        idx = (idx + 1) % pages.length;
-        // 这里可以切换不同看板视图
-    }, 30000);
+        carouselIdx = (carouselIdx + 1) % carouselPages.length;
+        // 重新加载数据实现轮播效果
+        loadData();
+    }, carouselInterval);
 }
+
+function stopCarousel() {
+    if(carouselTimer) {
+        clearInterval(carouselTimer);
+        carouselTimer = null;
+    }
+}
+
+// 自动启动轮播
+startCarousel();
 </script></body></html>'''
 
 

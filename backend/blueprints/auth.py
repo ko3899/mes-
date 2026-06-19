@@ -1,10 +1,31 @@
 """认证蓝图"""
 import hashlib
+import random
+import string
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
 from utils.helpers import login_required
 
 auth_bp = Blueprint('auth', __name__)
+
+# 验证码存储（内存）
+_captcha_store = {}
+
+
+def generate_captcha():
+    """生成验证码"""
+    code = ''.join(random.choices(string.digits, k=4))
+    key = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+    _captcha_store[key] = {'code': code, 'attempts': 0}
+    return key, code
+
+
+@auth_bp.route('/api/captcha')
+def get_captcha():
+    """获取验证码"""
+    key, code = generate_captcha()
+    # 返回简单的文本验证码（生产环境可用图片验证码）
+    return jsonify({'code': 0, 'data': {'key': key, 'hint': f'请输入验证码: {code}'}})
 
 
 @auth_bp.route('/api/login', methods=['POST'])
@@ -12,6 +33,19 @@ def login():
     data = request.json
     username = data.get('username', '')
     password = data.get('password', '')
+    captcha_key = data.get('captcha_key', '')
+    captcha_code = data.get('captcha_code', '')
+    
+    # 验证码校验（如果提供了）
+    if captcha_key and captcha_key in _captcha_store:
+        captcha = _captcha_store[captcha_key]
+        if captcha['code'] != captcha_code:
+            captcha['attempts'] += 1
+            if captcha['attempts'] >= 3:
+                del _captcha_store[captcha_key]
+            return jsonify({'code': 400, 'message': '验证码错误'})
+        del _captcha_store[captcha_key]
+    
     pwd_hash = hashlib.md5(password.encode()).hexdigest()
     db = get_db()
     user = db.execute("SELECT * FROM sys_user WHERE username=? AND password=?", (username, pwd_hash)).fetchone()

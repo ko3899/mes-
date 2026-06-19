@@ -136,7 +136,17 @@ function doImport() {
         + '</div>'
         + '<div class="form-item"><label>选择文件</label>'
         + '<input type="file" id="importFile" accept=".xlsx,.xls,.csv" style="height:auto;padding:8px;border:1px dashed #ddd;border-radius:4px;cursor:pointer"></div>'
+        + '<div id="importPreview" style="margin-top:12px"></div>'
         + '<div id="importResult" style="margin-top:12px;color:#666;font-size:13px"></div>';
+
+    // 文件选择后预览
+    document.getElementById('importFile').onchange = function() {
+        var file = this.files[0];
+        if(!file) return;
+        var preview = document.getElementById('importPreview');
+        preview.innerHTML = '<div style="background:#f0f5ff;padding:12px;border-radius:6px;margin-bottom:12px">'
+            + '<b>文件：</b>' + file.name + ' (' + (file.size/1024).toFixed(1) + 'KB)</div>';
+    };
 
     modalSaveHandler = function() {
         var fileInput = document.getElementById('importFile');
@@ -145,6 +155,8 @@ function doImport() {
         var formData = new FormData();
         formData.append('file', file);
 
+        document.getElementById('importResult').innerHTML = '<div class="loading"></div> 导入中...';
+
         fetch('/api/import/' + table, {
             method: 'POST',
             body: formData
@@ -152,19 +164,48 @@ function doImport() {
             if (r.code === 0) {
                 var resultHtml = '<div style="color:#52c41a">' + r.message + '</div>';
                 if (r.data && r.data.errors && r.data.errors.length) {
-                    resultHtml += '<div style="color:#f5222d;margin-top:8px">错误信息：</div>';
+                    resultHtml += '<div style="color:#f5222d;margin-top:8px"><b>错误信息：</b></div>';
+                    resultHtml += '<div style="background:#fff2f0;padding:8px;border-radius:4px;margin-top:4px">';
                     r.data.errors.forEach(function(err) {
-                        resultHtml += '<div style="color:#999;font-size:12px">' + err + '</div>';
+                        resultHtml += '<div style="color:#666;font-size:12px;padding:2px 0">' + err + '</div>';
                     });
+                    resultHtml += '</div>';
                 }
                 document.getElementById('importResult').innerHTML = resultHtml;
-                setTimeout(function() { closeModal(); crudLoad(1); }, 2000);
+                setTimeout(function() { closeModal(); crudLoad(1); }, 3000);
             } else {
                 document.getElementById('importResult').innerHTML = '<div style="color:#f5222d">' + (r.message || '导入失败') + '</div>';
             }
         }).catch(function(e) {
             document.getElementById('importResult').innerHTML = '<div style="color:#f5222d">网络错误</div>';
         });
+    };
+    document.getElementById('modal').classList.add('show');
+}
+
+// 导出自定义字段选择
+function doExportCustom() {
+    var table = curApiBase.replace('/api/', '').replace(/\//g, '_');
+    document.getElementById('mTitle').textContent = '自定义导出';
+    document.getElementById('mBody').innerHTML = '<div style="margin-bottom:12px"><b>选择导出字段：</b></div>'
+        + '<div id="exportFields" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"></div>';
+    
+    var fieldsHtml = '';
+    curFields.forEach(function(f, i) {
+        fieldsHtml += '<label style="display:flex;align-items:center;gap:6px;padding:6px;background:#f5f5f5;border-radius:4px;cursor:pointer">'
+            + '<input type="checkbox" checked data-field="' + f.k + '"> ' + f.l + '</label>';
+    });
+    document.getElementById('exportFields').innerHTML = fieldsHtml;
+    
+    modalSaveHandler = function() {
+        var selected = [];
+        document.querySelectorAll('#exportFields input:checked').forEach(function(cb) {
+            selected.push(cb.getAttribute('data-field'));
+        });
+        if(!selected.length) { alert('请选择至少一个字段'); return; }
+        // 导出选中字段
+        window.open('/api/export/' + table + '?fields=' + selected.join(','), '_blank');
+        closeModal();
     };
     document.getElementById('modal').classList.add('show');
 }
