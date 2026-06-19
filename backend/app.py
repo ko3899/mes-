@@ -57,6 +57,7 @@ from blueprints.aps import aps_bp
 from blueprints.fmea import fmea_bp
 from blueprints.tenant import tenant_bp
 from blueprints.erp_deep import erp_deep_bp
+from blueprints.update import update_bp
 
 FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
 ADMIN_DIR = os.path.join(BASE_DIR, 'admin')
@@ -113,6 +114,7 @@ def create_app():
     app.register_blueprint(fmea_bp)
     app.register_blueprint(tenant_bp)
     app.register_blueprint(erp_deep_bp)
+    app.register_blueprint(update_bp)
 
     # 静态文件路由
     @app.route('/')
