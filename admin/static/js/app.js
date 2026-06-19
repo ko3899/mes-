@@ -20,7 +20,36 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('modal').onclick = function(e) {
         if(e.target === this) closeModal();
     };
+
+    // 全局搜索快捷键
+    document.addEventListener('keydown', function(e) {
+        if(e.ctrlKey && e.key === 'k') {
+            e.preventDefault();
+            document.getElementById('globalSearch').focus();
+        }
+        if(e.key === 'Escape') {
+            closeModal();
+            document.getElementById('globalSearch').blur();
+        }
+    });
 });
+
+function doGlobalSearch() {
+    var kw = document.getElementById('globalSearch').value.trim();
+    if(!kw) return;
+    api('/api/search/global?q=' + encodeURIComponent(kw)).then(function(r) {
+        if(!r||r.code!==0) return;
+        var results = r.data || [];
+        if(!results.length) { alert('未找到"' + kw + '"'); return; }
+        var typeMap = {product:'产品',workorder:'工单',task:'任务',customer:'客户',supplier:'供应商',equipment:'设备',user:'员工'};
+        var menuMap = {product:'base/product',workorder:'prod/workorder',task:'prod/task',customer:'base/customer',supplier:'base/supplier',equipment:'eqp/ledger',user:'sys/user'};
+        var h = '找到 ' + results.length + ' 条结果:\n\n';
+        results.forEach(function(r) {
+            h += '[' + (typeMap[r.type]||r.type) + '] ' + r.name + (r.code ? ' (' + r.code + ')' : '') + '\n';
+        });
+        alert(h);
+    });
+}
 
 function doLogin() {
     var u = document.getElementById('lu').value;
@@ -122,6 +151,12 @@ function renderPage(key) {
         '5s/audit': function(e){render5SAudit(e)},
         'svc/complaint': function(e){renderComplaint(e)},
         'svc/return': function(e){renderReturn(e)},
+        'query/production': function(e){renderQueryProduction(e)},
+        'query/inventory': function(e){renderQueryInventory(e)},
+        'query/quality': function(e){renderQueryQuality(e)},
+        'query/equipment': function(e){renderQueryEquipment(e)},
+        'query/employee': function(e){renderQueryEmployee(e)},
+        'query/statistics': function(e){renderQueryStatistics(e)},
         'qm/first': function(e){renderFirstInspect(e)},
         'qm/defect': function(e){renderDefectProcess(e)},
         'qm/8d': function(e){render8DReport(e)},

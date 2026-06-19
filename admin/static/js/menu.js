@@ -1,6 +1,11 @@
 /* 菜单模块 */
 var MENUS = [
     {k:'home', t:'工作台', home:true},
+    {k:'search', t:'数据查询', sub:[
+        {k:'query/production',t:'生产查询'},{k:'query/inventory',t:'库存查询'},
+        {k:'query/quality',t:'质量查询'},{k:'query/equipment',t:'设备查询'},
+        {k:'query/employee',t:'员工查询'},{k:'query/statistics',t:'综合统计'}
+    ]},
     {k:'base', t:'基础数据', sub:[
         {k:'base/workshop',t:'车间设置'},{k:'base/process',t:'工序管理'},
         {k:'base/product',t:'产品定义'},{k:'base/bom',t:'物料清单'},
