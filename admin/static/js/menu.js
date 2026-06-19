@@ -10,7 +10,8 @@ var MENUS = [
         {k:'base/workshop',t:'车间设置'},{k:'base/process',t:'工序管理'},
         {k:'base/product',t:'产品定义'},{k:'base/bom',t:'物料清单'},
         {k:'base/defect',t:'不良品项'},{k:'base/unit',t:'单位管理'},{k:'base/route',t:'工艺路线'},
-        {k:'base/supplier',t:'供应商管理'},{k:'base/customer',t:'客户管理'}
+        {k:'base/supplier',t:'供应商管理'},{k:'base/customer',t:'客户管理'},
+        {k:'stage/code',t:'阶段码管理'}
     ]},
     {k:'inv', t:'库存管理', sub:[
         {k:'inv/inbound',t:'入库单'},{k:'inv/outbound',t:'出库单'},{k:'inv/balance',t:'库存余额'}
@@ -20,7 +21,8 @@ var MENUS = [
         {k:'prod/workorder',t:'工单管理'},{k:'prod/task',t:'任务管理'},{k:'prod/report',t:'报工管理'},
         {k:'prod/transfer',t:'工序转移'},{k:'prod/material',t:'生产领料'},
         {k:'prod/outsource',t:'委外加工'},{k:'prod/serial',t:'序列号'},{k:'prod/labor',t:'工时统计'},{k:'prod/packing',t:'包装管理'},
-        {k:'site/workstation',t:'工位管理'},{k:'site/andon',t:'安灯系统'},{k:'site/rework',t:'返工报废'}
+        {k:'site/workstation',t:'工位管理'},{k:'site/andon',t:'安灯系统'},{k:'site/rework',t:'返工报废'},
+        {k:'stage/record',t:'阶段记录'},{k:'stage/statistics',t:'阶段统计'}
     ]},
     {k:'qm', t:'质量管理', sub:[
         {k:'qm/incoming',t:'来料检验'},{k:'qm/process',t:'过程检验'},{k:'qm/outgoing',t:'出货检验'},

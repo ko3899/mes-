@@ -1102,6 +1102,33 @@ def _init_extra_tables():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
 
+    # ==================== 阶段码管理 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS base_stage_code (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        stage_name TEXT NOT NULL,
+        code TEXT NOT NULL UNIQUE,
+        description TEXT,
+        sort_order INTEGER DEFAULT 0,
+        color TEXT DEFAULT '#1890ff',
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_stage_record (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        stage_code TEXT NOT NULL,
+        workorder_id INTEGER,
+        task_id INTEGER,
+        product_id INTEGER,
+        quantity REAL DEFAULT 0,
+        operator INTEGER,
+        start_time TIMESTAMP,
+        end_time TIMESTAMP,
+        duration REAL DEFAULT 0,
+        remark TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
     # ==================== 工位管理 ====================
     db.execute('''CREATE TABLE IF NOT EXISTS base_workstation (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
