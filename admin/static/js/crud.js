@@ -20,6 +20,7 @@ function renderCrud(el, path, cfg) {
 
     el.innerHTML = '<div class="card"><div class="card-title"><span>' + cfg.t + '</span>'
         + '<div style="display:flex;gap:8px">'
+        + '<button class="btn btn-gray" onclick="crudLoad(1)">刷新</button>'
         + '<button class="btn btn-green" id="exportBtn">导出</button>'
         + '<button class="btn btn-orange" id="importBtn" style="background:#fa8c16;color:#fff">导入</button>'
         + '<button class="btn btn-blue" id="addBtn">+ 新增</button></div></div>'

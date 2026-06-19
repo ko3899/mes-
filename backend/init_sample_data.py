@@ -103,11 +103,12 @@ def init_sample_data():
         db.execute("INSERT OR IGNORE INTO base_defect (defect_name, code, defect_type) VALUES (?,?,?)",
                    (name, code, dtype))
     
-    # 阶段码
+    # 生产阶段
     stages = [
-        ('切割', 'CUT', '#1890ff', '材料切割'), ('焊接', 'WELD', '#fa8c16', '焊接工序'),
-        ('组装', 'ASM', '#52c41a', '产品组装'), ('测试', 'TEST', '#722ed1', '功能测试'),
-        ('包装', 'PACK', '#13c2c2', '成品包装'),
+        ('试产', 'TRIAL', '#fa8c16', '试产阶段，小批量验证'),
+        ('小批量', 'PILOT', '#1890ff', '小批量生产阶段'),
+        ('量产', 'MASS', '#52c41a', '大批量生产阶段'),
+        ('停产', 'STOP', '#f5222d', '暂停生产'),
     ]
     for i, (name, code, color, desc) in enumerate(stages):
         db.execute("INSERT OR IGNORE INTO base_stage_code (stage_name, code, color, description, sort_order) VALUES (?,?,?,?,?)",

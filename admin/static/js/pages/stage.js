@@ -2,7 +2,7 @@
 
 // 阶段码定义
 function renderStageCode(el) {
-    el.innerHTML = '<div class="card"><div class="card-title"><span>阶段码管理</span><button class="btn btn-blue" id="stageAddBtn">+ 新增阶段</button></div>'
+    el.innerHTML = '<div class="card"><div class="card-title"><span>生产阶段管理</span><button class="btn btn-blue" id="stageAddBtn">+ 新增阶段</button></div>'
         + '<table><thead><tr><th>排序</th><th>ID</th><th>阶段名称</th><th>编码</th><th>颜色</th><th>描述</th><th>状态</th><th>操作</th></tr></thead>'
         + '<tbody id="tb"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody></table></div>';
     document.getElementById('stageAddBtn').onclick = stageAdd;
@@ -12,7 +12,7 @@ function stageCodeLoad() {
     api('/api/stage/code/list').then(function(r) {
         if(!r||!r.data) return;
         var tb = document.getElementById('tb');
-        if(!r.data.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无阶段码，请先添加</td></tr>'; return; }
+        if(!r.data.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无阶段，请添加试产/量产等阶段</td></tr>'; return; }
         tb.innerHTML = r.data.map(function(s, i) {
             return '<tr><td>'
                 +'<button class="btn btn-gray btn-sm" onclick="stageReorder('+s.id+',\'up\')" '+(i===0?'disabled':'')+'>▲</button> '
