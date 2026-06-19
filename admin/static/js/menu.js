@@ -1,6 +1,7 @@
 /* 菜单模块 */
 var MENUS = [
     {k:'home', t:'工作台', home:true},
+    {k:'analytics/dashboard', t:'📊 数据看板', home:true},
     {k:'process', t:'制程管控', sub:[
         {k:'process/station-config',t:'站点配置'},{k:'process/flow',t:'过站记录'},{k:'process/record',t:'操作记录'},
         {k:'process/box',t:'箱号管理'},{k:'process/lock',t:'锁料管理'},
