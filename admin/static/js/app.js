@@ -160,7 +160,27 @@ document.addEventListener('DOMContentLoaded', function() {
             closeModal();
             document.getElementById('globalSearch').blur();
         }
+        if(e.ctrlKey && e.key === 's') {
+            e.preventDefault();
+            if(modalSaveHandler) modalSaveHandler();
+        }
     });
+
+    // 会话超时检测（30分钟无操作自动登出）
+    var lastActivity = Date.now();
+    var sessionTimeout = 30 * 60 * 1000; // 30分钟
+    
+    function resetActivity() { lastActivity = Date.now(); }
+    document.addEventListener('click', resetActivity);
+    document.addEventListener('keypress', resetActivity);
+    document.addEventListener('scroll', resetActivity);
+    
+    setInterval(function() {
+        if(curUser && (Date.now() - lastActivity > sessionTimeout)) {
+            alert('会话已超时，请重新登录');
+            doLogout();
+        }
+    }, 60000);
 });
 
 function doGlobalSearch() {

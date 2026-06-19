@@ -122,6 +122,29 @@ c3.setOption({tooltip:{trigger:'axis'},xAxis:{type:'category',data:d.workshop_ou
 }
 loadData();
 setInterval(loadData,30000);
+
+// 全屏切换
+document.addEventListener('keydown', function(e) {
+    if(e.key === 'F11') {
+        e.preventDefault();
+        if(!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+        } else {
+            document.exitFullscreen();
+        }
+    }
+});
+
+// 看板轮播（可选）
+var carouselTimer = null;
+function startCarousel() {
+    var pages = ['kanban', 'kanban/stats'];
+    var idx = 0;
+    carouselTimer = setInterval(function() {
+        idx = (idx + 1) % pages.length;
+        // 这里可以切换不同看板视图
+    }, 30000);
+}
 </script></body></html>'''
 
 

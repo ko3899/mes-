@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1890ff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.json">
 <title>MES采集终端</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -339,23 +343,44 @@ function renderHome(el) {
 
 // Scan - 扫码功能
 function renderScan(el) {
-  el.innerHTML = '<div class="scan-area">'
-    + '<input id="scanInput" class="scan-input" type="text" placeholder="扫描条码或输入编号..." autofocus>'
-    + '<div class="scan-hint">支持工单号、任务号、产品条码</div>'
-    + '</div>'
-    + '<div id="scanResult"></div>';
+    el.innerHTML = '<div class="scan-area">'
+        + '<input id="scanInput" class="scan-input" type="text" placeholder="扫描条码或输入编号..." autofocus>'
+        + '<div class="scan-hint">支持工单号、任务号、产品条码 | USB扫码枪即扫即录</div>'
+        + '</div>'
+        + '<div id="scanResult"></div>';
 
-  var scanInput = document.getElementById('scanInput');
-  scanInput.addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') {
-      var code = this.value.trim();
-      if (code) {
-        handleBarcodeScan(code);
-        this.value = '';
-      }
-    }
-  });
-  scanInput.focus();
+    var scanInput = document.getElementById('scanInput');
+    scanInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            var code = this.value.trim();
+            if (code) {
+                handleBarcodeScan(code);
+                this.value = '';
+            }
+        }
+    });
+    
+    // 扫码枪支持：自动聚焦+快速输入
+    scanInput.addEventListener('input', function() {
+        var val = this.value;
+        // 扫码枪通常在50ms内输入完整条码
+        if(val.length >= 8) {
+            clearTimeout(this._scanTimer);
+            this._scanTimer = setTimeout(function() {
+                handleBarcodeScan(val);
+                scanInput.value = '';
+            }, 100);
+        }
+    });
+    
+    scanInput.focus();
+    
+    // 页面点击时自动聚焦扫码框
+    document.addEventListener('click', function(e) {
+        if(!e.target.closest('.modal-mask') && !e.target.closest('.result-page')) {
+            scanInput.focus();
+        }
+    });
 }
 
 function handleBarcodeScan(code) {

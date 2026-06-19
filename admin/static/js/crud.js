@@ -1,10 +1,21 @@
 /* CRUD 通用模块 */
+var sortField = '';
+var sortOrder = 'DESC';
+var pageSize = 15;
+
+// 加载用户偏好
+function loadUserPrefs() {
+    var prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+    if(prefs.pageSize) pageSize = prefs.pageSize;
+}
+loadUserPrefs();
+
 function renderCrud(el, path, cfg) {
     curFields = cfg.f;
     curApiBase = '/api/' + path.split('/')[0] + '/' + path.split('/')[1];
     var fkey = path.replace(/\//g, '_');
-    var ths = '<th>ID</th>';
-    cfg.f.forEach(function(f){ ths += '<th>' + f.l + '</th>'; });
+    var ths = '<th><input type="checkbox" onchange="toggleSelectAll(this.checked)"></th><th>ID</th>';
+    cfg.f.forEach(function(f){ ths += '<th class="sortable" data-sort="'+f.k+'" onclick="sortTable(\''+f.k+'\')">' + f.l + '</th>'; });
     ths += '<th>创建时间</th><th>操作</th>';
 
     el.innerHTML = '<div class="card"><div class="card-title"><span>' + cfg.t + '</span>'
@@ -14,25 +25,43 @@ function renderCrud(el, path, cfg) {
         + '<button class="btn btn-blue" id="addBtn">+ 新增</button></div></div>'
         + '<div class="toolbar"><input id="kw" placeholder="搜索...">'
         + '<button class="btn btn-blue btn-sm" id="searchBtn">搜索</button>'
-        + '<button class="btn btn-gray btn-sm" id="resetBtn">重置</button></div>'
-        + '<table><thead><tr>' + ths + '</tr></thead><tbody id="tb"><tr><td colspan="' + (cfg.f.length + 3) + '" class="empty">加载中...</td></tr></tbody></table>'
+        + '<button class="btn btn-gray btn-sm" id="resetBtn">重置</button>'
+        + '<select id="pageSize" onchange="changePageSize(this.value)" style="margin-left:auto">'
+        + '<option value="10"' + (pageSize===10?' selected':'') + '>10条/页</option>'
+        + '<option value="15"' + (pageSize===15?' selected':'') + '>15条/页</option>'
+        + '<option value="20"' + (pageSize===20?' selected':'') + '>20条/页</option>'
+        + '<option value="50"' + (pageSize===50?' selected':'') + '>50条/页</option>'
+        + '</select></div>'
+        + '<table><thead><tr>' + ths + '</tr></thead><tbody id="tb"><tr><td colspan="' + (cfg.f.length + 4) + '" class="empty">加载中...</td></tr></tbody></table>'
         + '<div class="page" id="pg"></div></div>';
 
     document.getElementById('addBtn').onclick = function() { crudAdd(); };
     document.getElementById('searchBtn').onclick = function() { crudLoad(1); };
-    document.getElementById('resetBtn').onclick = function() { document.getElementById('kw').value = ''; crudLoad(1); };
+    document.getElementById('resetBtn').onclick = function() { document.getElementById('kw').value = ''; sortField = ''; crudLoad(1); };
     document.getElementById('kw').onkeydown = function(e) { if(e.key === 'Enter') crudLoad(1); };
     document.getElementById('exportBtn').onclick = function() { doExport(); };
     document.getElementById('importBtn').onclick = function() { doImport(); };
 
+    selectedRows.clear();
+    updateBatchBar();
     crudLoad(1);
 }
 
-function crudLoad(page) {
+function changePageSize(val) {
+    pageSize = parseInt(val);
+    var prefs = JSON.parse(localStorage.getItem('userPrefs') || '{}');
+    prefs.pageSize = pageSize;
+    localStorage.setItem('userPrefs', JSON.stringify(prefs));
+    crudLoad(1);
+}
+
+function crudLoad(page, sort, order) {
     page = page || 1;
     var kw = document.getElementById('kw') ? document.getElementById('kw').value : '';
-    var url = curApiBase + '/list?page=' + page + '&size=15';
+    var url = curApiBase + '/list?page=' + page + '&size=' + pageSize;
     if(kw) url += '&keyword=' + encodeURIComponent(kw);
+    if(sort) { sortField = sort; sortOrder = order || 'DESC'; }
+    if(sortField) url += '&sort=' + sortField + '&order=' + sortOrder;
     api(url).then(function(r) {
         if(!r) return;
         var list = Array.isArray(r.data) ? r.data : (r.data && r.data.list ? r.data.list : []);
@@ -43,7 +72,8 @@ function crudLoad(page) {
 
         var h = '';
         list.forEach(function(row) {
-            h += '<tr><td>' + row.id + '</td>';
+            var isSelected = selectedRows.has(String(row.id));
+            h += '<tr><td><input type="checkbox" data-id="'+row.id+'" '+(isSelected?'checked':'')+' onchange="toggleSelectRow('+row.id+',this.checked)"></td><td>' + row.id + '</td>';
             curFields.forEach(function(f) {
                 var v = row[f.k] != null ? row[f.k] : '';
                 if(f.k === 'status') {
@@ -62,7 +92,7 @@ function crudLoad(page) {
         });
         tb.innerHTML = h;
 
-        var pages = Math.ceil(total / 15);
+        var pages = Math.ceil(total / pageSize);
         var ph = '<span class="info">共 ' + total + ' 条</span>';
         ph += '<span class="pbtn' + (page <= 1 ? ' off' : '') + '" onclick="crudLoad(' + (page - 1) + ')">&lt;</span>';
         for(var i = Math.max(1, page - 2); i <= Math.min(pages, page + 2); i++) {

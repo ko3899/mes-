@@ -99,6 +99,10 @@ def create_app():
     def index():
         return send_from_directory(FRONTEND_DIR, 'index.html')
 
+    @app.route('/manifest.json')
+    def manifest():
+        return send_from_directory(FRONTEND_DIR, 'manifest.json')
+
     @app.route('/admin')
     def admin_page():
         return send_from_directory(ADMIN_DIR, 'index.html')

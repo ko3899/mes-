@@ -1,14 +1,46 @@
 /* 通知模块 */
+var lastNotifCount = 0;
+
 function loadNotifications() {
     api('/api/notification/unread/count').then(function(r) {
         if (r && r.code === 0) {
+            var count = r.data.count;
             var badge = document.getElementById('notifBadge');
             if (badge) {
-                badge.textContent = r.data.count;
-                badge.style.display = r.data.count > 0 ? 'block' : 'none';
+                badge.textContent = count;
+                badge.style.display = count > 0 ? 'block' : 'none';
             }
+            // 新通知声音提醒
+            if(count > lastNotifCount && lastNotifCount > 0) {
+                playNotifSound();
+                showBrowserNotification('新通知', '您有 ' + count + ' 条未读通知');
+            }
+            lastNotifCount = count;
         }
     });
+}
+
+// 播放通知声音
+function playNotifSound() {
+    try {
+        var audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbsGczIj2NysijaTkmTaLC2rh1QjVHj7nWxa2AVjA+jLjR0bp6VSI0hLfNxaN+UjQ7h7rQ0bp+VCMzh7rOxaZ+VDM7iLzS0bp+VCM0h7rOxaZ+VDM7h7rOxaZ+VDM7h7rQ=');
+        audio.volume = 0.3;
+        audio.play().catch(function(){});
+    } catch(e) {}
+}
+
+// 浏览器桌面通知
+function showBrowserNotification(title, body) {
+    if(!('Notification' in window)) return;
+    if(Notification.permission === 'granted') {
+        new Notification(title, {body: body, icon: '/favicon.ico'});
+    } else if(Notification.permission !== 'denied') {
+        Notification.requestPermission().then(function(permission) {
+            if(permission === 'granted') {
+                new Notification(title, {body: body, icon: '/favicon.ico'});
+            }
+        });
+    }
 }
 
 function renderNotifications(el) {
