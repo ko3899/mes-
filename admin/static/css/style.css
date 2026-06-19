@@ -1,20 +1,21 @@
 /* MES工厂管家 - 管理后台样式 */
 
 :root {
-    --primary: #1890ff;
-    --primary-hover: #40a9ff;
-    --primary-active: #096dd9;
-    --success: #52c41a;
-    --warning: #faad14;
-    --danger: #f5222d;
-    --text: #262626;
-    --text-secondary: #8c8c8c;
-    --border: #f0f0f0;
-    --bg: #f0f2f5;
+    --primary: #667eea;
+    --primary-hover: #764ba2;
+    --primary-active: #5a67d8;
+    --success: #11998e;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --text: #1a1a2e;
+    --text-secondary: #6b7280;
+    --border: #e5e7eb;
+    --bg: #f8fafc;
     --card-bg: #ffffff;
-    --sidebar-bg: #001529;
-    --sidebar-text: rgba(255,255,255,0.65);
+    --sidebar-bg: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+    --sidebar-text: rgba(255,255,255,0.7);
     --header-bg: #ffffff;
+    --gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 /* 暗色主题 */
