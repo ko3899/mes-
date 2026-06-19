@@ -41,7 +41,8 @@ var MENUS = [
     {k:'svc', t:'售后管理', sub:[{k:'svc/complaint',t:'客诉管理'},{k:'svc/return',t:'退换货'}]},
     {k:'analytics', t:'数据分析', sub:[
         {k:'analytics/oee',t:'OEE分析'},{k:'analytics/capacity',t:'产能分析'},
-        {k:'analytics/delivery',t:'交期预警'},{k:'analytics/inventory',t:'库存分析'}
+        {k:'analytics/delivery',t:'交期预警'},{k:'analytics/inventory',t:'库存分析'},
+        {k:'analytics/yield',t:'良率统计'},{k:'analytics/dashboard',t:'数据看板'}
     ]},
     {k:'eqp', t:'设备管理', sub:[{k:'eqp/ledger',t:'设备台账'},{k:'eqp/repair',t:'维修单'},{k:'eqp/maintenance',t:'保养计划'},{k:'eqp/check',t:'保养记录'}]},
     {k:'trace', t:'物料追溯', sub:[{k:'trace/batch',t:'批次管理'},{k:'trace/query',t:'追溯查询'}]},

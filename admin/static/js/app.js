@@ -373,6 +373,8 @@ function renderPage(key) {
         'analytics/capacity': function(e){renderCapacity(e)},
         'analytics/delivery': function(e){renderDeliveryAlert(e)},
         'analytics/inventory': function(e){renderInventoryAnalysis(e)},
+        'analytics/yield': function(e){renderYieldAnalysis(e)},
+        'analytics/dashboard': function(e){renderDataDashboard(e)},
         'tool/borrow': function(e){renderToolBorrow(e)},
         'qm/process': function(e){renderQMProcess(e)},
         'notifications': function(e){renderNotifications(e)}

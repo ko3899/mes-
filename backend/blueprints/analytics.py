@@ -165,18 +165,13 @@ def mobile_dashboard():
     db = get_db()
     today = datetime.date.today().strftime('%Y-%m-%d')
     
-    # 今日统计
     today_report = db.execute('''SELECT COALESCE(SUM(qualified_qty),0) as qualified,
         COALESCE(SUM(defect_qty),0) as defect
         FROM prod_report WHERE DATE(report_time)=?''', (today,)).fetchone()
     
-    # 进行中工单数
     active_orders = db.execute("SELECT COUNT(*) as c FROM prod_workorder WHERE status IN (0,1)").fetchone()['c']
-    
-    # 待处理任务
     pending_tasks = db.execute("SELECT COUNT(*) as c FROM prod_task WHERE status=0").fetchone()['c']
     
-    # 设备运行率
     total_eqp = db.execute("SELECT COUNT(*) as c FROM eqp_ledger").fetchone()['c']
     running_eqp = db.execute("SELECT COUNT(*) as c FROM eqp_ledger WHERE status=1").fetchone()['c']
     eqp_rate = round(running_eqp / total_eqp * 100, 1) if total_eqp > 0 else 0
@@ -187,4 +182,151 @@ def mobile_dashboard():
         'active_orders': active_orders,
         'pending_tasks': pending_tasks,
         'eqp_rate': eqp_rate
+    }})
+
+
+# ==================== 良率统计 ====================
+@analytics_bp.route('/api/analytics/yield')
+@login_required
+def yield_analysis():
+    """良率统计"""
+    db = get_db()
+    days = int(request.args.get('days', 30))
+    process_id = request.args.get('process_id', '')
+    today = datetime.date.today()
+    start = (today - datetime.timedelta(days=days)).strftime('%Y-%m-%d')
+    
+    where = "WHERE r.report_time >= ?"
+    params = [start]
+    if process_id:
+        where += " AND r.process_id=?"
+        params.append(int(process_id))
+    
+    # 每日良率
+    daily_yield = db.execute(f'''SELECT DATE(r.report_time) as dt,
+        COALESCE(SUM(r.qualified_qty),0) as qualified,
+        COALESCE(SUM(r.defect_qty),0) as defect
+        FROM prod_report r {where}
+        GROUP BY DATE(r.report_time) ORDER BY dt''', params).fetchall()
+    
+    daily_data = []
+    for row in daily_yield:
+        total = row['qualified'] + row['defect']
+        rate = round(row['qualified'] / total * 100, 2) if total > 0 else 100
+        daily_data.append({
+            'date': row['dt'],
+            'qualified': row['qualified'],
+            'defect': row['defect'],
+            'total': total,
+            'yield_rate': rate
+        })
+    
+    # 各工序良率
+    process_yield = db.execute(f'''SELECT p.process_name,
+        COALESCE(SUM(r.qualified_qty),0) as qualified,
+        COALESCE(SUM(r.defect_qty),0) as defect
+        FROM prod_report r
+        LEFT JOIN base_process p ON r.process_id=p.id
+        {where}
+        GROUP BY r.process_id ORDER BY qualified DESC''', params).fetchall()
+    
+    process_data = []
+    for row in process_yield:
+        total = row['qualified'] + row['defect']
+        rate = round(row['qualified'] / total * 100, 2) if total > 0 else 100
+        process_data.append({
+            'process': row['process_name'] or '-',
+            'qualified': row['qualified'],
+            'defect': row['defect'],
+            'yield_rate': rate
+        })
+    
+    # 总体良率
+    total_qualified = sum(d['qualified'] for d in daily_data)
+    total_defect = sum(d['defect'] for d in daily_data)
+    total_all = total_qualified + total_defect
+    overall_yield = round(total_qualified / total_all * 100, 2) if total_all > 0 else 100
+    
+    # 良率趋势
+    if len(daily_data) >= 2:
+        rates = [d['yield_rate'] for d in daily_data]
+        avg_rate = sum(rates) / len(rates)
+        trend = 'up' if rates[-1] > rates[0] else ('down' if rates[-1] < rates[0] else 'stable')
+    else:
+        avg_rate = overall_yield
+        trend = 'stable'
+    
+    return jsonify({'code': 0, 'data': {
+        'overall_yield': overall_yield,
+        'avg_yield': round(avg_rate, 2),
+        'total_qualified': total_qualified,
+        'total_defect': total_defect,
+        'trend': trend,
+        'daily': daily_data,
+        'by_process': process_data
+    }})
+
+
+# ==================== 数据看板 ====================
+@analytics_bp.route('/api/analytics/data-dashboard')
+@login_required
+def data_dashboard():
+    """综合数据看板"""
+    db = get_db()
+    today = datetime.date.today()
+    today_str = today.strftime('%Y-%m-%d')
+    
+    # 生产数据
+    today_output = db.execute('''SELECT COALESCE(SUM(qualified_qty),0) as q, COALESCE(SUM(defect_qty),0) as d
+        FROM prod_report WHERE DATE(report_time)=?''', (today_str,)).fetchone()
+    today_total = today_output['q'] + today_output['d']
+    today_yield = round(today_output['q'] / today_total * 100, 2) if today_total > 0 else 100
+    
+    # 工单状态
+    wo_stats = []
+    for st, label in [(0,'待处理'),(1,'进行中'),(2,'已完成'),(3,'已关闭')]:
+        cnt = db.execute("SELECT COUNT(*) as c FROM prod_workorder WHERE status=?", (st,)).fetchone()['c']
+        wo_stats.append({'name': label, 'value': cnt})
+    
+    # 设备状态
+    eqp_stats = []
+    for st, label in [(1,'运行'),(2,'维修'),(0,'停用')]:
+        cnt = db.execute("SELECT COUNT(*) as c FROM eqp_ledger WHERE status=?", (st,)).fetchone()['c']
+        eqp_stats.append({'name': label, 'value': cnt})
+    
+    # 库存预警
+    low_stock = db.execute('''SELECT p.product_name, p.code, b.quantity
+        FROM inv_balance b JOIN base_product p ON b.product_id=p.id
+        WHERE b.quantity < 10 ORDER BY b.quantity ASC LIMIT 10''').fetchall()
+    
+    # 异常统计
+    exceptions = db.execute("SELECT COUNT(*) as c FROM prod_exception WHERE status=0").fetchone()['c']
+    defects = db.execute("SELECT COUNT(*) as c FROM prod_defect_receive WHERE status=0").fetchone()['c']
+    
+    # 近7天良率趋势
+    yield_trend = []
+    for i in range(6, -1, -1):
+        d = today - datetime.timedelta(days=i)
+        ds = d.strftime('%Y-%m-%d')
+        row = db.execute('''SELECT COALESCE(SUM(qualified_qty),0) as q, COALESCE(SUM(defect_qty),0) as d
+            FROM prod_report WHERE DATE(report_time)=?''', (ds,)).fetchone()
+        total = row['q'] + row['d']
+        rate = round(row['q'] / total * 100, 2) if total > 0 else 100
+        yield_trend.append({'date': ds, 'rate': rate, 'total': total})
+    
+    return jsonify({'code': 0, 'data': {
+        'today': {
+            'output': today_total,
+            'qualified': today_output['q'],
+            'defect': today_output['d'],
+            'yield_rate': today_yield
+        },
+        'wo_stats': wo_stats,
+        'eqp_stats': eqp_stats,
+        'low_stock': [dict(r) for r in low_stock],
+        'alerts': {
+            'exceptions': exceptions,
+            'defects': defects
+        },
+        'yield_trend': yield_trend
     }})
