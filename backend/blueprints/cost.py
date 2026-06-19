@@ -45,3 +45,43 @@ def cost_summary():
         rows = db.execute('''SELECT cost_type, SUM(amount) as total
             FROM prod_cost GROUP BY cost_type''').fetchall()
     return jsonify({'code': 0, 'data': [dict(r) for r in rows]})
+
+
+@cost_bp.route('/api/cost/variance')
+@login_required
+def cost_variance():
+    """成本差异分析"""
+    db = get_db()
+    
+    # 获取各工单的标准成本和实际成本
+    rows = db.execute('''SELECT w.order_no, p.product_name,
+        w.planned_qty, w.completed_qty,
+        COALESCE(sc.material_cost, 0) as std_material,
+        COALESCE(sc.labor_cost, 0) as std_labor,
+        COALESCE(sc.overhead_cost, 0) as std_overhead,
+        COALESCE(SUM(c.amount), 0) as actual_cost
+        FROM prod_workorder w
+        LEFT JOIN base_product p ON w.product_id=p.id
+        LEFT JOIN base_standard_cost sc ON w.product_id=sc.product_id
+        LEFT JOIN prod_cost c ON w.id=c.workorder_id
+        GROUP BY w.id
+        ORDER BY w.id DESC LIMIT 20''').fetchall()
+    
+    result = []
+    for row in rows:
+        std_total = (row['std_material'] + row['std_labor'] + row['std_overhead']) * row['completed_qty']
+        actual = row['actual_cost']
+        variance = actual - std_total
+        variance_rate = round(variance / std_total * 100, 2) if std_total > 0 else 0
+        
+        result.append({
+            'order_no': row['order_no'],
+            'product_name': row['product_name'],
+            'completed_qty': row['completed_qty'],
+            'standard_cost': round(std_total, 2),
+            'actual_cost': round(actual, 2),
+            'variance': round(variance, 2),
+            'variance_rate': variance_rate
+        })
+    
+    return jsonify({'code': 0, 'data': result})

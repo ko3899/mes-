@@ -164,6 +164,20 @@ def prod_report_add():
     return jsonify(crud_add('prod_report', data))
 
 
+@production_bp.route('/api/prod/report/gps', methods=['POST'])
+@login_required
+def prod_report_gps():
+    """GPS定位报工"""
+    data = request.json
+    data['report_no'] = gen_no('BR')
+    data['user_id'] = session.get('user_id')
+    # 存储GPS坐标到备注
+    lat = data.pop('latitude', '')
+    lng = data.pop('longitude', '')
+    data['remark'] = f"GPS: {lat},{lng}"
+    return jsonify(crud_add('prod_report', data))
+
+
 @production_bp.route('/api/prod/report/delete', methods=['POST'])
 @login_required
 def prod_report_delete():

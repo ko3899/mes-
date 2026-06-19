@@ -39,10 +39,22 @@ def init_db():
         email TEXT,
         dept_id INTEGER,
         role_id INTEGER,
+        tenant_id INTEGER DEFAULT 1,
         status INTEGER DEFAULT 1,
         avatar TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS sys_tenant (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_name TEXT NOT NULL,
+        tenant_code TEXT NOT NULL UNIQUE,
+        contact TEXT,
+        phone TEXT,
+        max_users INTEGER DEFAULT 100,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
 
     db.execute('''CREATE TABLE IF NOT EXISTS sys_role (
