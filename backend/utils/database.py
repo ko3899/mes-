@@ -947,6 +947,28 @@ def init_db():
     db.commit()
     db.close()
 
+
+def _init_extra_tables():
+    """初始化新增功能的表"""
+    db = sqlite3.connect(DB_PATH)
+    db.execute("PRAGMA foreign_keys = ON")
+    try:
+        db.execute("ALTER TABLE base_process ADD COLUMN sort_order INTEGER DEFAULT 0")
+    except:
+        pass
+    for col in ['required_sn', 'required_material', 'check_sequence', 'prev_station']:
+        try:
+            db.execute(f"ALTER TABLE base_station_config ADD COLUMN {col} INTEGER DEFAULT 0")
+        except:
+            pass
+    try:
+        db.execute("ALTER TABLE base_station_config ADD COLUMN required_process TEXT")
+    except:
+        pass
+    db.commit()
+    db.close()
+
+
 def _create_indexes():
     """创建数据库索引优化查询性能"""
     db = sqlite3.connect(DB_PATH)
