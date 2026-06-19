@@ -1,0 +1,358 @@
+/* 制程管控页面 - 过站/跳站/出站/重工/关箱/拆箱/锁料/解料/返线/不良品/料号/异常 */
+
+// 过站记录
+function renderProcessFlow(el) {
+    el.innerHTML = '<div class="card"><div class="card-title"><span>过站记录</span>'
+        + '<button class="btn btn-blue" onclick="showPassDialog()">过站</button> '
+        + '<button class="btn btn-orange" onclick="showReworkDialog()">重工</button> '
+        + '<button class="btn btn-green" onclick="showReturnDialog()">返线</button></div>'
+        + '<div class="toolbar"><input id="kw" placeholder="搜索SN/单号..."><button class="btn btn-blue btn-sm" onclick="flowLoad(1)">搜索</button></div>'
+        + '<table><thead><tr><th>ID</th><th>流转单号</th><th>SN</th><th>当前站点</th><th>当前工序</th><th>状态</th><th>更新时间</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="7" class="empty">加载中...</td></tr></tbody></table></div>';
+    flowLoad(1);
+}
+function flowLoad(page) {
+    var kw = document.getElementById('kw') ? document.getElementById('kw').value : '';
+    var url = '/api/process/flow/list?page='+page+'&size=20';
+    if(kw) url += '&keyword='+encodeURIComponent(kw);
+    api(url).then(function(r) {
+        if(!r) return;
+        var list = r.data?.list||[];
+        var tb = document.getElementById('tb');
+        if(!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>'; return; }
+        tb.innerHTML = list.map(function(f) {
+            return '<tr><td>'+f.id+'</td><td>'+f.flow_no+'</td><td><b>'+f.sn+'</b></td>'
+                +'<td>'+f.current_station+'</td><td>'+(f.current_process||'-')+'</td>'
+                +'<td><span class="tag '+(f.status?'tag-ok':'tag-run')+'">'+(f.status?'完成':'流转中')+'</span></td>'
+                +'<td>'+(f.updated_at||'')+'</td></tr>';
+        }).join('');
+    });
+}
+
+function showPassDialog() {
+    document.getElementById('mTitle').textContent = '过站';
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>SN条码<span style="color:red">*</span></label><input id="f_sn" placeholder="扫描或输入SN" autofocus></div></div>'
+        + '<div class="form-row"><div class="form-item"><label>站点<span style="color:red">*</span></label><input id="f_station" placeholder="如: SMT01"></div>'
+        + '<div class="form-item"><label>工序</label><input id="f_process" placeholder="如: 贴片"></div></div>';
+    modalSaveHandler = function() {
+        var d = {sn:document.getElementById('f_sn').value, station:document.getElementById('f_station').value, process_name:document.getElementById('f_process').value};
+        if(!d.sn||!d.station) { alert('请填写必填项'); return; }
+        api('/api/process/pass-station',{method:'POST',body:d}).then(function(r) {
+            if(r&&r.code===0) { closeModal(); showToast(r.message); flowLoad(1); } else alert(r?r.message:'操作失败');
+        });
+    };
+    document.getElementById('modal').classList.add('show');
+    setTimeout(function(){document.getElementById('f_sn').focus()},300);
+}
+
+function showReworkDialog() {
+    document.getElementById('mTitle').textContent = '重工';
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>SN<span style="color:red">*</span></label><input id="f_sn" autofocus></div></div>'
+        + '<div class="form-row"><div class="form-item"><label>目标站点<span style="color:red">*</span></label><input id="f_station"></div></div>'
+        + '<div class="form-row"><div class="form-item" style="flex:1"><label>原因</label><textarea id="f_reason"></textarea></div></div>';
+    modalSaveHandler = function() {
+        var d = {sn:document.getElementById('f_sn').value, target_station:document.getElementById('f_station').value, reason:document.getElementById('f_reason').value};
+        if(!d.sn||!d.target_station) { alert('请填写必填项'); return; }
+        api('/api/process/rework',{method:'POST',body:d}).then(function(r) {
+            if(r&&r.code===0) { closeModal(); showToast(r.message); flowLoad(1); } else alert(r?r.message:'操作失败');
+        });
+    };
+    document.getElementById('modal').classList.add('show');
+}
+
+function showReturnDialog() {
+    document.getElementById('mTitle').textContent = '返线';
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>SN<span style="color:red">*</span></label><input id="f_sn" autofocus></div></div>'
+        + '<div class="form-row"><div class="form-item"><label>返回站点<span style="color:red">*</span></label><input id="f_station"></div></div>';
+    modalSaveHandler = function() {
+        var d = {sn:document.getElementById('f_sn').value, station:document.getElementById('f_station').value};
+        if(!d.sn||!d.station) { alert('请填写必填项'); return; }
+        api('/api/process/return-to-line',{method:'POST',body:d}).then(function(r) {
+            if(r&&r.code===0) { closeModal(); showToast(r.message); flowLoad(1); } else alert(r?r.message:'操作失败');
+        });
+    };
+    document.getElementById('modal').classList.add('show');
+}
+
+// 操作记录
+function renderProcessRecord(el) {
+    el.innerHTML = '<div class="card"><div class="card-title">操作记录</div>'
+        + '<div class="toolbar"><input id="kw" placeholder="搜索SN/站点..."><button class="btn btn-blue btn-sm" onclick="recordLoad(1)">搜索</button></div>'
+        + '<table><thead><tr><th>ID</th><th>SN</th><th>站点</th><th>工序</th><th>操作</th><th>结果</th><th>操作人</th><th>时间</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody></table></div>';
+    recordLoad(1);
+}
+function recordLoad(page) {
+    var kw = document.getElementById('kw') ? document.getElementById('kw').value : '';
+    var url = '/api/process/record/list?page='+page+'&size=20';
+    if(kw) url += '&keyword='+encodeURIComponent(kw);
+    api(url).then(function(r) {
+        if(!r) return;
+        var list = r.data?.list||[];
+        var tb = document.getElementById('tb');
+        if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>'; return; }
+        var actionColors = {'过站':'#52c41a','跳站':'#fa8c16','出站':'#1890ff','重工':'#f5222d','返线':'#722ed1','关箱':'#13c2c2','拆箱':'#eb2f96'};
+        tb.innerHTML = list.map(function(r) {
+            var color = actionColors[r.action]||'#333';
+            return '<tr><td>'+r.id+'</td><td><b>'+r.sn+'</b></td><td>'+r.station+'</td><td>'+(r.process_name||'-')+'</td>'
+                +'<td><span style="color:'+color+';font-weight:bold">'+r.action+'</span></td>'
+                +'<td>'+(r.result||'-')+'</td><td>'+(r.real_name||'-')+'</td><td>'+(r.created_at||'')+'</td></tr>';
+        }).join('');
+    });
+}
+
+// 箱号管理
+function renderBoxManage(el) {
+    el.innerHTML = '<div class="card"><div class="card-title"><span>箱号管理</span>'
+        + '<button class="btn btn-blue" onclick="showCloseBox()">关箱</button> '
+        + '<button class="btn btn-orange" onclick="showOpenBox()">拆箱</button></div>'
+        + '<table><thead><tr><th>ID</th><th>箱号</th><th>类型</th><th>产品数</th><th>状态</th><th>时间</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="6" class="empty">加载中...</td></tr></tbody></table></div>';
+    boxLoad();
+}
+function boxLoad() {
+    api('/api/process/box/list?size=50').then(function(r) {
+        if(!r) return;
+        var list = r.data?.list||[];
+        var tb = document.getElementById('tb');
+        if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>'; return; }
+        tb.innerHTML = list.map(function(b) {
+            var st = {0:'<span class="tag tag-draft">空箱</span>',1:'<span class="tag tag-ok">已关箱</span>',2:'<span class="tag tag-wait">已拆箱</span>'};
+            return '<tr><td>'+b.id+'</td><td><b>'+b.box_no+'</b></td><td>'+b.box_type+'</td><td>'+b.quantity+'</td>'
+                +'<td>'+(st[b.status]||'-')+'</td><td>'+(b.created_at||'')+'</td></tr>';
+        }).join('');
+    });
+}
+function showCloseBox() {
+    document.getElementById('mTitle').textContent = '关箱';
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>SN列表(每行一个)<span style="color:red">*</span></label><textarea id="f_sns" rows="6" placeholder="SN001\nSN002\nSN003"></textarea></div></div>';
+    modalSaveHandler = function() {
+        var sns = document.getElementById('f_sns').value.split('\n').filter(function(s){return s.trim()});
+        if(!sns.length) { alert('请输入SN'); return; }
+        api('/api/process/close-box',{method:'POST',body:{sn_list:sns}}).then(function(r) {
+            if(r&&r.code===0) { closeModal(); showToast(r.message); boxLoad(); } else alert(r?r.message:'操作失败');
+        });
+    };
+    document.getElementById('modal').classList.add('show');
+}
+function showOpenBox() {
+    document.getElementById('mTitle').textContent = '拆箱';
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>箱号<span style="color:red">*</span></label><input id="f_box" autofocus></div></div>';
+    modalSaveHandler = function() {
+        var box_no = document.getElementById('f_box').value;
+        if(!box_no) { alert('请输入箱号'); return; }
+        api('/api/process/open-box',{method:'POST',body:{box_no:box_no}}).then(function(r) {
+            if(r&&r.code===0) { closeModal(); showToast(r.message); boxLoad(); } else alert(r?r.message:'操作失败');
+        });
+    };
+    document.getElementById('modal').classList.add('show');
+}
+
+// 锁料管理
+function renderLockManage(el) {
+    el.innerHTML = '<div class="card"><div class="card-title"><span>锁料管理</span>'
+        + '<button class="btn btn-blue" onclick="showLockDialog()">锁料</button></div>'
+        + '<table><thead><tr><th>ID</th><th>锁料单号</th><th>物料</th><th>类型</th><th>原因</th><th>状态</th><th>操作人</th><th>操作</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody></table></div>';
+    lockLoad();
+}
+function lockLoad() {
+    api('/api/process/lock/list?size=50').then(function(r) {
+        if(!r) return;
+        var list = r.data?.list||[];
+        var tb = document.getElementById('tb');
+        if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>'; return; }
+        tb.innerHTML = list.map(function(l) {
+            return '<tr><td>'+l.id+'</td><td>'+l.lock_no+'</td><td>'+(l.material_name||l.material_id)+'</td>'
+                +'<td>'+l.lock_type+'</td><td>'+(l.reason||'-')+'</td>'
+                +'<td><span class="tag '+(l.status?'tag-no':'tag-ok')+'">'+(l.status?'已锁':'已解')+'</span></td>'
+                +'<td>'+(l.real_name||'-')+'</td>'
+                +'<td>'+(l.status?'<button class="btn btn-green btn-sm" onclick="unlockMaterial('+l.id+')">解料</button>':'已解')+'</td></tr>';
+        }).join('');
+    });
+}
+function showLockDialog() {
+    api('/api/process/material/list?size=500').then(function(r) {
+        var opts = '<option value="">选择物料</option>';
+        (r?.data?.list||[]).forEach(function(m) { opts += '<option value="'+m.id+'">'+m.material_name+' ('+m.material_no+')</option>'; });
+        document.getElementById('mTitle').textContent = '锁料';
+        document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>物料<span style="color:red">*</span></label><select id="f_mat">'+opts+'</select></div></div>'
+            + '<div class="form-row"><div class="form-item" style="flex:1"><label>原因</label><textarea id="f_reason"></textarea></div></div>';
+        modalSaveHandler = function() {
+            var d = {material_id:document.getElementById('f_mat').value, reason:document.getElementById('f_reason').value};
+            if(!d.material_id) { alert('请选择物料'); return; }
+            api('/api/process/lock-material',{method:'POST',body:d}).then(function(r2) {
+                if(r2&&r2.code===0) { closeModal(); showToast(r2.message); lockLoad(); } else alert(r2?r2.message:'操作失败');
+            });
+        };
+        document.getElementById('modal').classList.add('show');
+    });
+}
+function unlockMaterial(id) { if(!confirm('确定解料？')) return; api('/api/process/unlock-material',{method:'POST',body:{id:id}}).then(function(r){if(r.code===0){showToast(r.message);lockLoad()}else alert(r.message)}); }
+
+// 不良品接收
+function renderDefectReceive(el) {
+    el.innerHTML = '<div class="card"><div class="card-title"><span>不良品接收</span>'
+        + '<button class="btn btn-blue" onclick="showDefectDialog()">接收</button></div>'
+        + '<table><thead><tr><th>ID</th><th>接收单号</th><th>SN</th><th>产品</th><th>缺陷</th><th>站点</th><th>数量</th><th>处理</th><th>状态</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="9" class="empty">加载中...</td></tr></tbody></table></div>';
+    defectLoad();
+}
+function defectLoad() {
+    api('/api/process/defect/list?size=50').then(function(r) {
+        if(!r) return;
+        var list = r.data?.list||[];
+        var tb = document.getElementById('tb');
+        if(!list.length) { tb.innerHTML = '<tr><td colspan="9" class="empty">暂无数据</td></tr>'; return; }
+        tb.innerHTML = list.map(function(d) {
+            return '<tr><td>'+d.id+'</td><td>'+d.receive_no+'</td><td>'+(d.sn||'-')+'</td>'
+                +'<td>'+(d.product_name||'-')+'</td><td>'+(d.defect_name||'-')+'</td><td>'+(d.station||'-')+'</td>'
+                +'<td>'+d.quantity+'</td><td>'+d.process_type+'</td>'
+                +'<td><span class="tag '+(d.status?'tag-ok':'tag-wait')+'">'+(d.status?'已处理':'待处理')+'</span></td></tr>';
+        }).join('');
+    });
+}
+function showDefectDialog() {
+    Promise.all([api('/api/base/product/all'), api('/api/base/defect/list?size=100')]).then(function(r) {
+        var prodOpts = '<option value="">选择产品</option>';
+        (r[0]?.data||[]).forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+p.product_name+'</option>'; });
+        var defOpts = '<option value="">选择缺陷</option>';
+        (r[1]?.data?.list||[]).forEach(function(d) { defOpts += '<option value="'+d.id+'">'+d.defect_name+'</option>'; });
+        document.getElementById('mTitle').textContent = '不良品接收';
+        document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>SN</label><input id="f_sn" autofocus></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>产品</label><select id="f_prod">'+prodOpts+'</select></div>'
+            + '<div class="form-item"><label>缺陷</label><select id="f_def">'+defOpts+'</select></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>站点</label><input id="f_station"></div>'
+            + '<div class="form-item"><label>数量</label><input id="f_qty" type="number" value="1"></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>处理方式</label><select id="f_type"><option value="待处理">待处理</option><option value="返工">返工</option><option value="报废">报废</option></select></div></div>';
+        modalSaveHandler = function() {
+            var d = {sn:document.getElementById('f_sn').value, product_id:document.getElementById('f_prod').value||null,
+                defect_id:document.getElementById('f_def').value||null, station:document.getElementById('f_station').value,
+                quantity:document.getElementById('f_qty').value, process_type:document.getElementById('f_type').value};
+            api('/api/process/defect-receive',{method:'POST',body:d}).then(function(r2) {
+                if(r2&&r2.code===0) { closeModal(); showToast(r2.message); defectLoad(); } else alert(r2?r2.message:'操作失败');
+            });
+        };
+        document.getElementById('modal').classList.add('show');
+    });
+}
+
+// 料号维护
+function renderMaterialManage(el) {
+    el.innerHTML = '<div class="card"><div class="card-title"><span>料号维护</span>'
+        + '<button class="btn btn-blue" onclick="materialAdd()">+ 新增</button></div>'
+        + '<table><thead><tr><th>ID</th><th>物料名称</th><th>料号</th><th>规格</th><th>单位</th><th>分类</th><th>状态</th><th>操作</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody></table></div>';
+    materialLoad();
+}
+function materialLoad() {
+    api('/api/process/material/list?size=100').then(function(r) {
+        if(!r) return;
+        var list = r.data?.list||[];
+        var tb = document.getElementById('tb');
+        if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无物料</td></tr>'; return; }
+        tb.innerHTML = list.map(function(m) {
+            return '<tr><td>'+m.id+'</td><td>'+m.material_name+'</td><td><code>'+m.material_no+'</code></td>'
+                +'<td>'+(m.specification||'-')+'</td><td>'+(m.unit||'-')+'</td><td>'+(m.category||'-')+'</td>'
+                +'<td><span class="tag '+(m.status?'tag-ok':'tag-draft')+'">'+(m.status?'启用':'停用')+'</span></td>'
+                +'<td><button class="btn btn-red btn-sm" onclick="materialDel('+m.id+')">删除</button></td></tr>';
+        }).join('');
+    });
+}
+function materialAdd() {
+    document.getElementById('mTitle').textContent = '新增物料';
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>物料名称<span style="color:red">*</span></label><input id="f_name"></div>'
+        + '<div class="form-item"><label>料号<span style="color:red">*</span></label><input id="f_no"></div></div>'
+        + '<div class="form-row"><div class="form-item"><label>规格</label><input id="f_spec"></div>'
+        + '<div class="form-item"><label>单位</label><input id="f_unit"></div></div>'
+        + '<div class="form-row"><div class="form-item"><label>分类</label><select id="f_cat"><option value="原材料">原材料</option><option value="半成品">半成品</option><option value="成品">成品</option><option value="辅料">辅料</option></select></div></div>';
+    modalSaveHandler = function() {
+        var d = {material_name:document.getElementById('f_name').value, material_no:document.getElementById('f_no').value,
+            specification:document.getElementById('f_spec').value, unit:document.getElementById('f_unit').value,
+            category:document.getElementById('f_cat').value};
+        if(!d.material_name||!d.material_no) { alert('请填写必填项'); return; }
+        api('/api/process/material/add',{method:'POST',body:d}).then(function(r) {
+            if(r&&r.code===0) { closeModal(); materialLoad(); } else alert(r?r.message:'保存失败');
+        });
+    };
+    document.getElementById('modal').classList.add('show');
+}
+function materialDel(id) { if(!confirm('确定删除？')) return; api('/api/process/material/delete',{method:'POST',body:{id:id}}).then(function(){materialLoad()}); }
+
+// 异常处理
+function renderExceptionManage(el) {
+    el.innerHTML = '<div class="card"><div class="card-title"><span>异常处理</span>'
+        + '<button class="btn btn-blue" onclick="exceptionAdd()">+ 新增</button></div>'
+        + '<table><thead><tr><th>ID</th><th>异常单号</th><th>类型</th><th>站点</th><th>严重度</th><th>描述</th><th>状态</th><th>操作</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody></table></div>';
+    exceptionLoad();
+}
+function exceptionLoad() {
+    api('/api/process/exception/list?size=50').then(function(r) {
+        if(!r) return;
+        var list = r.data?.list||[];
+        var tb = document.getElementById('tb');
+        if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无异常</td></tr>'; return; }
+        var sevColor = {low:'#52c41a',medium:'#fa8c16',high:'#f5222d',critical:'#722ed1'};
+        tb.innerHTML = list.map(function(e) {
+            return '<tr><td>'+e.id+'</td><td>'+e.exception_no+'</td><td>'+(e.exception_type||'-')+'</td>'
+                +'<td>'+(e.station||'-')+'</td><td style="color:'+(sevColor[e.severity]||'#333')+'">'+(e.severity||'-')+'</td>'
+                +'<td>'+(e.description||'-').substring(0,30)+'</td>'
+                +'<td><span class="tag '+(e.status?'tag-ok':'tag-no')+'">'+(e.status?'已处理':'待处理')+'</span></td>'
+                +'<td>'+(e.status?'':'<button class="btn btn-green btn-sm" onclick="resolveException('+e.id+')">处理</button>')+'</td></tr>';
+        }).join('');
+    });
+}
+function exceptionAdd() {
+    document.getElementById('mTitle').textContent = '新增异常';
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>类型</label><select id="f_type"><option value="设备">设备</option><option value="物料">物料</option><option value="质量">质量</option><option value="人员">人员</option><option value="其他">其他</option></select></div>'
+        + '<div class="form-item"><label>站点</label><input id="f_station"></div></div>'
+        + '<div class="form-row"><div class="form-item"><label>严重度</label><select id="f_sev"><option value="low">低</option><option value="medium" selected>中</option><option value="high">高</option><option value="critical">危急</option></select></div></div>'
+        + '<div class="form-row"><div class="form-item" style="flex:1"><label>描述</label><textarea id="f_desc"></textarea></div></div>';
+    modalSaveHandler = function() {
+        var d = {exception_type:document.getElementById('f_type').value, station:document.getElementById('f_station').value,
+            severity:document.getElementById('f_sev').value, description:document.getElementById('f_desc').value};
+        api('/api/process/exception/add',{method:'POST',body:d}).then(function(r) {
+            if(r&&r.code===0) { closeModal(); exceptionLoad(); } else alert(r?r.message:'保存失败');
+        });
+    };
+    document.getElementById('modal').classList.add('show');
+}
+function resolveException(id) { if(!confirm('确定处理？')) return; api('/api/process/exception/resolve',{method:'POST',body:{id:id}}).then(function(r){if(r.code===0){showToast(r.message);exceptionLoad()}else alert(r.message)}); }
+
+// 制程统计
+function renderProcessStats(el) {
+    el.innerHTML = '<div class="card"><div class="card-title">制程统计</div>'
+        + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px">'
+        + '<div class="stat"><div class="label">总流转数</div><div class="val" id="ps1">-</div></div>'
+        + '<div class="stat"><div class="label">流转中</div><div class="val" id="ps2" style="color:#fa8c16">-</div></div>'
+        + '<div class="stat"><div class="label">今日过站</div><div class="val" id="ps3">-</div></div>'
+        + '<div class="stat"><div class="label">待处理异常</div><div class="val" id="ps4" style="color:#f5222d">-</div></div>'
+        + '</div>'
+        + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px">'
+        + '<div class="stat"><div class="label">不良品待处理</div><div class="val" id="ps5" style="color:#f5222d">-</div></div>'
+        + '<div class="stat"><div class="label">锁料中</div><div class="val" id="ps6" style="color:#fa8c16">-</div></div>'
+        + '</div>'
+        + '<div id="stationChart" style="height:300px"></div></div>';
+    api('/api/process/statistics').then(function(r) {
+        if(!r||r.code!==0) return;
+        var d = r.data;
+        document.getElementById('ps1').textContent = d.total_flows;
+        document.getElementById('ps2').textContent = d.active_flows;
+        document.getElementById('ps3').textContent = d.today_pass;
+        document.getElementById('ps4').textContent = d.exception_count;
+        document.getElementById('ps5').textContent = d.defect_count;
+        document.getElementById('ps6').textContent = d.lock_count;
+        
+        if(d.station_stats.length) {
+            var chart = echarts.init(document.getElementById('stationChart'));
+            chart.setOption({
+                title:{text:'各站点过站次数',left:'center'},
+                tooltip:{trigger:'axis'},
+                xAxis:{type:'category',data:d.station_stats.map(function(s){return s.station})},
+                yAxis:{type:'value'},
+                series:[{type:'bar',data:d.station_stats.map(function(s){return s.count}),itemStyle:{color:'#1890ff'}}]
+            });
+        }
+    });
+}

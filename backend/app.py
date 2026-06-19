@@ -48,6 +48,7 @@ from blueprints.five_s import five_s_bp
 from blueprints.svc import svc_bp
 from blueprints.search import search_bp
 from blueprints.stage import stage_bp
+from blueprints.process_ctrl import process_bp
 
 FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
 ADMIN_DIR = os.path.join(BASE_DIR, 'admin')
@@ -95,6 +96,7 @@ def create_app():
     app.register_blueprint(svc_bp)
     app.register_blueprint(search_bp)
     app.register_blueprint(stage_bp)
+    app.register_blueprint(process_bp)
 
     # 静态文件路由
     @app.route('/')

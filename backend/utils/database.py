@@ -1129,6 +1129,95 @@ def _init_extra_tables():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
 
+    # ==================== 制程管控 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_station_flow (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        flow_no TEXT NOT NULL UNIQUE,
+        sn TEXT,
+        product_id INTEGER,
+        workorder_id INTEGER,
+        current_station TEXT,
+        current_process TEXT,
+        status INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_station_record (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        flow_id INTEGER NOT NULL,
+        sn TEXT,
+        station TEXT NOT NULL,
+        process_name TEXT,
+        action TEXT NOT NULL,
+        operator INTEGER,
+        result TEXT,
+        remark TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (flow_id) REFERENCES prod_station_flow(id)
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_box (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        box_no TEXT NOT NULL UNIQUE,
+        box_type TEXT DEFAULT '关箱',
+        sn_list TEXT,
+        product_id INTEGER,
+        quantity INTEGER DEFAULT 0,
+        status INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_material_lock (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lock_no TEXT NOT NULL UNIQUE,
+        material_id INTEGER NOT NULL,
+        lock_type TEXT NOT NULL,
+        reason TEXT,
+        operator INTEGER,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        released_at TIMESTAMP
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_defect_receive (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        receive_no TEXT NOT NULL UNIQUE,
+        sn TEXT,
+        product_id INTEGER,
+        defect_id INTEGER,
+        station TEXT,
+        quantity INTEGER DEFAULT 1,
+        process_type TEXT DEFAULT '待处理',
+        operator INTEGER,
+        status INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS base_material (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        material_name TEXT NOT NULL,
+        material_no TEXT NOT NULL UNIQUE,
+        specification TEXT,
+        unit TEXT,
+        category TEXT,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_exception (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        exception_no TEXT NOT NULL UNIQUE,
+        exception_type TEXT,
+        station TEXT,
+        description TEXT,
+        severity TEXT DEFAULT 'medium',
+        handler INTEGER,
+        status INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        resolved_at TIMESTAMP
+    )''')
+
     # ==================== 工位管理 ====================
     db.execute('''CREATE TABLE IF NOT EXISTS base_workstation (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
