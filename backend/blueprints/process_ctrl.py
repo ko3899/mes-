@@ -35,36 +35,75 @@ def station_config_delete():
 @process_bp.route('/api/process/pass-station', methods=['POST'])
 @login_required
 def pass_station():
-    """过站 - 产品通过当前站点"""
+    """过站 - 产品通过当前站点（含防呆校验）"""
     d = request.json
     sn = d.get('sn', '')
     station = d.get('station', '')
     process_name = d.get('process_name', '')
+    material_no = d.get('material_no', '')
     
     if not sn or not station:
         return jsonify({'code': 400, 'message': 'SN和站点必填'})
     
     db = get_db()
+    errors = []
+    warnings = []
     
     # 检查站点配置
     station_config = db.execute("SELECT * FROM base_station_config WHERE station=? AND status=1", (station,)).fetchone()
     if station_config:
+        # 防呆1: 重复过站检查
         allow_repeat = station_config['allow_repeat']
         max_pass_count = station_config['max_pass_count']
         
         if not allow_repeat:
-            # 检查该SN是否已过此站
             existing = db.execute("SELECT COUNT(*) as c FROM prod_station_record WHERE sn=? AND station=? AND action='过站'",
                                   (sn, station)).fetchone()['c']
             if existing > 0:
-                return jsonify({'code': 400, 'message': f'该SN已通过站点 {station}，不允许重复过站'})
+                errors.append(f'防呆拦截: SN {sn} 已通过站点 {station}，禁止重复过站')
         
         if max_pass_count > 0:
-            # 检查过站次数是否超限
             pass_count = db.execute("SELECT COUNT(*) as c FROM prod_station_record WHERE sn=? AND station=? AND action='过站'",
                                     (sn, station)).fetchone()['c']
             if pass_count >= max_pass_count:
-                return jsonify({'code': 400, 'message': f'站点 {station} 最大过站次数 {max_pass_count} 已达上限'})
+                errors.append(f'防呆拦截: 站点 {station} 最大过站次数 {max_pass_count} 已达上限')
+        
+        # 防呆2: 必须扫码SN
+        if station_config['required_sn'] and not sn:
+            errors.append('防呆拦截: 该站点要求必须扫描SN')
+        
+        # 防呆3: 必须扫码物料
+        if station_config['required_material'] and not material_no:
+            errors.append('防呆拦截: 该站点要求必须扫描物料条码')
+        
+        # 防呆4: 工序校验
+        if station_config['required_process']:
+            required = station_config['required_process']
+            if process_name != required:
+                errors.append(f'防呆拦截: 该站点要求工序为 {required}，当前为 {process_name}')
+        
+        # 防呆5: 站点顺序校验
+        if station_config['check_sequence'] and station_config['prev_station']:
+            prev_station = station_config['prev_station']
+            prev_record = db.execute("SELECT * FROM prod_station_record WHERE sn=? AND station=? AND action='过站' ORDER BY id DESC LIMIT 1",
+                                     (sn, prev_station)).fetchone()
+            if not prev_record:
+                errors.append(f'防呆拦截: 必须先通过站点 {prev_station} 才能进入 {station}')
+    
+    # 防呆6: 物料绑定校验
+    if material_no:
+        material = db.execute("SELECT * FROM base_material WHERE material_no=? AND status=1", (material_no,)).fetchone()
+        if not material:
+            errors.append(f'防呆拦截: 物料 {material_no} 不存在或已禁用')
+        else:
+            # 检查物料是否被锁
+            lock = db.execute("SELECT * FROM prod_material_lock WHERE material_id=? AND status=1", (material['id'],)).fetchone()
+            if lock:
+                errors.append(f'防呆拦截: 物料 {material_no} 已被锁定，原因: {lock["reason"]}')
+    
+    # 如果有错误，返回拦截信息
+    if errors:
+        return jsonify({'code': 400, 'message': ' | '.join(errors), 'errors': errors})
     
     # 查找或创建流转记录
     flow = db.execute("SELECT * FROM prod_station_flow WHERE sn=? ORDER BY id DESC LIMIT 1", (sn,)).fetchone()
@@ -84,7 +123,10 @@ def pass_station():
                (station, process_name, flow['id']))
     db.commit()
     
-    return jsonify({'code': 0, 'message': f'过站成功: {sn} -> {station}'})
+    msg = f'过站成功: {sn} -> {station}'
+    if warnings:
+        msg += ' (警告: ' + ', '.join(warnings) + ')'
+    return jsonify({'code': 0, 'message': msg})
 
 
 # ==================== 跳站 ====================

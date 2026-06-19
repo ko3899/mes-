@@ -1136,6 +1136,11 @@ def _init_extra_tables():
         station_name TEXT,
         allow_repeat INTEGER DEFAULT 1,
         max_pass_count INTEGER DEFAULT 0,
+        required_sn INTEGER DEFAULT 0,
+        required_material INTEGER DEFAULT 0,
+        required_process TEXT,
+        check_sequence INTEGER DEFAULT 0,
+        prev_station TEXT,
         description TEXT,
         status INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

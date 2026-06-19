@@ -32,11 +32,19 @@ function scAdd() {
         + '<div class="form-item"><label>站点名称</label><input id="f_name" placeholder="如: SMT贴片区"></div></div>'
         + '<div class="form-row"><div class="form-item"><label>允许重复过站</label><select id="f_repeat"><option value="1">允许</option><option value="0">禁止</option></select></div>'
         + '<div class="form-item"><label>最大过站次数</label><input id="f_max" type="number" value="0" placeholder="0=不限"></div></div>'
+        + '<div style="background:#f0f5ff;padding:12px;border-radius:6px;margin-bottom:12px"><b>防呆设置</b></div>'
+        + '<div class="form-row"><div class="form-item"><label>必须扫描SN</label><select id="f_sn"><option value="0">否</option><option value="1">是</option></select></div>'
+        + '<div class="form-item"><label>必须扫描物料</label><select id="f_mat"><option value="0">否</option><option value="1">是</option></select></div></div>'
+        + '<div class="form-row"><div class="form-item"><label>校验站点顺序</label><select id="f_seq"><option value="0">否</option><option value="1">是</option></select></div>'
+        + '<div class="form-item"><label>前置站点</label><input id="f_prev" placeholder="如: SMT01"></div></div>'
+        + '<div class="form-row"><div class="form-item"><label>要求工序</label><input id="f_proc" placeholder="留空不限"></div></div>'
         + '<div class="form-row"><div class="form-item" style="flex:1"><label>描述</label><textarea id="f_desc"></textarea></div></div>';
     modalSaveHandler = function() {
         var d = {station:document.getElementById('f_station').value, station_name:document.getElementById('f_name').value,
             allow_repeat:parseInt(document.getElementById('f_repeat').value), max_pass_count:parseInt(document.getElementById('f_max').value),
-            description:document.getElementById('f_desc').value};
+            required_sn:parseInt(document.getElementById('f_sn').value), required_material:parseInt(document.getElementById('f_mat').value),
+            check_sequence:parseInt(document.getElementById('f_seq').value), prev_station:document.getElementById('f_prev').value,
+            required_process:document.getElementById('f_proc').value, description:document.getElementById('f_desc').value};
         if(!d.station) { alert('请输入站点编码'); return; }
         api('/api/process/station-config/add',{method:'POST',body:d}).then(function(r) {
             if(r&&r.code===0) { closeModal(); scLoad(); } else alert(r?r.message:'保存失败');
@@ -50,11 +58,19 @@ function scEdit(row) {
         + '<div class="form-item"><label>站点名称</label><input id="f_name" value="'+row.station_name+'"></div></div>'
         + '<div class="form-row"><div class="form-item"><label>允许重复过站</label><select id="f_repeat"><option value="1"'+(row.allow_repeat?' selected':'')+'>允许</option><option value="0"'+(!row.allow_repeat?' selected':'')+'>禁止</option></select></div>'
         + '<div class="form-item"><label>最大过站次数</label><input id="f_max" type="number" value="'+row.max_pass_count+'" placeholder="0=不限"></div></div>'
+        + '<div style="background:#f0f5ff;padding:12px;border-radius:6px;margin-bottom:12px"><b>防呆设置</b></div>'
+        + '<div class="form-row"><div class="form-item"><label>必须扫描SN</label><select id="f_sn"><option value="0"'+(!row.required_sn?' selected':'')+'>否</option><option value="1"'+(row.required_sn?' selected':'')+'>是</option></select></div>'
+        + '<div class="form-item"><label>必须扫描物料</label><select id="f_mat"><option value="0"'+(!row.required_material?' selected':'')+'>否</option><option value="1"'+(row.required_material?' selected':'')+'>是</option></select></div></div>'
+        + '<div class="form-row"><div class="form-item"><label>校验站点顺序</label><select id="f_seq"><option value="0"'+(!row.check_sequence?' selected':'')+'>否</option><option value="1"'+(row.check_sequence?' selected':'')+'>是</option></select></div>'
+        + '<div class="form-item"><label>前置站点</label><input id="f_prev" value="'+(row.prev_station||'')+'" placeholder="如: SMT01"></div></div>'
+        + '<div class="form-row"><div class="form-item"><label>要求工序</label><input id="f_proc" value="'+(row.required_process||'')+'" placeholder="留空不限"></div></div>'
         + '<div class="form-row"><div class="form-item" style="flex:1"><label>描述</label><textarea id="f_desc">'+(row.description||'')+'</textarea></div></div>';
     modalSaveHandler = function() {
         var d = {id:row.id, station_name:document.getElementById('f_name').value,
             allow_repeat:parseInt(document.getElementById('f_repeat').value), max_pass_count:parseInt(document.getElementById('f_max').value),
-            description:document.getElementById('f_desc').value};
+            required_sn:parseInt(document.getElementById('f_sn').value), required_material:parseInt(document.getElementById('f_mat').value),
+            check_sequence:parseInt(document.getElementById('f_seq').value), prev_station:document.getElementById('f_prev').value,
+            required_process:document.getElementById('f_proc').value, description:document.getElementById('f_desc').value};
         api('/api/process/station-config/update',{method:'POST',body:d}).then(function(r) {
             if(r&&r.code===0) { closeModal(); scLoad(); } else alert(r?r.message:'保存失败');
         });
