@@ -7,6 +7,7 @@ var MENUS = [
         {k:'process/defect',t:'不良品接收'},{k:'process/material',t:'料号维护'},
         {k:'process/exception',t:'异常处理'},{k:'process/statistics',t:'制程统计'}
     ]},
+    {k:'search', t:'数据查询', sub:[
         {k:'query/production',t:'生产查询'},{k:'query/inventory',t:'库存查询'},
         {k:'query/quality',t:'质量查询'},{k:'query/equipment',t:'设备查询'},
         {k:'query/employee',t:'员工查询'},{k:'query/statistics',t:'综合统计'}
