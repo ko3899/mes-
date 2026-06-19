@@ -1,5 +1,6 @@
 """辅助函数模块"""
 import datetime
+import sqlite3
 from functools import wraps
 from flask import session, jsonify, request
 from .database import get_db
@@ -86,9 +87,16 @@ def crud_add(table, data):
     placeholders = ','.join(['?'] * len(keys))
     columns = ','.join(keys)
 
-    cursor = db.execute(f"INSERT INTO {table} ({columns}) VALUES ({placeholders})", vals)
-    db.commit()
-    return {'code': 0, 'data': {'id': cursor.lastrowid}, 'message': '添加成功'}
+    try:
+        cursor = db.execute(f"INSERT INTO {table} ({columns}) VALUES ({placeholders})", vals)
+        db.commit()
+        return {'code': 0, 'data': {'id': cursor.lastrowid}, 'message': '添加成功'}
+    except sqlite3.IntegrityError as e:
+        if 'UNIQUE constraint failed' in str(e):
+            return {'code': 400, 'message': f'数据重复: {str(e).split(":")[-1].strip()}'}
+        return {'code': 400, 'message': f'数据约束错误: {str(e)}'}
+    except Exception as e:
+        return {'code': 500, 'message': f'添加失败: {str(e)}'}
 
 
 def crud_update(table, data):
@@ -102,14 +110,24 @@ def crud_update(table, data):
     vals = [data[k] for k in keys]
     sets = ','.join([f"{k}=?" for k in keys])
 
-    db.execute(f"UPDATE {table} SET {sets} WHERE id=?", vals + [id])
-    db.commit()
-    return {'code': 0, 'message': '修改成功'}
+    try:
+        db.execute(f"UPDATE {table} SET {sets} WHERE id=?", vals + [id])
+        db.commit()
+        return {'code': 0, 'message': '修改成功'}
+    except sqlite3.IntegrityError as e:
+        if 'UNIQUE constraint failed' in str(e):
+            return {'code': 400, 'message': f'数据重复: {str(e).split(":")[-1].strip()}'}
+        return {'code': 400, 'message': f'数据约束错误: {str(e)}'}
+    except Exception as e:
+        return {'code': 500, 'message': f'修改失败: {str(e)}'}
 
 
 def crud_delete(table, id):
     """通用删除"""
     db = get_db()
-    db.execute(f"DELETE FROM {table} WHERE id=?", (id,))
-    db.commit()
-    return {'code': 0, 'message': '删除成功'}
+    try:
+        db.execute(f"DELETE FROM {table} WHERE id=?", (id,))
+        db.commit()
+        return {'code': 0, 'message': '删除成功'}
+    except Exception as e:
+        return {'code': 500, 'message': f'删除失败: {str(e)}'}
