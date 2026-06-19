@@ -359,3 +359,35 @@ def print_template_update():
 @login_required
 def print_template_delete():
     return jsonify(crud_delete('sys_print_template', request.json.get('id')))
+
+
+# ==================== 通知渠道 ====================
+@sys_ext_bp.route('/api/sys/notify-channel/list')
+@login_required
+def notify_channel_list():
+    return jsonify(crud_list('sys_notify_channel', request.args))
+
+
+@sys_ext_bp.route('/api/sys/notify-channel/add', methods=['POST'])
+@login_required
+def notify_channel_add():
+    return jsonify(crud_add('sys_notify_channel', request.json))
+
+
+@sys_ext_bp.route('/api/sys/notify-channel/update', methods=['POST'])
+@login_required
+def notify_channel_update():
+    return jsonify(crud_update('sys_notify_channel', request.json))
+
+
+@sys_ext_bp.route('/api/sys/notify-channel/delete', methods=['POST'])
+@login_required
+def notify_channel_delete():
+    return jsonify(crud_delete('sys_notify_channel', request.json.get('id')))
+
+
+@sys_ext_bp.route('/api/sys/notify-channel/test', methods=['POST'])
+@login_required
+def notify_channel_test():
+    """测试通知渠道"""
+    return jsonify({'code': 0, 'message': '测试功能已就绪，请配置具体渠道后使用'})

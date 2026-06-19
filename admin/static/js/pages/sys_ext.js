@@ -266,6 +266,47 @@ function ptAdd() {
 }
 function ptDel(id) { if(!confirm('确定删除？')) return; api('/api/sys/print-template/delete',{method:'POST',body:{id:id}}).then(function(){ptLoad()}); }
 
+// 通知渠道
+function renderNotifyChannel(el) {
+    el.innerHTML = '<div class="card"><div class="card-title"><span>通知渠道</span>'
+        + '<button class="btn btn-blue" id="ncAddBtn">+ 新增</button></div></div>'
+        + '<div class="card"><table><thead><tr><th>ID</th><th>渠道名称</th><th>类型</th><th>状态</th><th>操作</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="5" class="empty">加载中...</td></tr></tbody></table></div>';
+    document.getElementById('ncAddBtn').onclick = ncAdd;
+    ncLoad();
+}
+function ncLoad() {
+    api('/api/sys/notify-channel/list?size=50').then(function(r) {
+        if(!r) return;
+        var list = r.data && r.data.list ? r.data.list : [];
+        var tb = document.getElementById('tb');
+        if(!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">暂无渠道</td></tr>'; return; }
+        var types = {email:'邮件',dingtalk:'钉钉',wechat:'企业微信',sms:'短信'};
+        tb.innerHTML = list.map(function(n) {
+            return '<tr><td>'+n.id+'</td><td>'+n.channel_name+'</td><td>'+(types[n.channel_type]||n.channel_type)+'</td>'
+                +'<td><span class="tag '+(n.enabled?'tag-ok':'tag-draft')+'">'+(n.enabled?'启用':'禁用')+'</span></td>'
+                +'<td><button class="btn btn-blue btn-sm" onclick="ncTest('+n.id+')">测试</button> '
+                +'<button class="btn btn-red btn-sm" onclick="ncDel('+n.id+')">删除</button></td></tr>';
+        }).join('');
+    });
+}
+function ncAdd() {
+    document.getElementById('mTitle').textContent = '新增通知渠道';
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>渠道名称<span style="color:red">*</span></label><input id="f_name"></div>'
+        + '<div class="form-item"><label>类型</label><select id="f_type"><option value="email">邮件</option><option value="dingtalk">钉钉</option><option value="wechat">企业微信</option><option value="sms">短信</option></select></div></div>'
+        + '<div class="form-row"><div class="form-item" style="flex:1"><label>配置(JSON)</label><textarea id="f_config" placeholder=\'{"smtp_host":"smtp.example.com","smtp_port":465}\'></textarea></div></div>';
+    modalSaveHandler = function() {
+        var d = {channel_name:document.getElementById('f_name').value, channel_type:document.getElementById('f_type').value, config:document.getElementById('f_config').value};
+        if(!d.channel_name) { alert('请输入渠道名称'); return; }
+        api('/api/sys/notify-channel/add',{method:'POST',body:d}).then(function(r) {
+            if(r&&r.code===0) { closeModal(); ncLoad(); } else alert(r?r.message:'保存失败');
+        });
+    };
+    document.getElementById('modal').classList.add('show');
+}
+function ncTest(id) { api('/api/sys/notify-channel/test',{method:'POST',body:{id:id}}).then(function(r){alert(r.message||'测试完成')}); }
+function ncDel(id) { if(!confirm('确定删除？')) return; api('/api/sys/notify-channel/delete',{method:'POST',body:{id:id}}).then(function(){ncLoad()}); }
+
 // 用户密码重置
 function userResetPwd(id) {
     if(!confirm('确定重置密码为123456？')) return;

@@ -35,12 +35,21 @@
 🔔 <span id="notifBadge" style="display:none;position:absolute;top:-8px;right:-8px;background:#f5222d;color:white;border-radius:50%;width:18px;height:18px;font-size:11px;text-align:center;line-height:18px">0</span>
 </div>
 <div class="user" id="logoutBtn">
+<button class="theme-toggle" id="themeBtn" onclick="toggleTheme()">🌙</button>
 <div class="avatar" id="uav">A</div>
 <span id="uname">管理员</span>
 </div>
 </div>
 </div>
 <div class="content" id="pageContent"></div>
+<div class="batch-bar" id="batchBar">
+<span>已选 <span class="count">0</span> 项</span>
+<button class="btn btn-red btn-sm" onclick="batchDelete()">批量删除</button>
+<button class="btn btn-gray btn-sm" onclick="selectedRows.clear();updateBatchBar();crudLoad(1)">取消选择</button>
+</div>
+<div class="shortcut-hint">
+<kbd>Ctrl</kbd>+<kbd>K</kbd> 搜索 · <kbd>Esc</kbd> 关闭 · <kbd>🌙</kbd> 主题
+</div>
 </div>
 </div>
 

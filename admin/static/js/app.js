@@ -1,9 +1,138 @@
 /* 主应用模块 */
 var curUser = null;
 var curPage = '';
+var selectedRows = new Set();
+
+// 主题切换
+function toggleTheme() {
+    var current = document.documentElement.getAttribute('data-theme');
+    var next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    updateThemeIcon();
+}
+
+function updateThemeIcon() {
+    var btn = document.getElementById('themeBtn');
+    if(btn) {
+        var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        btn.textContent = isDark ? '☀️' : '🌙';
+    }
+}
+
+function loadTheme() {
+    var saved = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', saved);
+}
+
+// 批量操作
+function toggleSelectAll(checked) {
+    var checkboxes = document.querySelectorAll('#tb input[type="checkbox"][data-id]');
+    checkboxes.forEach(function(cb) {
+        cb.checked = checked;
+        var id = cb.getAttribute('data-id');
+        if(checked) selectedRows.add(id);
+        else selectedRows.delete(id);
+    });
+    updateBatchBar();
+}
+
+function toggleSelectRow(id, checked) {
+    if(checked) selectedRows.add(String(id));
+    else selectedRows.delete(String(id));
+    updateBatchBar();
+}
+
+function updateBatchBar() {
+    var bar = document.getElementById('batchBar');
+    if(!bar) return;
+    if(selectedRows.size > 0) {
+        bar.classList.add('show');
+        var countEl = bar.querySelector('.count');
+        if(countEl) countEl.textContent = selectedRows.size + ' 项已选';
+    } else {
+        bar.classList.remove('show');
+    }
+}
+
+function batchDelete() {
+    if(!selectedRows.size) return;
+    if(!confirm('确定删除选中的 ' + selectedRows.size + ' 项？')) return;
+    var count = 0;
+    selectedRows.forEach(function(id) {
+        api(curApiBase + '/delete', {method:'POST', body:{id:Number(id)}}).then(function(r) {
+            count++;
+            if(count === selectedRows.size) {
+                selectedRows.clear();
+                updateBatchBar();
+                crudLoad(1);
+            }
+        });
+    });
+}
+
+// 表格排序
+function sortTable(key) {
+    var th = document.querySelector('th[data-sort="'+key+'"]');
+    if(!th) return;
+    var current = th.classList.contains('sort-asc') ? 'asc' : (th.classList.contains('sort-desc') ? 'desc' : '');
+    var next = current === 'asc' ? 'desc' : 'asc';
+    document.querySelectorAll('th.sortable').forEach(function(t) {
+        t.classList.remove('sort-asc', 'sort-desc');
+    });
+    th.classList.add('sort-' + next);
+    crudLoad(1, key, next);
+}
+
+// 数据校验
+function validateField(el, rules) {
+    var val = el.value.trim();
+    var errors = [];
+    
+    if(rules.required && !val) errors.push('此字段必填');
+    if(rules.min && Number(val) < rules.min) errors.push('最小值: ' + rules.min);
+    if(rules.max && Number(val) > rules.max) errors.push('最大值: ' + rules.max);
+    if(rules.minLength && val.length < rules.minLength) errors.push('最少' + rules.minLength + '个字符');
+    if(rules.pattern && !rules.pattern.test(val)) errors.push(rules.message || '格式不正确');
+    
+    var errEl = el.parentNode.querySelector('.error-msg');
+    if(errors.length) {
+        el.classList.add('invalid');
+        if(errEl) { errEl.textContent = errors[0]; errEl.classList.add('show'); }
+        return false;
+    } else {
+        el.classList.remove('invalid');
+        if(errEl) { errEl.classList.remove('show'); }
+        return true;
+    }
+}
+
+// 密码强度校验
+function checkPasswordStrength(pwd) {
+    var score = 0;
+    if(pwd.length >= 8) score++;
+    if(pwd.length >= 12) score++;
+    if(/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) score++;
+    if(/\d/.test(pwd)) score++;
+    if(/[^a-zA-Z0-9]/.test(pwd)) score++;
+    return score;
+}
+
+// 操作确认
+function confirmAction(message, callback) {
+    document.getElementById('mTitle').textContent = '操作确认';
+    document.getElementById('mBody').innerHTML = '<div style="text-align:center;padding:20px">'
+        + '<div style="font-size:36px;margin-bottom:12px">⚠️</div>'
+        + '<p style="font-size:16px">' + message + '</p></div>';
+    modalSaveHandler = function() { closeModal(); callback(); };
+    document.getElementById('modal').classList.add('show');
+}
 
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
+    loadTheme();
+    updateThemeIcon();
+
     document.getElementById('loginBtn').onclick = doLogin;
     document.getElementById('lu').onkeydown = function(e) { if(e.key === 'Enter') document.getElementById('lp').focus(); };
     document.getElementById('lp').onkeydown = function(e) { if(e.key === 'Enter') doLogin(); };
@@ -136,6 +265,7 @@ function renderPage(key) {
         'sys/monitor': function(e){renderSysMonitor(e)},
         'sys/ip-whitelist': function(e){renderIPWhitelist(e)},
         'sys/print-template': function(e){renderPrintTemplate(e)},
+        'sys/notify-channel': function(e){renderNotifyChannel(e)},
         'site/workstation': function(e){renderWorkstation(e)},
         'site/andon': function(e){renderAndon(e)},
         'site/rework': function(e){renderRework(e)},

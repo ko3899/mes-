@@ -1085,6 +1085,16 @@ def _init_extra_tables():
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
 
+    # ==================== 通知渠道配置 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS sys_notify_channel (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_name TEXT NOT NULL,
+        channel_type TEXT NOT NULL,
+        config TEXT,
+        enabled INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
     # ==================== 工位管理 ====================
     db.execute('''CREATE TABLE IF NOT EXISTS base_workstation (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

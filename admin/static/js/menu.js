@@ -50,8 +50,9 @@ var MENUS = [
         {k:'sys/backup',t:'数据备份'},{k:'sys/security',t:'安全设置'},
         {k:'sys/login-log',t:'登录日志'},{k:'sys/config',t:'系统配置'},
         {k:'sys/announcement',t:'系统公告'},{k:'sys/online',t:'在线用户'},
-        {k:'sys/monitor',t:'系统监控'},{k:'sys/ip-whitelist',t:'IP白名单'},
-        {k:'sys/print-template',t:'打印模板'}
+        {k:'sys/monitor',t:'系统监控'},        {k:'sys/ip-whitelist',t:'IP白名单'},
+        {k:'sys/print-template',t:'打印模板'},
+        {k:'sys/notify-channel',t:'通知渠道'}
     ]}
 ];
 
