@@ -762,6 +762,40 @@ def init_db():
     for u in units:
         db.execute("INSERT OR IGNORE INTO base_unit (unit_name, unit_symbol) VALUES (?,?)", u)
 
+    # ==================== 标准成本 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS base_standard_cost (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL,
+        material_cost REAL DEFAULT 0,
+        labor_cost REAL DEFAULT 0,
+        overhead_cost REAL DEFAULT 0,
+        total_cost REAL DEFAULT 0,
+        effective_date TEXT,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (product_id) REFERENCES base_product(id)
+    )''')
+
+    # ==================== FMEA ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS qm_fmea (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fmea_no TEXT NOT NULL UNIQUE,
+        product_id INTEGER,
+        process_id INTEGER,
+        failure_mode TEXT,
+        failure_effect TEXT,
+        failure_cause TEXT,
+        severity INTEGER DEFAULT 1,
+        occurrence INTEGER DEFAULT 1,
+        detection INTEGER DEFAULT 1,
+        rpn INTEGER DEFAULT 1,
+        current_control TEXT,
+        recommended_action TEXT,
+        responsible TEXT,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
     db.commit()
     db.close()
 
@@ -776,7 +810,18 @@ def _init_extra_tables():
         db.execute("ALTER TABLE base_process ADD COLUMN sort_order INTEGER DEFAULT 0")
     except:
         pass
-
+    
+    # 给 base_station_config 表添加防呆字段（如果不存在）
+    for col in ['required_sn', 'required_material', 'check_sequence', 'prev_station']:
+        try:
+            db.execute(f"ALTER TABLE base_station_config ADD COLUMN {col} INTEGER DEFAULT 0")
+        except:
+            pass
+    try:
+        db.execute("ALTER TABLE base_station_config ADD COLUMN required_process TEXT")
+    except:
+        pass
+    
     db.commit()
     db.close()
 

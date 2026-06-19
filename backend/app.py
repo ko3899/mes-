@@ -53,6 +53,8 @@ from blueprints.erp import erp_bp
 from blueprints.iot import iot_bp
 from blueprints.ai import ai_bp
 from blueprints.scm import scm_bp
+from blueprints.aps import aps_bp
+from blueprints.fmea import fmea_bp
 
 FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
 ADMIN_DIR = os.path.join(BASE_DIR, 'admin')
@@ -105,6 +107,8 @@ def create_app():
     app.register_blueprint(iot_bp)
     app.register_blueprint(ai_bp)
     app.register_blueprint(scm_bp)
+    app.register_blueprint(aps_bp)
+    app.register_blueprint(fmea_bp)
 
     # 静态文件路由
     @app.route('/')
