@@ -21,7 +21,9 @@ var MENUS = [
         {k:'stage/code',t:'阶段码管理'}
     ]},
     {k:'inv', t:'库存管理', sub:[
-        {k:'inv/inbound',t:'入库单'},{k:'inv/outbound',t:'出库单'},{k:'inv/balance',t:'库存余额'}
+        {k:'inv/inbound',t:'入库单'},{k:'inv/outbound',t:'出库单'},{k:'inv/balance',t:'库存余额'},
+        {k:'warehouse/list',t:'仓库设置'},{k:'warehouse/area',t:'库区管理'},{k:'warehouse/location',t:'库位管理'},
+        {k:'warehouse/arrival',t:'到货通知'},{k:'warehouse/transaction',t:'库存事务'}
     ]},
     {k:'prod', t:'生产管理', sub:[
         {k:'prod/sales',t:'销售订单'},{k:'prod/plan',t:'生产计划'},
@@ -34,7 +36,8 @@ var MENUS = [
     {k:'qm', t:'质量管理', sub:[
         {k:'qm/incoming',t:'来料检验'},{k:'qm/process',t:'过程检验'},{k:'qm/outgoing',t:'出货检验'},
         {k:'qm/first',t:'首件检验'},{k:'qm/defect',t:'不良品处理'},{k:'qm/8d',t:'8D报告'},{k:'qm/supplier-eval',t:'供方评审'},{k:'qm/statistics',t:'质量统计'},
-        {k:'qm/capa',t:'CAPA'},{k:'qm/control-plan',t:'控制计划'},{k:'qm/eco',t:'工程变更'}
+        {k:'qm/capa',t:'CAPA'},{k:'qm/control-plan',t:'控制计划'},{k:'qm/eco',t:'工程变更'},
+        {k:'qm/template',t:'质检方案'}
     ]},
     {k:'eqp2', t:'模具工装', sub:[{k:'eqp/mold',t:'模具管理'},{k:'eqp/fixture',t:'工装夹具'}]},
     {k:'util', t:'公共事业', sub:[{k:'util/energy',t:'能耗管理'},{k:'util/environment',t:'环境监控'}]},
@@ -46,10 +49,10 @@ var MENUS = [
         {k:'analytics/delivery',t:'交期预警'},{k:'analytics/inventory',t:'库存分析'},
         {k:'analytics/yield',t:'良率统计'},{k:'analytics/dashboard',t:'数据看板'}
     ]},
-    {k:'eqp', t:'设备管理', sub:[{k:'eqp/ledger',t:'设备台账'},{k:'eqp/repair',t:'维修单'},{k:'eqp/maintenance',t:'保养计划'},{k:'eqp/check',t:'保养记录'}]},
+    {k:'eqp', t:'设备管理', sub:[{k:'eqp/ledger',t:'设备台账'},{k:'eqp/repair',t:'维修单'},{k:'eqp/maintenance',t:'保养计划'},{k:'eqp/check',t:'保养记录'},{k:'eqp/check-project',t:'点检项目'}]},
     {k:'trace', t:'物料追溯', sub:[{k:'trace/batch',t:'批次管理'},{k:'trace/query',t:'追溯查询'}]},
     {k:'flow', t:'审批管理', sub:[{k:'flow/def',t:'流程定义'},{k:'flow/instance',t:'我的审批'},{k:'flow/pending',t:'待我审批'}]},
-    {k:'sched', t:'排班管理', sub:[{k:'sched/team',t:'班组管理'},{k:'sched/plan',t:'排班计划'}]},
+    {k:'sched', t:'排班管理', sub:[{k:'sched/team',t:'班组管理'},{k:'sched/plan',t:'排班计划'},{k:'sched/calendar',t:'排班日历'}]},
     {k:'tool', t:'工具管理', sub:[{k:'tool/ledger',t:'工具台账'},{k:'tool/borrow',t:'工具领用'}]},
     {k:'report', t:'报表管理', sub:[{k:'report/production',t:'生产报表'},{k:'report/spc',t:'SPC分析'},{k:'report/cost',t:'成本核算'}]},
     {k:'notifications', t:'消息通知', home:true},

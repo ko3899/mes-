@@ -820,9 +820,132 @@ def init_db():
         FOREIGN KEY (product_id) REFERENCES base_product(id)
     )''')
 
+    # ==================== 三级库位 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS inv_warehouse (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        warehouse_name TEXT NOT NULL,
+        code TEXT NOT NULL UNIQUE,
+        address TEXT,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS inv_area (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        warehouse_id INTEGER NOT NULL,
+        area_name TEXT NOT NULL,
+        code TEXT NOT NULL UNIQUE,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (warehouse_id) REFERENCES inv_warehouse(id)
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS inv_location (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        area_id INTEGER NOT NULL,
+        location_name TEXT NOT NULL,
+        code TEXT NOT NULL UNIQUE,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (area_id) REFERENCES inv_area(id)
+    )''')
+
+    # ==================== 库存事务 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS inv_transaction_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trans_type TEXT NOT NULL,
+        product_id INTEGER NOT NULL,
+        quantity REAL NOT NULL,
+        warehouse_id INTEGER,
+        area_id INTEGER,
+        location_id INTEGER,
+        batch_no TEXT,
+        ref_no TEXT,
+        ref_type TEXT,
+        operator INTEGER,
+        remark TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    # ==================== 到货通知 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS inv_arrival_notice (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        notice_no TEXT NOT NULL UNIQUE,
+        supplier_id INTEGER,
+        status INTEGER DEFAULT 0,
+        expected_date TEXT,
+        remark TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS inv_arrival_notice_item (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        notice_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        quantity REAL NOT NULL,
+        FOREIGN KEY (notice_id) REFERENCES inv_arrival_notice(id)
+    )''')
+
+    # ==================== 质检方案 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS qm_inspect_template (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_name TEXT NOT NULL,
+        inspect_type TEXT NOT NULL,
+        items TEXT,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    # ==================== 设备点检项目 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS eqp_check_project (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_name TEXT NOT NULL,
+        check_type TEXT,
+        standard TEXT,
+        method TEXT,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    # ==================== 排班日历 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS sched_calendar (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        plan_id INTEGER NOT NULL,
+        work_date TEXT NOT NULL,
+        shift_type TEXT,
+        user_ids TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (plan_id) REFERENCES sched_plan(id)
+    )''')
+
+    # ==================== 工序流转卡 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_routing_card (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        card_no TEXT NOT NULL UNIQUE,
+        workorder_id INTEGER NOT NULL,
+        product_id INTEGER,
+        current_step INTEGER DEFAULT 1,
+        total_steps INTEGER DEFAULT 1,
+        status INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workorder_id) REFERENCES prod_workorder(id)
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_routing_card_step (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        card_id INTEGER NOT NULL,
+        step_no INTEGER NOT NULL,
+        process_name TEXT,
+        station TEXT,
+        operator INTEGER,
+        start_time TIMESTAMP,
+        end_time TIMESTAMP,
+        result TEXT,
+        FOREIGN KEY (card_id) REFERENCES prod_routing_card(id)
+    )''')
+
     db.commit()
     db.close()
-
 
 def _create_indexes():
     """创建数据库索引优化查询性能"""
