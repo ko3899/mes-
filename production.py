@@ -24,11 +24,15 @@ def main():
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend'))
     
     from app import app, init_db, _init_extra_tables
+    from utils.database import _create_indexes
+    from init_sample_data import init_sample_data
     
     # 初始化数据库
     logger.info("正在初始化数据库...")
     init_db()
     _init_extra_tables()
+    _create_indexes()
+    init_sample_data()
     logger.info("数据库初始化完成")
     
     # 获取配置
