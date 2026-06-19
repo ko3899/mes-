@@ -140,7 +140,8 @@ function showReturnDialog() {
 // 操作记录
 function renderProcessRecord(el) {
     el.innerHTML = '<div class="card"><div class="card-title">操作记录</div>'
-        + '<div class="toolbar"><input id="kw" placeholder="搜索SN/站点..."><button class="btn btn-blue btn-sm" onclick="recordLoad(1)">搜索</button></div>'
+        + '<div class="toolbar"><input id="kw" placeholder="搜索SN/站点..."><button class="btn btn-blue btn-sm" onclick="recordLoad(1)">搜索</button>'
+        + '<button class="btn btn-orange btn-sm" onclick="showSNTimeline()">SN轨迹</button></div>'
         + '<table><thead><tr><th>ID</th><th>SN</th><th>站点</th><th>工序</th><th>操作</th><th>结果</th><th>操作人</th><th>时间</th></tr></thead>'
         + '<tbody id="tb"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody></table></div>';
     recordLoad(1);
@@ -162,6 +163,115 @@ function recordLoad(page) {
                 +'<td>'+(r.result||'-')+'</td><td>'+(r.real_name||'-')+'</td><td>'+(r.created_at||'')+'</td></tr>';
         }).join('');
     });
+}
+
+// SN轨迹 - 甘特图
+function showSNTimeline() {
+    document.getElementById('mTitle').textContent = 'SN过站轨迹';
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>输入SN<span style="color:red">*</span></label><input id="f_sn" placeholder="输入SN查询完整轨迹" autofocus></div></div>'
+        + '<div id="timelineResult"></div>';
+    modalSaveHandler = function() { loadSNTimeline(); };
+    document.getElementById('modal').classList.add('show');
+    setTimeout(function(){document.getElementById('f_sn').focus()},300);
+}
+
+function loadSNTimeline() {
+    var sn = document.getElementById('f_sn').value.trim();
+    if(!sn) { alert('请输入SN'); return; }
+    
+    api('/api/process/record/sn/'+encodeURIComponent(sn)).then(function(r) {
+        if(!r||r.code!==0) { alert('查询失败'); return; }
+        var records = r.data||[];
+        var el = document.getElementById('timelineResult');
+        
+        if(!records.length) {
+            el.innerHTML = '<div style="text-align:center;padding:20px;color:#999">未找到SN: '+sn+' 的过站记录</div>';
+            return;
+        }
+        
+        // 时间线展示
+        var h = '<div style="margin-top:16px">';
+        h += '<h3 style="margin-bottom:16px">SN: <span style="color:#1890ff">'+sn+'</span> 的过站轨迹</h3>';
+        
+        // 甘特图数据
+        var stations = [];
+        var minTime = null;
+        var maxTime = null;
+        
+        records.forEach(function(rec, i) {
+            var startTime = new Date(rec.created_at);
+            var endTime = records[i+1] ? new Date(records[i+1].created_at) : new Date();
+            
+            if(!minTime || startTime < minTime) minTime = startTime;
+            if(!maxTime || endTime > maxTime) maxTime = endTime;
+            
+            stations.push({
+                station: rec.station,
+                action: rec.action,
+                start: startTime,
+                end: endTime,
+                duration: Math.round((endTime - startTime) / 1000),
+                operator: rec.real_name||'-',
+                result: rec.result||'-'
+            });
+        });
+        
+        // 绘制甘特图
+        var totalDuration = maxTime - minTime;
+        var chartHeight = Math.max(200, stations.length * 50 + 80);
+        
+        h += '<div style="position:relative;height:'+chartHeight+'px;background:#f9f9f9;border-radius:8px;padding:20px;margin-bottom:16px">';
+        
+        // 时间轴
+        h += '<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:11px;color:#999">';
+        h += '<span>'+formatTime(minTime)+'</span>';
+        h += '<span>'+formatTime(maxTime)+'</span>';
+        h += '</div>';
+        
+        // 每个站点的甘特条
+        var colors = {'过站':'#52c41a','跳站':'#fa8c16','出站':'#1890ff','重工':'#f5222d','返线':'#722ed1','关箱':'#13c2c2','拆箱':'#eb2f96'};
+        
+        stations.forEach(function(s, i) {
+            var left = totalDuration > 0 ? ((s.start - minTime) / totalDuration * 100) : 0;
+            var width = totalDuration > 0 ? Math.max(2, ((s.end - s.start) / totalDuration * 100)) : 100;
+            var color = colors[s.action]||'#1890ff';
+            
+            h += '<div style="display:flex;align-items:center;margin-bottom:8px">';
+            h += '<div style="width:80px;font-size:12px;font-weight:bold;color:'+color+'">'+s.station+'</div>';
+            h += '<div style="flex:1;position:relative;height:30px">';
+            h += '<div style="position:absolute;left:'+left+'%;width:'+width+'%;height:100%;background:'+color+';border-radius:4px;opacity:0.8;display:flex;align-items:center;justify-content:center">';
+            h += '<span style="color:white;font-size:11px;font-weight:bold">'+s.action+'</span>';
+            h += '</div>';
+            h += '</div>';
+            h += '<div style="width:80px;text-align:right;font-size:11px;color:#666">'+formatDuration(s.duration)+'</div>';
+            h += '</div>';
+        });
+        
+        h += '</div>';
+        
+        // 详细记录表格
+        h += '<table style="font-size:13px"><thead><tr><th>站点</th><th>操作</th><th>时间</th><th>时长</th><th>操作人</th><th>结果</th></tr></thead><tbody>';
+        stations.forEach(function(s) {
+            h += '<tr><td><b>'+s.station+'</b></td><td><span style="color:'+(colors[s.action]||'#333')+'">'+s.action+'</span></td>';
+            h += '<td>'+formatTime(s.start)+'</td><td>'+formatDuration(s.duration)+'</td>';
+            h += '<td>'+s.operator+'</td><td>'+s.result+'</td></tr>';
+        });
+        h += '</tbody></table>';
+        
+        h += '</div>';
+        el.innerHTML = h;
+    });
+}
+
+function formatTime(date) {
+    if(!(date instanceof Date)) date = new Date(date);
+    return date.toLocaleString('zh-CN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function formatDuration(seconds) {
+    if(seconds < 60) return seconds+'秒';
+    if(seconds < 3600) return Math.round(seconds/60)+'分钟';
+    return (seconds/3600).toFixed(1)+'小时';
 }
 
 // 箱号管理
