@@ -808,32 +808,18 @@ def init_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
 
-    db.commit()
-    db.close()
+    # ==================== 线边仓 ====================
+    db.execute('''CREATE TABLE IF NOT EXISTS inv_line_warehouse (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL,
+        workshop_id INTEGER,
+        quantity REAL DEFAULT 0,
+        min_quantity REAL DEFAULT 10,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (product_id) REFERENCES base_product(id)
+    )''')
 
-
-def _init_extra_tables():
-    """初始化新增功能的表"""
-    db = sqlite3.connect(DB_PATH)
-    db.execute("PRAGMA foreign_keys = ON")
-    
-    # 给 base_process 表添加 sort_order 字段（如果不存在）
-    try:
-        db.execute("ALTER TABLE base_process ADD COLUMN sort_order INTEGER DEFAULT 0")
-    except:
-        pass
-    
-    # 给 base_station_config 表添加防呆字段（如果不存在）
-    for col in ['required_sn', 'required_material', 'check_sequence', 'prev_station']:
-        try:
-            db.execute(f"ALTER TABLE base_station_config ADD COLUMN {col} INTEGER DEFAULT 0")
-        except:
-            pass
-    try:
-        db.execute("ALTER TABLE base_station_config ADD COLUMN required_process TEXT")
-    except:
-        pass
-    
     db.commit()
     db.close()
 
