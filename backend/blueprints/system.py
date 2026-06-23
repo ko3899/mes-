@@ -1,23 +1,48 @@
 """系统管理蓝图"""
 import hashlib
+import secrets
 from flask import Blueprint, request, jsonify
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, permission_required
 
 system_bp = Blueprint('system', __name__)
+
+
+def _hash_password(password, salt=None):
+    """安全的密码哈希（PBKDF2 + SHA256 + 盐值）"""
+    if salt is None:
+        salt = secrets.token_hex(16)
+    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+    return f"{salt}${pwd_hash.hex()}"
 
 
 @system_bp.route('/api/sys/user/list')
 @login_required
 def sys_user_list():
-    return jsonify(crud_list('sys_user', request.args))
+    db = get_db()
+    page = int(request.args.get('page', 1))
+    size = int(request.args.get('size', 20))
+    offset = (page - 1) * size
+    keyword = request.args.get('keyword', '')
+    
+    where = " WHERE 1=1"
+    args = []
+    if keyword:
+        where += " AND (username LIKE ? OR real_name LIKE ? OR phone LIKE ?)"
+        args.extend([f"%{keyword}%"] * 3)
+    
+    total = db.execute(f"SELECT COUNT(*) as cnt FROM sys_user{where}", args).fetchone()['cnt']
+    # 不返回密码字段
+    rows = db.execute(f"SELECT id, username, real_name, phone, email, dept_id, role_id, avatar, status, created_at FROM sys_user{where} ORDER BY id DESC LIMIT ? OFFSET ?",
+                      args + [size, offset]).fetchall()
+    return jsonify({'code': 0, 'data': {'list': [dict(r) for r in rows], 'total': total, 'page': page, 'size': size}})
 
 
 @system_bp.route('/api/sys/user/add', methods=['POST'])
 @login_required
 def sys_user_add():
     data = request.json
-    data['password'] = hashlib.md5((data.get('password', '123456')).encode()).hexdigest()
+    data['password'] = _hash_password(data.get('password', '123456'))
     return jsonify(crud_add('sys_user', data))
 
 
@@ -26,7 +51,7 @@ def sys_user_add():
 def sys_user_update():
     data = request.json
     if 'password' in data and data['password']:
-        data['password'] = hashlib.md5(data['password'].encode()).hexdigest()
+        data['password'] = _hash_password(data['password'])
     else:
         data.pop('password', None)
     return jsonify(crud_update('sys_user', data))

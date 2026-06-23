@@ -2,6 +2,8 @@
 import hashlib
 import random
 import string
+import os
+import secrets
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
 from utils.helpers import login_required
@@ -10,6 +12,23 @@ auth_bp = Blueprint('auth', __name__)
 
 # 验证码存储（内存）
 _captcha_store = {}
+
+
+def _hash_password(password, salt=None):
+    """安全的密码哈希（PBKDF2 + SHA256 + 盐值）"""
+    if salt is None:
+        salt = secrets.token_hex(16)
+    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+    return f"{salt}${pwd_hash.hex()}"
+
+
+def _verify_password(password, stored_hash):
+    """验证密码"""
+    if '$' not in stored_hash:
+        # 兼容旧MD5格式
+        return hashlib.md5(password.encode()).hexdigest() == stored_hash
+    salt, _ = stored_hash.split('$', 1)
+    return _hash_password(password, salt) == stored_hash
 
 
 def generate_captcha():
@@ -46,10 +65,10 @@ def login():
             return jsonify({'code': 400, 'message': '验证码错误'})
         del _captcha_store[captcha_key]
     
-    pwd_hash = hashlib.md5(password.encode()).hexdigest()
+    pwd_hash = _hash_password(password)
     db = get_db()
-    user = db.execute("SELECT * FROM sys_user WHERE username=? AND password=?", (username, pwd_hash)).fetchone()
-    if not user:
+    user = db.execute("SELECT * FROM sys_user WHERE username=?", (username,)).fetchone()
+    if not user or not _verify_password(password, user['password']):
         # 记录登录失败
         db.execute("INSERT INTO sys_login_log (username, login_ip, status) VALUES (?,?,0)",
                    (username, request.remote_addr))

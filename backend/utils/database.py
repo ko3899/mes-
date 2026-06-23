@@ -705,7 +705,11 @@ def init_db():
     )''')
 
     # ==================== 初始化数据 ====================
-    pwd = hashlib.md5('admin123'.encode()).hexdigest()
+    # 使用安全的密码哈希（PBKDF2 + SHA256 + 盐值）
+    import secrets
+    salt = secrets.token_hex(16)
+    pwd_hash = hashlib.pbkdf2_hmac('sha256', 'admin123'.encode(), salt.encode(), 100000)
+    pwd = f"{salt}${pwd_hash.hex()}"
     db.execute("INSERT OR IGNORE INTO sys_user (username, password, real_name, phone, status) VALUES (?, ?, ?, ?, ?)",
                ('admin', pwd, '系统管理员', '13800000000', 1))
 

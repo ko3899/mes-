@@ -5,6 +5,7 @@ import json
 import csv
 import io
 import datetime
+import secrets
 
 # 确保可以导入模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -69,7 +70,7 @@ ADMIN_DIR = os.path.join(BASE_DIR, 'admin')
 
 def create_app():
     app = Flask(__name__, static_folder=None)
-    app.secret_key = 'mes-factory-2026-secret-key'
+    app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
 
     # 注册 teardown
     app.teardown_appcontext(close_db)
