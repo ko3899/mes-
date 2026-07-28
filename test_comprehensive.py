@@ -1435,6 +1435,300 @@ class TestProductionConsistency:
         assert payload['data']['list'] == []
         assert payload['data']['total'] == 0
 
+    def test_deleting_completed_report_recalculates_partial_progress(
+            self, auth_client):
+        ids = create_production_chain(auth_client, planned_qty=10)
+        first_report = self._add_report(
+            auth_client, ids, qualified_qty=6, defect_qty=1
+        )
+        completed_report = self._add_report(
+            auth_client, ids, qualified_qty=4, defect_qty=2
+        )
+        completed = self._progress_snapshot(auth_client, ids)
+        assert completed['task']['status'] == 3
+        assert completed['task']['end_time'] is not None
+
+        response = auth_client.post(
+            '/api/prod/report/delete',
+            json={'id': completed_report},
+        )
+        assert response.status_code == 200
+        assert response.get_json()['code'] == 0
+        assert self._report_ids(auth_client, ids) == [first_report]
+        progress = self._progress_snapshot(auth_client, ids)
+        assert progress['task'] == {
+            'completed_qty': 6,
+            'defect_qty': 1,
+            'status': 1,
+            'end_time': None,
+        }
+        assert progress['workorder'] == {
+            'completed_qty': 6,
+            'defect_qty': 1,
+            'status': 1,
+        }
+
+    def test_deleting_last_report_resets_progress(self, auth_client):
+        ids = create_production_chain(auth_client, planned_qty=10)
+        report_id = self._add_report(
+            auth_client, ids, qualified_qty=10, defect_qty=2
+        )
+        response = auth_client.post(
+            '/api/prod/report/delete',
+            json={'id': report_id},
+        )
+        assert response.status_code == 200
+        assert response.get_json()['code'] == 0
+        assert self._report_ids(auth_client, ids) == []
+        progress = self._progress_snapshot(auth_client, ids)
+        assert progress['task'] == {
+            'completed_qty': 0,
+            'defect_qty': 0,
+            'status': 0,
+            'end_time': None,
+        }
+        assert progress['workorder'] == {
+            'completed_qty': 0,
+            'defect_qty': 0,
+            'status': 0,
+        }
+
+    def test_deleting_missing_report_returns_404(self, auth_client):
+        response = auth_client.post(
+            '/api/prod/report/delete',
+            json={'id': 999999999},
+        )
+        assert response.status_code == 404
+        assert response.get_json()['code'] == 404
+
+    def test_report_delete_rolls_back_when_recalculation_fails(
+            self, auth_client, monkeypatch):
+        from blueprints import production as production_module
+
+        ids = create_production_chain(auth_client, planned_qty=10)
+        report_id = self._add_report(
+            auth_client, ids, qualified_qty=6, defect_qty=1
+        )
+        before = self._report_side_effect_snapshot(auth_client, ids)
+
+        def fail_recalculation(*args, **kwargs):
+            raise RuntimeError('forced aggregate failure')
+
+        monkeypatch.setattr(
+            production_module,
+            '_recalculate_task_and_workorder',
+            fail_recalculation,
+        )
+        with pytest.raises(RuntimeError, match='forced aggregate failure'):
+            auth_client.post(
+                '/api/prod/report/delete',
+                json={'id': report_id},
+            )
+
+        assert self._report_side_effect_snapshot(auth_client, ids) == before
+
+    @pytest.mark.parametrize('endpoint', (
+        '/api/prod/report/add',
+        '/api/prod/report/gps',
+    ))
+    @pytest.mark.parametrize('field', ('qualified_qty', 'defect_qty'))
+    @pytest.mark.parametrize(
+        'invalid_value',
+        (float('nan'), float('inf'), float('-inf')),
+        ids=('nan', 'positive-infinity', 'negative-infinity'),
+    )
+    def test_non_finite_report_quantity_has_no_side_effects(
+            self, auth_client, endpoint, field, invalid_value):
+        ids = create_production_chain(auth_client, planned_qty=10)
+        before = self._report_side_effect_snapshot(auth_client, ids)
+        payload = {
+            'task_id': ids['task_id'],
+            'workorder_id': ids['workorder_id'],
+            'process_id': ids['process_id'],
+            'qualified_qty': 1,
+            'defect_qty': 0,
+            'latitude': 31.2304,
+            'longitude': 121.4737,
+        }
+        payload[field] = invalid_value
+
+        response = auth_client.post(endpoint, json=payload)
+
+        assert response.status_code == 400
+        assert response.get_json()['code'] == 400
+        assert self._report_side_effect_snapshot(auth_client, ids) == before
+
+    def test_decimal_reports_complete_at_six_digit_precision(
+            self, auth_client):
+        ids = create_production_chain(auth_client, planned_qty=0.8)
+        self._add_report(auth_client, ids, qualified_qty=0.1)
+        self._add_report(auth_client, ids, qualified_qty=0.7)
+
+        progress = self._progress_snapshot(auth_client, ids)
+        assert progress['task']['completed_qty'] == 0.8
+        assert progress['task']['status'] == 3
+        assert progress['workorder']['completed_qty'] == 0.8
+        assert progress['workorder']['status'] == 3
+
+    def test_many_decimal_reports_persist_normalized_total(
+            self, auth_client):
+        ids = create_production_chain(auth_client, planned_qty=0.1)
+        for _ in range(10):
+            self._add_report(auth_client, ids, qualified_qty=0.01)
+
+        progress = self._progress_snapshot(auth_client, ids)
+        assert progress['task']['completed_qty'] == 0.1
+        assert progress['task']['status'] == 3
+        assert progress['workorder']['completed_qty'] == 0.1
+        assert progress['workorder']['status'] == 3
+
+    def test_quantity_below_six_digit_precision_remains_incomplete(
+            self, auth_client):
+        ids = create_production_chain(auth_client, planned_qty=0.8)
+        for _ in range(3):
+            self._add_report(auth_client, ids, qualified_qty=0.2666664)
+
+        progress = self._progress_snapshot(auth_client, ids)
+        assert progress['task']['completed_qty'] == 0.799998
+        assert progress['task']['status'] == 1
+        assert progress['workorder']['completed_qty'] == 0.799998
+        assert progress['workorder']['status'] == 1
+
+    def test_decimal_workorder_completes_only_after_all_tasks(
+            self, auth_client):
+        ids = create_production_chain(auth_client, planned_qty=0.8)
+        suffix = uuid.uuid4().hex[:8]
+        second_process = response_id(auth_client.post('/api/base/process/add', json={
+            'process_name': f'精度工序-{suffix}',
+            'code': f'PS_PRECISION_{suffix}',
+            'workshop_id': ids['workshop_id'],
+        }))
+        second_task = response_id(auth_client.post('/api/prod/task/add', json={
+            'workorder_id': ids['workorder_id'],
+            'process_id': second_process,
+            'planned_qty': 0.8,
+        }))
+
+        self._add_report(auth_client, ids, qualified_qty=0.1)
+        self._add_report(auth_client, ids, qualified_qty=0.7)
+        progress = self._progress_snapshot(auth_client, ids)
+        assert progress['task']['status'] == 3
+        assert progress['workorder']['status'] == 1
+
+        second_ids = dict(
+            ids,
+            task_id=second_task,
+            process_id=second_process,
+        )
+        self._add_report(auth_client, second_ids, qualified_qty=0.1)
+        self._add_report(auth_client, second_ids, qualified_qty=0.7)
+        progress = self._progress_snapshot(auth_client, second_ids)
+        assert progress['task']['status'] == 3
+        assert progress['workorder']['status'] == 3
+
+    def test_workorder_searches_number_product_name_and_code(
+            self, auth_client):
+        ids = create_production_chain(auth_client, planned_qty=10)
+        workorder = find_by_id(
+            auth_client.get('/api/prod/workorder/list?size=1000').get_json(),
+            ids['workorder_id'],
+        )
+        for keyword in (
+            workorder['order_no'],
+            workorder['product_name'],
+            workorder['product_code'],
+        ):
+            payload = auth_client.get(
+                '/api/prod/workorder/list',
+                query_string={'keyword': keyword, 'size': 1000},
+            ).get_json()
+            assert payload['data']['total'] == len(payload['data']['list'])
+            assert [row['id'] for row in payload['data']['list']] == [
+                ids['workorder_id']
+            ]
+
+    def test_task_searches_number_workorder_and_process_name(
+            self, auth_client):
+        ids = create_production_chain(auth_client, planned_qty=10)
+        task = find_by_id(
+            auth_client.get('/api/prod/task/list?size=1000').get_json(),
+            ids['task_id'],
+        )
+        for keyword in (
+            task['task_no'],
+            task['workorder_no'],
+            task['process_name'],
+        ):
+            payload = auth_client.get(
+                '/api/prod/task/list',
+                query_string={'keyword': keyword, 'size': 1000},
+            ).get_json()
+            assert payload['data']['total'] == len(payload['data']['list'])
+            assert [row['id'] for row in payload['data']['list']] == [
+                ids['task_id']
+            ]
+
+    @staticmethod
+    def _add_report(
+            client, ids, qualified_qty, defect_qty=0, endpoint=None):
+        endpoint = endpoint or '/api/prod/report/add'
+        return response_id(client.post(endpoint, json={
+            'task_id': ids['task_id'],
+            'workorder_id': ids['workorder_id'],
+            'process_id': ids['process_id'],
+            'qualified_qty': qualified_qty,
+            'defect_qty': defect_qty,
+        }))
+
+    @staticmethod
+    def _report_ids(client, ids):
+        reports = client.get('/api/prod/report/list?size=1000').get_json()
+        return sorted(
+            report['id']
+            for report in reports['data']['list']
+            if report['task_id'] == ids['task_id']
+        )
+
+    @staticmethod
+    def _progress_snapshot(client, ids):
+        task = find_by_id(
+            client.get('/api/prod/task/list?size=1000').get_json(),
+            ids['task_id'],
+        )
+        workorder = find_by_id(
+            client.get('/api/prod/workorder/list?size=1000').get_json(),
+            ids['workorder_id'],
+        )
+        return {
+            'task': {
+                key: task[key]
+                for key in (
+                    'completed_qty',
+                    'defect_qty',
+                    'status',
+                    'end_time',
+                )
+            },
+            'workorder': {
+                key: workorder[key]
+                for key in ('completed_qty', 'defect_qty', 'status')
+            },
+        }
+
+    @classmethod
+    def _report_side_effect_snapshot(cls, client, ids):
+        with client.application.app_context():
+            row = get_db().execute(
+                """SELECT current_no FROM sys_numbering
+                   WHERE entity_type='BR'"""
+            ).fetchone()
+            current_no = row['current_no'] if row else None
+        return {
+            'report_ids': cls._report_ids(client, ids),
+            'numbering': current_no,
+            'progress': cls._progress_snapshot(client, ids),
+        }
+
     @staticmethod
     def _assert_no_report_or_progress(client, ids):
         reports = client.get('/api/prod/report/list?size=1000').get_json()
