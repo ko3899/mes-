@@ -100,10 +100,12 @@ function showCompareResult(r1, r2) {
     var h = '<table style="width:100%"><thead><tr><th>字段</th><th>记录1</th><th>记录2</th><th>差异</th></tr></thead><tbody>';
     var allKeys = new Set([...Object.keys(r1), ...Object.keys(r2)]);
     allKeys.forEach(function(key) {
-        var v1 = String(r1[key] || '');
-        var v2 = String(r2[key] || '');
+        var v1 = String(r1[key] == null ? '' : r1[key]);
+        var v2 = String(r2[key] == null ? '' : r2[key]);
         var diff = v1 !== v2 ? '<span style="color:#f5222d">✗ 不同</span>' : '<span style="color:#52c41a">✓ 相同</span>';
-        h += '<tr><td style="font-weight:bold">' + key + '</td><td>' + v1 + '</td><td>' + v2 + '</td><td>' + diff + '</td></tr>';
+        h += '<tr><td style="font-weight:bold">' + MESUI.escapeHtml(key) + '</td><td>'
+            + MESUI.escapeHtml(v1) + '</td><td>' + MESUI.escapeHtml(v2) + '</td><td>'
+            + diff + '</td></tr>';
     });
     h += '</tbody></table>';
     document.getElementById('mBody').innerHTML = h;

@@ -24,21 +24,32 @@ function openModalSync(title, fields, data) {
     fields.forEach(function(f, i) {
         if(i % 2 === 0) h += '<div class="form-row">';
         var val = data[f.k] != null ? data[f.k] : '';
-        h += '<div class="form-item"><label>' + f.l + (f.r ? '<span style="color:red">*</span>' : '') + '</label>';
+        var fieldId = MESUI.escapeHtml('f_' + String(f.k));
+        var safeVal = MESUI.escapeHtml(val);
+        h += '<div class="form-item"><label>' + MESUI.escapeHtml(f.l)
+            + (f.r ? '<span style="color:red">*</span>' : '') + '</label>';
         if(f.s) {
-            h += '<select id="f_' + f.k + '"><option value="">请选择</option>';
-            f.s.forEach(function(o) { h += '<option value="' + o.v + '"' + (String(o.v) === String(val) ? ' selected' : '') + '>' + o.t + '</option>'; });
+            h += '<select id="' + fieldId + '"><option value="">请选择</option>';
+            f.s.forEach(function(o) {
+                h += '<option value="' + MESUI.escapeHtml(o.v) + '"'
+                    + (String(o.v) === String(val) ? ' selected' : '') + '>'
+                    + MESUI.escapeHtml(o.t) + '</option>';
+            });
             h += '</select>';
         } else if(f.type === 'select' && f.api) {
-            h += '<select id="f_' + f.k + '"><option value="">请选择</option>';
-            (f._options || []).forEach(function(o) { h += '<option value="' + o[f.vk] + '"' + (String(o[f.vk]) === String(val) ? ' selected' : '') + '>' + o[f.tk] + '</option>'; });
+            h += '<select id="' + fieldId + '"><option value="">请选择</option>';
+            (f._options || []).forEach(function(o) {
+                h += '<option value="' + MESUI.escapeHtml(o[f.vk]) + '"'
+                    + (String(o[f.vk]) === String(val) ? ' selected' : '') + '>'
+                    + MESUI.escapeHtml(o[f.tk]) + '</option>';
+            });
             h += '</select>';
         } else if(f.type === 'date') {
-            h += '<input id="f_' + f.k + '" type="date" value="' + val + '">';
+            h += '<input id="' + fieldId + '" type="date" value="' + safeVal + '">';
         } else if(f.type === 'number') {
-            h += '<input id="f_' + f.k + '" type="number" value="' + val + '" step="0.01">';
+            h += '<input id="' + fieldId + '" type="number" value="' + safeVal + '" step="0.01">';
         } else {
-            h += '<input id="f_' + f.k + '" type="text" value="' + val + '">';
+            h += '<input id="' + fieldId + '" type="text" value="' + safeVal + '">';
         }
         h += '</div>';
         if(i % 2 === 1 || i === fields.length - 1) h += '</div>';

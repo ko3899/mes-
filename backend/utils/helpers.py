@@ -1,5 +1,6 @@
 """辅助函数模块"""
 import datetime
+import json
 import sqlite3
 import re
 from functools import wraps
@@ -32,6 +33,18 @@ def login_required(f):
     return decorated
 
 
+def admin_required(f):
+    """仅允许管理员执行操作。"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return jsonify({'code': 401, 'message': '请先登录'}), 401
+        if session.get('username') != 'admin':
+            return jsonify({'code': 403, 'message': '仅管理员可执行此操作'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+
 def permission_required(*perms):
     """权限验证装饰器"""
     def decorator(f):
@@ -42,6 +55,9 @@ def permission_required(*perms):
             # 管理员拥有所有权限
             if session.get('username') == 'admin':
                 return f(*args, **kwargs)
+            required = {str(perm).strip() for perm in perms if str(perm).strip()}
+            if not required:
+                return jsonify({'code': 403, 'message': '无权限'}), 403
             # 检查用户权限
             db = get_db()
             user = db.execute("SELECT role_id FROM sys_user WHERE id=?", (session['user_id'],)).fetchone()
@@ -49,6 +65,25 @@ def permission_required(*perms):
                 return jsonify({'code': 403, 'message': '用户不存在'}), 403
             role = db.execute("SELECT menu_ids FROM sys_role WHERE id=?", (user['role_id'],)).fetchone()
             if not role:
+                return jsonify({'code': 403, 'message': '无权限'}), 403
+            raw_permissions = role['menu_ids']
+            if not isinstance(raw_permissions, str) or not raw_permissions.strip():
+                return jsonify({'code': 403, 'message': '无权限'}), 403
+            raw_permissions = raw_permissions.strip()
+            try:
+                parsed_permissions = json.loads(raw_permissions)
+                if not isinstance(parsed_permissions, list):
+                    return jsonify({'code': 403, 'message': '无权限'}), 403
+            except (json.JSONDecodeError, TypeError):
+                if raw_permissions.startswith(('[', '{')):
+                    return jsonify({'code': 403, 'message': '无权限'}), 403
+                parsed_permissions = raw_permissions.split(',')
+            granted = {
+                str(permission).strip()
+                for permission in parsed_permissions
+                if str(permission).strip()
+            }
+            if required.isdisjoint(granted):
                 return jsonify({'code': 403, 'message': '无权限'}), 403
             return f(*args, **kwargs)
         return decorated

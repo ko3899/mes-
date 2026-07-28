@@ -3,7 +3,7 @@ import hashlib
 import secrets
 from flask import Blueprint, request, jsonify
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, permission_required
+from utils.helpers import admin_required, login_required, crud_list, crud_add, crud_update, crud_delete
 
 system_bp = Blueprint('system', __name__)
 
@@ -39,7 +39,7 @@ def sys_user_list():
 
 
 @system_bp.route('/api/sys/user/add', methods=['POST'])
-@login_required
+@admin_required
 def sys_user_add():
     data = request.json
     data['password'] = _hash_password(data.get('password', '123456'))
@@ -47,7 +47,7 @@ def sys_user_add():
 
 
 @system_bp.route('/api/sys/user/update', methods=['POST'])
-@login_required
+@admin_required
 def sys_user_update():
     data = request.json
     if 'password' in data and data['password']:
@@ -58,7 +58,7 @@ def sys_user_update():
 
 
 @system_bp.route('/api/sys/user/delete', methods=['POST'])
-@login_required
+@admin_required
 def sys_user_delete():
     return jsonify(crud_delete('sys_user', request.json.get('id')))
 
@@ -70,19 +70,19 @@ def sys_role_list():
 
 
 @system_bp.route('/api/sys/role/add', methods=['POST'])
-@login_required
+@admin_required
 def sys_role_add():
     return jsonify(crud_add('sys_role', request.json))
 
 
 @system_bp.route('/api/sys/role/update', methods=['POST'])
-@login_required
+@admin_required
 def sys_role_update():
     return jsonify(crud_update('sys_role', request.json))
 
 
 @system_bp.route('/api/sys/role/delete', methods=['POST'])
-@login_required
+@admin_required
 def sys_role_delete():
     return jsonify(crud_delete('sys_role', request.json.get('id')))
 
@@ -94,19 +94,19 @@ def sys_dept_list():
 
 
 @system_bp.route('/api/sys/dept/add', methods=['POST'])
-@login_required
+@admin_required
 def sys_dept_add():
     return jsonify(crud_add('sys_dept', request.json))
 
 
 @system_bp.route('/api/sys/dept/update', methods=['POST'])
-@login_required
+@admin_required
 def sys_dept_update():
     return jsonify(crud_update('sys_dept', request.json))
 
 
 @system_bp.route('/api/sys/dept/delete', methods=['POST'])
-@login_required
+@admin_required
 def sys_dept_delete():
     return jsonify(crud_delete('sys_dept', request.json.get('id')))
 
@@ -120,19 +120,19 @@ def sys_menu_list():
 
 
 @system_bp.route('/api/sys/menu/add', methods=['POST'])
-@login_required
+@admin_required
 def sys_menu_add():
     return jsonify(crud_add('sys_menu', request.json))
 
 
 @system_bp.route('/api/sys/menu/update', methods=['POST'])
-@login_required
+@admin_required
 def sys_menu_update():
     return jsonify(crud_update('sys_menu', request.json))
 
 
 @system_bp.route('/api/sys/menu/delete', methods=['POST'])
-@login_required
+@admin_required
 def sys_menu_delete():
     return jsonify(crud_delete('sys_menu', request.json.get('id')))
 
@@ -144,19 +144,19 @@ def sys_dict_list():
 
 
 @system_bp.route('/api/sys/dict/add', methods=['POST'])
-@login_required
+@admin_required
 def sys_dict_add():
     return jsonify(crud_add('sys_dict', request.json))
 
 
 @system_bp.route('/api/sys/dict/update', methods=['POST'])
-@login_required
+@admin_required
 def sys_dict_update():
     return jsonify(crud_update('sys_dict', request.json))
 
 
 @system_bp.route('/api/sys/dict/delete', methods=['POST'])
-@login_required
+@admin_required
 def sys_dict_delete():
     return jsonify(crud_delete('sys_dict', request.json.get('id')))
 

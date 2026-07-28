@@ -2,6 +2,7 @@
 var sortField = '';
 var sortOrder = 'DESC';
 var pageSize = 15;
+var currentRowsById = Object.create(null);
 
 // 加载用户偏好
 function loadUserPrefs() {
@@ -69,27 +70,35 @@ function crudLoad(page, sort, order) {
         var total = Array.isArray(r.data) ? list.length : (r.data ? r.data.total : 0);
         var tb = document.getElementById('tb');
         var pg = document.getElementById('pg');
+        currentRowsById = Object.create(null);
         if(!list.length) { tb.innerHTML = '<tr><td colspan="99" class="empty">暂无数据</td></tr>'; pg.innerHTML = ''; return; }
 
         var h = '';
         list.forEach(function(row) {
-            var isSelected = selectedRows.has(String(row.id));
-            h += '<tr><td><input type="checkbox" data-id="'+row.id+'" '+(isSelected?'checked':'')+' onchange="toggleSelectRow('+row.id+',this.checked)"></td><td>' + row.id + '</td>';
+            var rowKey = String(row.id);
+            var rowIdArg = MESUI.escapeHtml(JSON.stringify(row.id));
+            var isSelected = selectedRows.has(rowKey);
+            currentRowsById[rowKey] = row;
+            h += '<tr><td><input type="checkbox" data-id="' + MESUI.escapeHtml(rowKey) + '" '
+                + (isSelected ? 'checked' : '') + ' onchange="toggleSelectRow(' + rowIdArg
+                + ',this.checked)"></td><td>' + MESUI.escapeHtml(row.id) + '</td>';
             curFields.forEach(function(f) {
                 var v = row[f.k] != null ? row[f.k] : '';
                 if(f.k === 'status') {
-                    var n = Number(v);
-                    var cls = n === 1 ? 'tag-ok' : (n === 0 ? 'tag-draft' : 'tag-no');
-                    var txt = n === 1 ? '启用' : (n === 0 ? '禁用' : '未知');
-                    v = '<span class="tag ' + cls + '">' + txt + '</span>';
+                    v = MESUI.statusHtml(f, v);
                 } else if(f.s) {
                     f.s.forEach(function(o){ if(String(o.v) === String(v)) v = o.t; });
+                    v = MESUI.escapeHtml(v);
+                } else {
+                    v = MESUI.escapeHtml(v);
                 }
                 h += '<td>' + v + '</td>';
             });
-            h += '<td>' + (row.created_at || '') + '</td>';
-            h += '<td class="actions"><button class="btn btn-blue btn-sm" onclick=\'crudEdit(' + escapeJson(row) + ')\'>编辑</button>';
-            h += '<button class="btn btn-red btn-sm" onclick="crudDel(' + row.id + ')">删除</button></td></tr>';
+            h += '<td>' + MESUI.escapeHtml(row.created_at || '') + '</td>';
+            h += '<td class="actions"><button class="btn btn-blue btn-sm" onclick="crudEdit('
+                + rowIdArg + ')">编辑</button>';
+            h += '<button class="btn btn-red btn-sm" onclick="crudDel(' + rowIdArg
+                + ')">删除</button></td></tr>';
         });
         tb.innerHTML = h;
 
@@ -109,7 +118,12 @@ function crudAdd() {
     openModal('新增', curFields, {});
 }
 
-function crudEdit(row) {
+function crudEdit(id) {
+    var row = currentRowsById[String(id)];
+    if(!row) {
+        alert('记录不存在或已刷新，请重新加载');
+        return;
+    }
     editId = row.id;
     openModal('编辑', curFields, row);
 }

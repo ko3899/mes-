@@ -6,11 +6,13 @@ import sqlite3
 import tempfile
 import json
 import pytest
+from flask import jsonify, session
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend'))
 
 from app import create_app
-from utils.database import DB_PATH, init_db, _init_extra_tables
+from utils.database import DB_PATH, init_db, _init_extra_tables, get_db
+from utils.helpers import permission_required
 
 
 TEST_DB_PATH = None
@@ -634,6 +636,114 @@ class TestSystemManagement:
 
         resp = auth_client.post('/api/sys/dict/delete', json={'id': dict_id})
         assert_success(resp)
+
+
+def _create_permission_user(app, username, menu_ids):
+    with app.app_context():
+        db = get_db()
+        role = db.execute(
+            "INSERT INTO sys_role (role_name, role_key, menu_ids) VALUES (?,?,?)",
+            (f'{username}角色', f'{username}_role', menu_ids),
+        )
+        user = db.execute(
+            "INSERT INTO sys_user (username, password, role_id) VALUES (?,?,?)",
+            (username, 'not-used-by-this-test', role.lastrowid),
+        )
+        db.commit()
+        return user.lastrowid
+
+
+def _call_permission_guard(app, user_id, username, *perms):
+    protected = permission_required(*perms)(
+        lambda: jsonify({'code': 0, 'message': 'allowed'})
+    )
+    with app.test_request_context('/permission-test'):
+        session['user_id'] = user_id
+        session['username'] = username
+        result = protected()
+        if isinstance(result, tuple):
+            response, status = result
+        else:
+            response, status = result, result.status_code
+        return status, response.get_json()
+
+
+class TestAuthorization:
+    def test_plain_user_cannot_write_system_data(self, auth_client, client):
+        created = auth_client.post('/api/sys/user/add', json={
+            'username': 'plain_operator',
+            'password': 'operator123',
+            'real_name': '普通操作员',
+        }).get_json()
+        assert created['code'] == 0
+
+        plain = client.application.test_client()
+        login_response = plain.post('/api/login', json={
+            'username': 'plain_operator',
+            'password': 'operator123',
+        })
+        assert login_response.get_json()['code'] == 0
+
+        response = plain.post('/api/sys/dept/add', json={'dept_name': '越权部门'})
+        assert response.status_code == 403
+        assert response.get_json()['code'] == 403
+
+    def test_admin_can_still_write_system_data(self, auth_client):
+        response = auth_client.post(
+            '/api/sys/dept/add',
+            json={'dept_name': '授权部门'},
+        )
+        assert response.status_code == 200
+        assert response.get_json()['code'] == 0
+
+    def test_permission_required_fails_closed(self, app):
+        user_id = _create_permission_user(
+            app,
+            'permission_denied_user',
+            json.dumps(['sys:user:list']),
+        )
+
+        empty_status, empty_body = _call_permission_guard(
+            app,
+            user_id,
+            'permission_denied_user',
+        )
+        missing_status, missing_body = _call_permission_guard(
+            app,
+            user_id,
+            'permission_denied_user',
+            'sys:user:write',
+        )
+
+        assert empty_status == 403
+        assert empty_body['code'] == 403
+        assert missing_status == 403
+        assert missing_body['code'] == 403
+
+    @pytest.mark.parametrize(
+        ('username', 'stored_permissions'),
+        [
+            ('permission_json_user', json.dumps(['sys:user:list', 'sys:user:write'])),
+            ('permission_legacy_user', 'sys:user:list, sys:user:write'),
+        ],
+    )
+    def test_permission_required_accepts_json_and_legacy_formats(
+        self,
+        app,
+        username,
+        stored_permissions,
+    ):
+        user_id = _create_permission_user(app, username, stored_permissions)
+
+        status, body = _call_permission_guard(
+            app,
+            user_id,
+            username,
+            'sys:user:write',
+        )
+
+        assert status == 200
+        assert body['code'] == 0
 
 
 # ==================== 3. Base Data Tests ====================
