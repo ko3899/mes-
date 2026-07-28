@@ -21,7 +21,13 @@ def check_update():
 @update_bp.route('/api/update/download')
 def download_update():
     """下载更新包"""
-    return jsonify({'code': 0, 'message': '请从 Gitee 下载最新版本'})
+    return jsonify({
+        'code': 501,
+        'message': '自动下载尚未实现，请前往项目仓库手动下载',
+        'data': {
+            'manual_url': 'https://github.com/ko3899/mes-',
+        },
+    }), 501
 
 
 @update_bp.route('/api/version')

@@ -3107,3 +3107,211 @@ class TestWarehouseScheduleCrud:
                 (project_id,),
             ).fetchone()
         assert row is None
+
+
+class TestIntegrationStatus:
+    def test_init_db_creates_sys_config_table(self):
+        import utils.database as db_mod
+
+        previous_path = db_mod.DB_PATH
+        fresh_path = tempfile.mktemp(suffix='.db')
+        try:
+            db_mod.DB_PATH = fresh_path
+            db_mod.init_db()
+            db = sqlite3.connect(fresh_path)
+            try:
+                table = db.execute(
+                    """SELECT name FROM sqlite_master
+                       WHERE type='table' AND name='sys_config'"""
+                ).fetchone()
+            finally:
+                db.close()
+            assert table is not None
+        finally:
+            db_mod.DB_PATH = previous_path
+            if os.path.exists(fresh_path):
+                os.remove(fresh_path)
+
+    def test_ai_inspection_is_not_fake_success(self, auth_client):
+        response = auth_client.post('/api/ai/inspect', json={})
+
+        assert response.status_code == 503
+        payload = response.get_json()
+        assert payload['code'] == 503
+
+    def test_ai_config_reads_database_without_exposing_api_key(
+            self, auth_client):
+        values = {
+            'ai_enabled': 'true',
+            'ai_provider': 'private-provider',
+            'ai_api_key': 'must-never-be-returned',
+            'ai_model': 'vision-private',
+        }
+        with auth_client.application.app_context():
+            db = get_db()
+            for key, value in values.items():
+                db.execute(
+                    """INSERT INTO sys_config
+                       (config_key, config_value, config_type)
+                       VALUES (?,?,?)
+                       ON CONFLICT(config_key) DO UPDATE
+                       SET config_value=excluded.config_value""",
+                    (key, value, 'string'),
+                )
+            db.commit()
+
+        response = auth_client.get('/api/ai/config')
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['code'] == 0
+        assert payload['data'] == {
+            'ai_enabled': True,
+            'ai_provider': 'private-provider',
+            'ai_api_key_configured': True,
+            'ai_model': 'vision-private',
+        }
+        assert 'must-never-be-returned' not in json.dumps(payload)
+        assert 'ai_api_key"' not in json.dumps(payload)
+
+    def test_erp_sync_is_not_fake_success_and_never_echoes_secret(
+            self, auth_client):
+        endpoints = [
+            '/api/erp/sync/products',
+            '/api/erp/sync/orders',
+            '/api/erp/sync/inventory',
+            '/api/erp/yonyou/sync',
+            '/api/erp/kingdee/sync',
+            '/api/erp/sap/sync',
+        ]
+        for endpoint in endpoints:
+            response = auth_client.post(endpoint, json={
+                'app_key': 'public-id',
+                'app_secret': 'must-not-echo',
+            })
+
+            assert response.status_code == 501, endpoint
+            payload = response.get_json()
+            assert payload['code'] == 501
+            assert 'must-not-echo' not in json.dumps(payload)
+
+    def test_erp_config_endpoints_do_not_expose_stored_secrets(
+            self, auth_client):
+        values = {
+            'erp_type': 'custom',
+            'erp_url': 'https://erp.internal',
+            'erp_api_key': 'erp-secret-value',
+            'erp_sync_enabled': 'true',
+            'yonyou_url': 'https://yonyou.internal',
+            'yonyou_app_key': 'yonyou-public-id',
+            'yonyou_app_secret': 'yonyou-secret-value',
+            'kingdee_url': 'https://kingdee.internal',
+            'kingdee_app_key': 'kingdee-public-id',
+            'kingdee_app_secret': 'kingdee-secret-value',
+        }
+        with auth_client.application.app_context():
+            db = get_db()
+            for key, value in values.items():
+                db.execute(
+                    """INSERT INTO sys_config
+                       (config_key, config_value, config_type)
+                       VALUES (?,?,?)
+                       ON CONFLICT(config_key) DO UPDATE
+                       SET config_value=excluded.config_value""",
+                    (key, value, 'string'),
+                )
+            db.commit()
+
+        expectations = [
+            ('/api/erp/config', 'erp_api_key_configured'),
+            (
+                '/api/erp/config/yonyou',
+                'yonyou_app_secret_configured',
+            ),
+            (
+                '/api/erp/config/kingdee',
+                'kingdee_app_secret_configured',
+            ),
+        ]
+        for endpoint, configured_key in expectations:
+            response = auth_client.get(endpoint)
+
+            assert response.status_code == 200
+            payload = response.get_json()
+            assert payload['code'] == 0
+            assert payload['data'][configured_key] is True
+            serialized = json.dumps(payload)
+            assert 'secret-value' not in serialized
+            assert not any(
+                key in payload['data']
+                for key in (
+                    'erp_api_key',
+                    'yonyou_app_secret',
+                    'kingdee_app_secret',
+                )
+            )
+
+    def test_notification_channel_test_is_not_fake_success(self, auth_client):
+        response = auth_client.post(
+            '/api/sys/notify-channel/test',
+            json={'id': 1},
+        )
+
+        assert response.status_code == 501
+        assert response.get_json()['code'] == 501
+
+    def test_update_download_is_not_fake_success(self, client):
+        response = client.get('/api/update/download')
+
+        assert response.status_code == 501
+        payload = response.get_json()
+        assert payload['code'] == 501
+        assert payload['data']['manual_url'] == (
+            'https://github.com/ko3899/mes-'
+        )
+
+    @pytest.mark.parametrize('payload', [
+        {'start_date': 'bad-date', 'end_date': 'also-bad'},
+        {'start_date': '2026-08-01', 'end_date': '2026-07-31'},
+    ])
+    def test_aps_rejects_invalid_date_ranges(self, auth_client, payload):
+        response = auth_client.post('/api/aps/schedule', json=payload)
+
+        assert response.status_code == 400
+        assert response.get_json()['code'] == 400
+
+    def test_aps_returns_non_persistent_preview(self, auth_client):
+        ids = create_production_chain(auth_client, planned_qty=10)
+        with auth_client.application.app_context():
+            before = dict(get_db().execute(
+                'SELECT * FROM prod_workorder WHERE id=?',
+                (ids['workorder_id'],),
+            ).fetchone())
+
+        response = auth_client.post('/api/aps/schedule', json={
+            'start_date': '2026-07-28',
+            'end_date': '2026-07-31',
+        })
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['code'] == 0
+        assert payload['data']['mode'] == 'preview'
+        assert payload['data']['start_date'] == '2026-07-28'
+        assert payload['data']['end_date'] == '2026-07-31'
+        assert payload['data']['scheduled'] == 0
+        assert payload['data']['candidates'] == len(
+            payload['data']['details']
+        )
+        matching = next(
+            detail for detail in payload['data']['details']
+            if detail['workorder'] == before['order_no']
+        )
+        assert matching['status'] == '待排程'
+
+        with auth_client.application.app_context():
+            after = dict(get_db().execute(
+                'SELECT * FROM prod_workorder WHERE id=?',
+                (ids['workorder_id'],),
+            ).fetchone())
+        assert after == before

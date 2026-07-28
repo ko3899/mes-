@@ -9,32 +9,34 @@ ai_bp = Blueprint('ai', __name__)
 @ai_bp.route('/api/ai/inspect', methods=['POST'])
 @login_required
 def ai_inspect():
-    """AI视觉检测"""
-    d = request.json
-    image_url = d.get('image_url', '')
-    product_id = d.get('product_id')
-    
-    # 预留AI接口，实际对接需要配置AI服务
+    """AI视觉检测（当前尚无可用适配器）。"""
     return jsonify({
-        'code': 0,
-        'data': {
-            'result': 'PASS',
-            'confidence': 0.95,
-            'defects': [],
-            'message': 'AI检测功能已就绪，请配置AI服务'
-        }
-    })
+        'code': 503,
+        'message': 'AI 检测适配器尚未配置',
+    }), 503
 
 
 @ai_bp.route('/api/ai/config')
 @login_required
 def ai_config():
     """AI配置"""
+    keys = ('ai_enabled', 'ai_provider', 'ai_api_key', 'ai_model')
+    rows = get_db().execute(
+        """SELECT config_key, config_value FROM sys_config
+           WHERE config_key IN (?,?,?,?)""",
+        keys,
+    ).fetchall()
+    values = {row['config_key']: row['config_value'] for row in rows}
+    enabled = str(values.get('ai_enabled') or '').strip().lower() in {
+        '1', 'true', 'yes', 'on',
+    }
     return jsonify({'code': 0, 'data': {
-        'ai_enabled': False,
-        'ai_provider': '',
-        'ai_api_key': '',
-        'ai_model': ''
+        'ai_enabled': enabled,
+        'ai_provider': values.get('ai_provider') or '',
+        'ai_api_key_configured': bool(
+            str(values.get('ai_api_key') or '').strip()
+        ),
+        'ai_model': values.get('ai_model') or '',
     }})
 
 

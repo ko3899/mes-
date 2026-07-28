@@ -11,43 +11,28 @@ erp_deep_bp = Blueprint('erp_deep', __name__)
 @login_required
 def yonyou_sync():
     """用友U8/U9对接"""
-    d = request.json
-    sync_type = d.get('type', 'product')
-    
-    # 用友API对接模板
-    api_config = {
-        'base_url': 'http://u8-server:8080/api',
-        'app_key': d.get('app_key', ''),
-        'app_secret': d.get('app_secret', '')
-    }
-    
-    return jsonify({'code': 0, 'message': f'用友{sync_type}同步接口已就绪', 'config': api_config})
+    return _integration_not_implemented()
 
 
 @erp_deep_bp.route('/api/erp/kingdee/sync', methods=['POST'])
 @login_required
 def kingdee_sync():
     """金蝶云星空对接"""
-    d = request.json
-    sync_type = d.get('type', 'product')
-    
-    api_config = {
-        'base_url': 'https://api.kingdee.com',
-        'app_key': d.get('app_key', ''),
-        'app_secret': d.get('app_secret', '')
-    }
-    
-    return jsonify({'code': 0, 'message': f'金蝶{sync_type}同步接口已就绪', 'config': api_config})
+    return _integration_not_implemented()
 
 
 @erp_deep_bp.route('/api/erp/sap/sync', methods=['POST'])
 @login_required
 def sap_sync():
     """SAP对接"""
-    d = request.json
-    sync_type = d.get('type', 'material')
-    
-    return jsonify({'code': 0, 'message': f'SAP {sync_type} 同步接口已就绪'})
+    return _integration_not_implemented()
+
+
+def _integration_not_implemented():
+    return jsonify({
+        'code': 501,
+        'message': '该集成适配器尚未实现',
+    }), 501
 
 
 @erp_deep_bp.route('/api/erp/sync/status')
@@ -72,6 +57,10 @@ def yonyou_config():
         for key in ['yonyou_url', 'yonyou_app_key', 'yonyou_app_secret']:
             row = db.execute("SELECT config_value FROM sys_config WHERE config_key=?", (key,)).fetchone()
             configs[key] = row['config_value'] if row else ''
+        app_secret = configs.pop('yonyou_app_secret')
+        configs['yonyou_app_secret_configured'] = bool(
+            str(app_secret).strip()
+        )
         return jsonify({'code': 0, 'data': configs})
     else:
         d = request.json
@@ -95,6 +84,10 @@ def kingdee_config():
         for key in ['kingdee_url', 'kingdee_app_key', 'kingdee_app_secret']:
             row = db.execute("SELECT config_value FROM sys_config WHERE config_key=?", (key,)).fetchone()
             configs[key] = row['config_value'] if row else ''
+        app_secret = configs.pop('kingdee_app_secret')
+        configs['kingdee_app_secret_configured'] = bool(
+            str(app_secret).strip()
+        )
         return jsonify({'code': 0, 'data': configs})
     else:
         d = request.json

@@ -390,4 +390,7 @@ def notify_channel_delete():
 @login_required
 def notify_channel_test():
     """测试通知渠道"""
-    return jsonify({'code': 0, 'message': '测试功能已就绪，请配置具体渠道后使用'})
+    return jsonify({
+        'code': 501,
+        'message': '通知渠道测试适配器尚未实现',
+    }), 501

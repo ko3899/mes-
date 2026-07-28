@@ -1,4 +1,6 @@
 """APS排程蓝图 - 高级排程算法"""
+from datetime import date
+
 from flask import Blueprint, request, jsonify
 from utils.database import get_db
 from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
@@ -9,10 +11,17 @@ aps_bp = Blueprint('aps', __name__)
 @aps_bp.route('/api/aps/schedule', methods=['POST'])
 @login_required
 def aps_schedule():
-    """APS自动排程"""
-    d = request.json
-    start_date = d.get('start_date', '')
-    end_date = d.get('end_date', '')
+    """返回经过日期校验且不持久化的 APS 排程预览。"""
+    d = request.get_json(silent=True)
+    if not isinstance(d, dict):
+        return jsonify({'code': 400, 'message': '排程参数不合法'}), 400
+    try:
+        start_date = date.fromisoformat(d.get('start_date'))
+        end_date = date.fromisoformat(d.get('end_date'))
+    except (TypeError, ValueError):
+        return jsonify({'code': 400, 'message': '排程日期格式不合法'}), 400
+    if start_date > end_date:
+        return jsonify({'code': 400, 'message': '开始日期不能晚于结束日期'}), 400
     
     db = get_db()
     # 获取待排程工单
@@ -21,10 +30,7 @@ def aps_schedule():
         LEFT JOIN base_product p ON w.product_id=p.id
         WHERE w.status=0 ORDER BY w.priority DESC, w.id ASC''').fetchall()
     
-    # 获取可用资源
-    processes = db.execute("SELECT * FROM base_process WHERE status=1 ORDER BY sort_order").fetchall()
-    
-    # 简单排程算法：按优先级顺序分配
+    # 本接口只预览候选工单，不修改任何排程或工单状态。
     schedule_result = []
     for wo in workorders:
         schedule_result.append({
@@ -32,11 +38,15 @@ def aps_schedule():
             'product': wo['product_name'],
             'priority': wo['priority'],
             'planned_qty': wo['planned_qty'],
-            'status': '已排程'
+            'status': '待排程'
         })
     
     return jsonify({'code': 0, 'data': {
-        'scheduled': len(schedule_result),
+        'mode': 'preview',
+        'start_date': start_date.isoformat(),
+        'end_date': end_date.isoformat(),
+        'scheduled': 0,
+        'candidates': len(schedule_result),
         'details': schedule_result
     }})
 

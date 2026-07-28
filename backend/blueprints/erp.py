@@ -15,6 +15,8 @@ def erp_config():
     for key in ['erp_type', 'erp_url', 'erp_api_key', 'erp_sync_enabled']:
         row = db.execute("SELECT config_value FROM sys_config WHERE config_key=?", (key,)).fetchone()
         configs[key] = row['config_value'] if row else ''
+    api_key = configs.pop('erp_api_key')
+    configs['erp_api_key_configured'] = bool(str(api_key).strip())
     return jsonify({'code': 0, 'data': configs})
 
 
@@ -38,22 +40,21 @@ def erp_config_save():
 @login_required
 def erp_sync_products():
     """同步ERP产品数据"""
-    # 预留接口，实际对接需要根据ERP类型实现
-    return jsonify({'code': 0, 'message': '产品同步功能已就绪，请配置ERP连接信息'})
+    return _integration_not_implemented()
 
 
 @erp_bp.route('/api/erp/sync/orders', methods=['POST'])
 @login_required
 def erp_sync_orders():
     """同步ERP订单数据"""
-    return jsonify({'code': 0, 'message': '订单同步功能已就绪，请配置ERP连接信息'})
+    return _integration_not_implemented()
 
 
 @erp_bp.route('/api/erp/sync/inventory', methods=['POST'])
 @login_required
 def erp_sync_inventory():
     """同步ERP库存数据"""
-    return jsonify({'code': 0, 'message': '库存同步功能已就绪，请配置ERP连接信息'})
+    return _integration_not_implemented()
 
 
 @erp_bp.route('/api/erp/status')
@@ -61,3 +62,10 @@ def erp_sync_inventory():
 def erp_status():
     """ERP连接状态"""
     return jsonify({'code': 0, 'data': {'connected': False, 'message': '请先配置ERP连接信息'}})
+
+
+def _integration_not_implemented():
+    return jsonify({
+        'code': 501,
+        'message': '该集成适配器尚未实现',
+    }), 501

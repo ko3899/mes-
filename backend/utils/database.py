@@ -100,6 +100,16 @@ def init_db():
         status INTEGER DEFAULT 1
     )''')
 
+    db.execute('''CREATE TABLE IF NOT EXISTS sys_config (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        config_key TEXT NOT NULL UNIQUE,
+        config_value TEXT,
+        config_type TEXT DEFAULT 'string',
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
     db.execute('''CREATE TABLE IF NOT EXISTS sys_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
