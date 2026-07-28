@@ -1,19 +1,17 @@
 """系统管理蓝图"""
-import hashlib
-import secrets
 from flask import Blueprint, request, jsonify
 from utils.database import get_db
-from utils.helpers import admin_required, login_required, crud_list, crud_add, crud_update, crud_delete
+from utils.helpers import (
+    admin_required,
+    crud_add,
+    crud_delete,
+    crud_list,
+    crud_update,
+    hash_password,
+    login_required,
+)
 
 system_bp = Blueprint('system', __name__)
-
-
-def _hash_password(password, salt=None):
-    """安全的密码哈希（PBKDF2 + SHA256 + 盐值）"""
-    if salt is None:
-        salt = secrets.token_hex(16)
-    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
-    return f"{salt}${pwd_hash.hex()}"
 
 
 @system_bp.route('/api/sys/user/list')
@@ -42,7 +40,7 @@ def sys_user_list():
 @admin_required
 def sys_user_add():
     data = request.json
-    data['password'] = _hash_password(data.get('password', '123456'))
+    data['password'] = hash_password(data.get('password', '123456'))
     return jsonify(crud_add('sys_user', data))
 
 
@@ -51,7 +49,7 @@ def sys_user_add():
 def sys_user_update():
     data = request.json
     if 'password' in data and data['password']:
-        data['password'] = _hash_password(data['password'])
+        data['password'] = hash_password(data['password'])
     else:
         data.pop('password', None)
     return jsonify(crud_update('sys_user', data))

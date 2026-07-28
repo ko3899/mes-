@@ -202,7 +202,13 @@ function crudEdit(id) {
 function crudDel(id) {
     if(!crudActionAllowed('delete')) return;
     if(!confirm('确定删除？')) return;
-    api(curApiBase + '/delete', {method:'POST', body:{id:id}}).then(function(r) {
+    var requestToken = crudRenderToken;
+    var requestApiBase = curApiBase;
+    api(requestApiBase + '/delete', {method:'POST', body:{id:id}}).then(function(r) {
+        if(
+            requestToken !== crudRenderToken
+            || requestApiBase !== curApiBase
+        ) return;
         if(r && r.code === 0) crudLoad(1);
         else alert(r ? r.message : '删除失败');
     });
@@ -216,6 +222,14 @@ function doExport() {
 function doImport() {
     if(!crudActionAllowed('import')) return;
     var table = curDataTable;
+    var importToken = crudRenderToken;
+    var importApiBase = curApiBase;
+    function importPageIsCurrent() {
+        return (
+            importToken === crudRenderToken
+            && importApiBase === curApiBase
+        );
+    }
     document.getElementById('mTitle').textContent = '导入数据';
     document.getElementById('mBody').innerHTML =
         '<div style="margin-bottom:14px">'
@@ -238,6 +252,10 @@ function doImport() {
     };
 
     modalSaveHandler = function() {
+        if(!importPageIsCurrent()) {
+            alert('页面已切换，请重新操作');
+            return;
+        }
         var fileInput = document.getElementById('importFile');
         if (!fileInput.files.length) { alert('请选择文件'); return; }
         var file = fileInput.files[0];
@@ -251,6 +269,8 @@ function doImport() {
             body: formData
         }).then(function(r) { return r.json(); }).then(function(r) {
             if (r.code === 0) {
+                clearApiCache();
+                if(!importPageIsCurrent()) return;
                 var resultHtml = '<div style="color:#52c41a">'
                     + MESUI.escapeHtml(r.message) + '</div>';
                 if (r.data && r.data.errors && r.data.errors.length) {
@@ -263,12 +283,18 @@ function doImport() {
                     resultHtml += '</div>';
                 }
                 document.getElementById('importResult').innerHTML = resultHtml;
-                setTimeout(function() { closeModal(); crudLoad(1); }, 3000);
+                setTimeout(function() {
+                    if(!importPageIsCurrent()) return;
+                    closeModal();
+                    crudLoad(1);
+                }, 3000);
             } else {
+                if(!importPageIsCurrent()) return;
                 document.getElementById('importResult').innerHTML = '<div style="color:#f5222d">'
                     + MESUI.escapeHtml(r.message || '导入失败') + '</div>';
             }
         }).catch(function(e) {
+            if(!importPageIsCurrent()) return;
             document.getElementById('importResult').innerHTML = '<div style="color:#f5222d">网络错误</div>';
         });
     };

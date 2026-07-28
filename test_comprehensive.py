@@ -6,6 +6,8 @@ import sqlite3
 import tempfile
 import json
 import uuid
+import io
+from concurrent.futures import ThreadPoolExecutor
 import pytest
 from flask import jsonify, session
 
@@ -485,6 +487,53 @@ def login(client, username='admin', password='admin123'):
     return client.post('/api/login', json={'username': username, 'password': password})
 
 
+def test_fresh_production_schema_supports_login_and_core_pages():
+    """A new installation must work without the test suite's hand-built schema."""
+    import utils.database as db_mod
+
+    handle, fresh_path = tempfile.mkstemp(suffix='.db')
+    os.close(handle)
+    previous_path = db_mod.DB_PATH
+    try:
+        db_mod.DB_PATH = fresh_path
+        db_mod.init_db()
+        db_mod._init_extra_tables()
+        fresh_app = create_app()
+        fresh_app.config.update(TESTING=True, SECRET_KEY='fresh-install-test')
+        fresh_client = fresh_app.test_client()
+
+        response = fresh_client.post(
+            '/api/login',
+            json={'username': 'admin', 'password': 'admin123'},
+        )
+        assert response.status_code == 200
+        assert response.get_json()['code'] == 0
+
+        core_routes = [
+            '/api/dashboard',
+            '/api/notification/unread/count',
+            '/api/warehouse/list',
+            '/api/area/list',
+            '/api/location/list',
+            '/api/arrival/list',
+            '/api/transaction/list',
+            '/api/qm/template/list',
+            '/api/eqp/check-project/list',
+            '/api/sched/calendar/list',
+        ]
+        for route in core_routes:
+            response = fresh_client.get(route)
+            assert response.status_code == 200, (
+                route,
+                response.get_data(as_text=True),
+            )
+            assert response.get_json()['code'] == 0
+    finally:
+        db_mod.DB_PATH = previous_path
+        if os.path.exists(fresh_path):
+            os.remove(fresh_path)
+
+
 def assert_success(resp, expect_code=0):
     assert resp.status_code == 200
     data = resp.get_json()
@@ -767,6 +816,43 @@ SYSTEM_WRITE_CASES = [
     }),
     ('/api/sys/dict/update', {'id': 999999, 'dict_label': 'blocked'}),
     ('/api/sys/dict/delete', {'id': 999999}),
+    ('/api/sys/announcement/add', {
+        'title': '<img src=x onerror=alert(1)>',
+        'content': 'stored XSS',
+    }),
+    ('/api/sys/announcement/update', {
+        'id': 999999,
+        'title': 'blocked',
+    }),
+    ('/api/sys/announcement/delete', {'id': 999999}),
+    ('/api/sys/online/kick', {'user_id': 999999}),
+    ('/api/sys/cleanup/logs', {'days': 90}),
+    ('/api/sys/cleanup/login-logs', {'days': 90}),
+    ('/api/sys/cleanup/vacuum', {}),
+    ('/api/sys/ip-whitelist/add', {
+        'ip_address': '<img src=x onerror=alert(1)>',
+    }),
+    ('/api/sys/ip-whitelist/delete', {'id': 999999}),
+    ('/api/sys/print-template/add', {
+        'template_name': '<img src=x onerror=alert(1)>',
+        'biz_type': 'workorder',
+    }),
+    ('/api/sys/print-template/update', {
+        'id': 999999,
+        'template_name': 'blocked',
+    }),
+    ('/api/sys/print-template/delete', {'id': 999999}),
+    ('/api/sys/notify-channel/add', {
+        'channel_name': '<img src=x onerror=alert(1)>',
+        'channel_type': 'email',
+        'config': '{"password":"secret"}',
+    }),
+    ('/api/sys/notify-channel/update', {
+        'id': 999999,
+        'channel_name': 'blocked',
+    }),
+    ('/api/sys/notify-channel/delete', {'id': 999999}),
+    ('/api/sys/notify-channel/test', {'id': 999999}),
 ]
 
 SYSTEM_IMPORT_TABLES = ['sys_user', 'sys_role', 'sys_dept', 'sys_menu', 'sys_dict']
@@ -829,6 +915,188 @@ class TestAuthorization:
 
         assert response.status_code == 200
         assert response.get_json()['code'] == 0
+
+    @pytest.mark.parametrize('route', (
+        '/api/sys/config/list',
+        '/api/sys/config/get?key=security_test_api_key',
+    ))
+    def test_plain_user_cannot_read_system_config(
+        self,
+        plain_auth_client,
+        route,
+    ):
+        response = plain_auth_client.get(route)
+
+        assert response.status_code == 403
+        assert response.get_json()['code'] == 403
+
+    @pytest.mark.parametrize('route', (
+        '/api/sys/online/list',
+        '/api/sys/login-log/list',
+        '/api/sys/login-log/statistics',
+        '/api/sys/ip-whitelist/list',
+        '/api/sys/print-template/list',
+        '/api/sys/notify-channel/list',
+    ))
+    def test_plain_user_cannot_read_admin_management_data(
+        self,
+        plain_auth_client,
+        route,
+    ):
+        response = plain_auth_client.get(route)
+
+        assert response.status_code == 403
+        assert response.get_json()['code'] == 403
+
+    def test_notification_channel_list_redacts_credentials(
+        self,
+        auth_client,
+    ):
+        secret_config = '{"smtp_password":"do-not-expose"}'
+        with auth_client.application.app_context():
+            db = get_db()
+            cursor = db.execute(
+                """INSERT INTO sys_notify_channel
+                   (channel_name, channel_type, config, enabled)
+                   VALUES (?,?,?,?)""",
+                ('安全邮件渠道', 'email', secret_config, 1),
+            )
+            channel_id = cursor.lastrowid
+            db.commit()
+
+        payload = auth_client.get(
+            '/api/sys/notify-channel/list?size=1000'
+        ).get_json()
+        row = next(
+            item for item in payload['data']['list']
+            if item['id'] == channel_id
+        )
+        assert 'config' not in row
+        assert row['config_configured'] is True
+        assert 'do-not-expose' not in json.dumps(payload)
+
+    def test_sensitive_system_config_values_are_redacted(self, auth_client):
+        secret = '<secret-token-value>'
+        with auth_client.application.app_context():
+            db = get_db()
+            db.execute(
+                """INSERT INTO sys_config
+                   (config_key, config_value, config_type, description)
+                   VALUES (?,?,?,?)
+                   ON CONFLICT(config_key) DO UPDATE
+                   SET config_value=excluded.config_value""",
+                ('security_test_api_key', secret, 'string', 'API key'),
+            )
+            db.commit()
+
+        listed = auth_client.get(
+            '/api/sys/config/list?size=1000&keyword=security_test_api_key'
+        ).get_json()['data']['list']
+        row = next(
+            item for item in listed
+            if item['config_key'] == 'security_test_api_key'
+        )
+        assert 'config_value' not in row
+        assert row['value_configured'] is True
+
+        fetched = auth_client.get(
+            '/api/sys/config/get?key=security_test_api_key'
+        ).get_json()['data']
+        assert 'config_value' not in fetched
+        assert fetched['value_configured'] is True
+        assert secret not in json.dumps(listed) + json.dumps(fetched)
+
+    def test_blank_sensitive_config_save_preserves_existing_secret(
+        self,
+        auth_client,
+    ):
+        secret = 'preserve-this-secret'
+        key = 'security_test_access_token'
+        with auth_client.application.app_context():
+            db = get_db()
+            db.execute(
+                """INSERT INTO sys_config
+                   (config_key, config_value, config_type, description)
+                   VALUES (?,?,?,?)
+                   ON CONFLICT(config_key) DO UPDATE
+                   SET config_value=excluded.config_value""",
+                (key, secret, 'string', 'before'),
+            )
+            db.commit()
+
+        response = auth_client.post('/api/sys/config/save', json={
+            'config_key': key,
+            'config_value': '   ',
+            'description': 'after',
+        })
+
+        assert response.status_code == 200
+        assert response.get_json()['code'] == 0
+        with auth_client.application.app_context():
+            row = get_db().execute(
+                """SELECT config_value, description FROM sys_config
+                   WHERE config_key=?""",
+                (key,),
+            ).fetchone()
+        assert row['config_value'] == secret
+        assert row['description'] == 'after'
+
+    @pytest.mark.parametrize(('method', 'route'), (
+        ('get', '/api/ai/config'),
+        ('post', '/api/ai/config/save'),
+        ('get', '/api/erp/config'),
+        ('post', '/api/erp/config/save'),
+        ('get', '/api/erp/config/yonyou'),
+        ('post', '/api/erp/config/yonyou'),
+        ('get', '/api/erp/config/kingdee'),
+        ('post', '/api/erp/config/kingdee'),
+    ))
+    def test_plain_user_cannot_read_or_write_integration_config(
+        self,
+        plain_auth_client,
+        method,
+        route,
+    ):
+        response = getattr(plain_auth_client, method)(route, json={})
+
+        assert response.status_code == 403
+        assert response.get_json()['code'] == 403
+
+    @pytest.mark.parametrize(('route', 'key'), (
+        ('/api/ai/config/save', 'ai_api_key'),
+        ('/api/erp/config/save', 'erp_api_key'),
+        ('/api/erp/config/yonyou', 'yonyou_app_secret'),
+        ('/api/erp/config/kingdee', 'kingdee_app_secret'),
+    ))
+    def test_blank_integration_secret_save_preserves_existing_value(
+        self,
+        auth_client,
+        route,
+        key,
+    ):
+        secret = f'preserve-{key}'
+        with auth_client.application.app_context():
+            db = get_db()
+            db.execute(
+                """INSERT INTO sys_config
+                   (config_key, config_value, config_type)
+                   VALUES (?,?,?)
+                   ON CONFLICT(config_key) DO UPDATE
+                   SET config_value=excluded.config_value""",
+                (key, secret, 'string'),
+            )
+            db.commit()
+
+        response = auth_client.post(route, json={key: '   '})
+
+        assert response.status_code == 200
+        assert response.get_json()['code'] == 0
+        with auth_client.application.app_context():
+            value = get_db().execute(
+                'SELECT config_value FROM sys_config WHERE config_key=?',
+                (key,),
+            ).fetchone()['config_value']
+        assert value == secret
 
     @pytest.mark.parametrize('table', SYSTEM_IMPORT_TABLES)
     def test_plain_user_cannot_import_system_tables(
@@ -902,6 +1170,45 @@ class TestAuthorization:
 
         assert response.status_code == 200
         assert response.get_json()['code'] == 0
+        with plain_auth_client.application.app_context():
+            stored = get_db().execute(
+                'SELECT password FROM sys_user WHERE id=?',
+                (plain_auth_client.user_id,),
+            ).fetchone()['password']
+        assert '$' in stored
+
+    def test_pbkdf2_user_can_change_password(self, auth_client):
+        suffix = uuid.uuid4().hex[:8]
+        username = f'pbkdf2_{suffix}'
+        user_id = response_id(auth_client.post('/api/sys/user/add', json={
+            'username': username,
+            'password': 'old-secure-password',
+        }))
+        user_client = auth_client.application.test_client()
+        assert login(
+            user_client,
+            username,
+            'old-secure-password',
+        ).get_json()['code'] == 0
+
+        changed = user_client.post('/api/sys/user/change-password', json={
+            'old_password': 'old-secure-password',
+            'new_password': 'new-secure-password',
+        })
+
+        assert changed.get_json()['code'] == 0
+        with auth_client.application.app_context():
+            stored = get_db().execute(
+                'SELECT password FROM sys_user WHERE id=?',
+                (user_id,),
+            ).fetchone()['password']
+        assert '$' in stored
+        fresh_client = auth_client.application.test_client()
+        assert login(
+            fresh_client,
+            username,
+            'new-secure-password',
+        ).get_json()['code'] == 0
 
     def test_plain_user_can_read_role_permissions(self, plain_auth_client):
         response = plain_auth_client.get(
@@ -929,6 +1236,51 @@ class TestAuthorization:
         assert reset.get_json()['code'] == 0
         assert permissions.status_code == 200
         assert permissions.get_json()['code'] == 0
+        with auth_client.application.app_context():
+            stored = get_db().execute(
+                'SELECT password FROM sys_user WHERE id=?',
+                (plain_auth_client.user_id,),
+            ).fetchone()['password']
+        assert '$' in stored
+
+    @pytest.mark.parametrize(('method', 'route', 'payload'), (
+        ('get', '/api/backup/list', None),
+        ('post', '/api/backup/restore', {'id': 999999}),
+        ('get', '/api/backup/download/999999', None),
+        ('post', '/api/backup/delete', {'id': 999999}),
+    ))
+    def test_plain_user_cannot_manage_or_download_backups(
+        self,
+        plain_auth_client,
+        method,
+        route,
+        payload,
+    ):
+        response = getattr(plain_auth_client, method)(route, json=payload)
+
+        assert response.status_code == 403
+        assert response.get_json()['code'] == 403
+
+    def test_plain_user_cannot_create_backup(
+        self,
+        plain_auth_client,
+        monkeypatch,
+        tmp_path,
+    ):
+        from blueprints import backup as backup_module
+
+        source = tmp_path / 'source.db'
+        source.write_bytes(b'test-only-database')
+        backup_dir = tmp_path / 'backups'
+        backup_dir.mkdir()
+        monkeypatch.setattr(backup_module, 'DB_PATH', str(source))
+        monkeypatch.setattr(backup_module, 'BACKUP_DIR', str(backup_dir))
+
+        response = plain_auth_client.post('/api/backup/create', json={})
+
+        assert response.status_code == 403
+        assert response.get_json()['code'] == 403
+        assert list(backup_dir.iterdir()) == []
 
     def test_permission_required_fails_closed(self, app):
         user_id = _create_permission_user(
@@ -1526,6 +1878,35 @@ class TestProductionConsistency:
                 '/api/prod/report/delete',
                 json={'id': report_id},
             )
+
+        assert self._report_side_effect_snapshot(auth_client, ids) == before
+
+    def test_report_add_rolls_back_when_recalculation_fails(
+            self, auth_client, monkeypatch):
+        from blueprints import production as production_module
+
+        ids = create_production_chain(auth_client, planned_qty=10)
+        before = self._report_side_effect_snapshot(auth_client, ids)
+
+        def fail_recalculation(*args, **kwargs):
+            raise RuntimeError('forced aggregate failure after insert')
+
+        monkeypatch.setattr(
+            production_module,
+            '_recalculate_task_and_workorder',
+            fail_recalculation,
+        )
+        with pytest.raises(
+            RuntimeError,
+            match='forced aggregate failure after insert',
+        ):
+            auth_client.post('/api/prod/report/add', json={
+                'task_id': ids['task_id'],
+                'workorder_id': ids['workorder_id'],
+                'process_id': ids['process_id'],
+                'qualified_qty': 6,
+                'defect_qty': 1,
+            })
 
         assert self._report_side_effect_snapshot(auth_client, ids) == before
 
@@ -2186,23 +2567,55 @@ class TestEdgeCases:
         assert data.get('code') != 0
 
     def test_concurrent_number_generation(self, auth_client):
-        ids = []
-        for i in range(5):
-            resp = auth_client.post('/api/prod/workorder/add', json={
-                'product_id': 1, 'planned_qty': 10
+        suffix = uuid.uuid4().hex[:8]
+        product_id = response_id(auth_client.post(
+            '/api/base/product/add',
+            json={
+                'product_name': f'并发编号产品-{suffix}',
+                'code': f'CONCURRENT_{suffix}',
+            },
+        ))
+        clients = [
+            auth_client.application.test_client()
+            for _ in range(8)
+        ]
+        for thread_client in clients:
+            assert login(thread_client).get_json()['code'] == 0
+
+        def create_workorder(thread_client):
+            response = thread_client.post('/api/prod/workorder/add', json={
+                'product_id': product_id,
+                'planned_qty': 10,
             })
-            data = resp.get_json()
-            if data.get('code') == 0:
-                ids.append(data['data']['id'])
+            return response.status_code, response.get_json()
 
-        if ids:
-            resp = auth_client.get('/api/prod/workorder/list?size=100')
-            data = assert_success(resp)
-            order_nos = [w['order_no'] for w in data['data']['list'] if w['id'] in ids]
-            assert len(order_nos) == len(set(order_nos)), "Duplicate order numbers generated"
+        with ThreadPoolExecutor(max_workers=len(clients)) as executor:
+            results = list(executor.map(create_workorder, clients))
 
-            for wo_id in ids:
-                auth_client.post('/api/prod/workorder/delete', json={'id': wo_id})
+        assert all(status == 200 for status, _ in results), results
+        assert all(payload.get('code') == 0 for _, payload in results), results
+        ids = [payload['data']['id'] for _, payload in results]
+        response = auth_client.get('/api/prod/workorder/list?size=1000')
+        workorders = assert_success(response)['data']['list']
+        order_nos = [
+            workorder['order_no']
+            for workorder in workorders
+            if workorder['id'] in ids
+        ]
+        assert len(order_nos) == len(clients)
+        assert len(order_nos) == len(set(order_nos)), (
+            'Duplicate order numbers generated'
+        )
+
+        for workorder_id in ids:
+            auth_client.post(
+                '/api/prod/workorder/delete',
+                json={'id': workorder_id},
+            )
+        auth_client.post(
+            '/api/base/product/delete',
+            json={'id': product_id},
+        )
 
 
 # ==================== 13. Business Logic Tests ====================
@@ -2802,13 +3215,94 @@ class TestWarehouseScheduleCrud:
         assert response.get_json()['message'] == '请选择文件'
 
     def test_inventory_transaction_import_is_rejected(self, auth_client):
-        response = auth_client.post('/api/import/inv_transaction_log')
+        transaction_csv = (
+            '事务类型,产品ID,数量,仓库ID,库区ID,库位ID,'
+            '批次号,关联单号,关联类型,备注\n'
+            '入库,1,1,,,,B001,REF001,manual,forbidden\n'
+        ).encode('utf-8')
+        response = auth_client.post(
+            '/api/import/inv_transaction_log',
+            data={
+                'file': (
+                    io.BytesIO(transaction_csv),
+                    'transactions.csv',
+                ),
+            },
+            content_type='multipart/form-data',
+        )
 
         assert response.status_code == 200
         assert response.get_json()['message'] == '不支持导入该表'
         template = auth_client.get('/api/template/inv_transaction_log')
         assert template.status_code == 200
         assert template.get_json()['message'] == '不支持导入该表'
+
+    def test_warehouse_csv_import_persists_valid_rows(self, auth_client):
+        suffix = uuid.uuid4().hex[:8]
+        code = f'IMPORT_{suffix}'
+        csv_content = (
+            '仓库名称,仓库编码,地址,状态\n'
+            f'真实导入仓-{suffix},{code},测试地址,1\n'
+        ).encode('utf-8')
+
+        response = auth_client.post(
+            '/api/import/inv_warehouse',
+            data={
+                'file': (
+                    io.BytesIO(csv_content),
+                    'warehouses.csv',
+                ),
+            },
+            content_type='multipart/form-data',
+        )
+
+        payload = response.get_json()
+        assert payload['code'] == 0
+        assert payload['data']['success'] == 1
+        with auth_client.application.app_context():
+            row = get_db().execute(
+                'SELECT * FROM inv_warehouse WHERE code=?',
+                (code,),
+            ).fetchone()
+            assert row['warehouse_name'] == f'真实导入仓-{suffix}'
+            get_db().execute(
+                'DELETE FROM inv_warehouse WHERE code=?',
+                (code,),
+            )
+            get_db().commit()
+
+    def test_import_constraint_failure_rolls_back_entire_file(
+        self,
+        auth_client,
+    ):
+        suffix = uuid.uuid4().hex[:8]
+        code = f'ATOMIC_{suffix}'
+        csv_content = (
+            '仓库名称,仓库编码,地址,状态\n'
+            f'原子仓一-{suffix},{code},地址一,1\n'
+            f'原子仓二-{suffix},{code},地址二,1\n'
+        ).encode('utf-8')
+
+        response = auth_client.post(
+            '/api/import/inv_warehouse',
+            data={
+                'file': (
+                    io.BytesIO(csv_content),
+                    'atomic-warehouses.csv',
+                ),
+            },
+            content_type='multipart/form-data',
+        )
+
+        payload = response.get_json()
+        assert payload['code'] != 0
+        assert payload['data']['success'] == 0
+        with auth_client.application.app_context():
+            count = get_db().execute(
+                'SELECT COUNT(*) AS c FROM inv_warehouse WHERE code=?',
+                (code,),
+            ).fetchone()['c']
+        assert count == 0
 
     def test_area_list_supports_paging_keyword_and_sort(self, auth_client):
         suffix = uuid.uuid4().hex[:8]
@@ -2858,6 +3352,32 @@ class TestWarehouseScheduleCrud:
         assert data['total'] == 3
         assert len(data['list']) == 1
         assert data['list'][0]['location_name'] == f'分页库位-{suffix}-1'
+
+    def test_arrival_list_supports_paging_keyword_and_sort(self, auth_client):
+        suffix = uuid.uuid4().hex[:8]
+        ids = []
+        for index in range(3):
+            ids.append(response_id(auth_client.post('/api/arrival/add', json={
+                'expected_date': f'2026-08-0{index + 1}',
+                'remark': f'到货搜索-{suffix}-{index}',
+            })))
+
+        data = assert_success(auth_client.get(
+            f'/api/arrival/list?page=2&size=1&keyword={suffix}'
+            '&sort=remark&order=asc'
+        ))['data']
+
+        assert data['total'] == 3
+        assert data['page'] == 2
+        assert data['size'] == 1
+        assert len(data['list']) == 1
+        assert data['list'][0]['remark'] == f'到货搜索-{suffix}-1'
+
+        for arrival_id in ids:
+            auth_client.post(
+                '/api/arrival/delete',
+                json={'id': arrival_id},
+            )
 
     def test_calendar_list_supports_paging_keyword_sort_and_plan_filter(
         self,
@@ -3282,11 +3802,15 @@ class TestIntegrationStatus:
 
     def test_aps_returns_non_persistent_preview(self, auth_client):
         ids = create_production_chain(auth_client, planned_qty=10)
+        create_production_chain(auth_client, planned_qty=17)
         with auth_client.application.app_context():
-            before = dict(get_db().execute(
-                'SELECT * FROM prod_workorder WHERE id=?',
-                (ids['workorder_id'],),
-            ).fetchone())
+            before = [
+                dict(row)
+                for row in get_db().execute(
+                    """SELECT * FROM prod_workorder
+                       WHERE status=0 ORDER BY id"""
+                ).fetchall()
+            ]
 
         response = auth_client.post('/api/aps/schedule', json={
             'start_date': '2026-07-28',
@@ -3305,13 +3829,27 @@ class TestIntegrationStatus:
         )
         matching = next(
             detail for detail in payload['data']['details']
-            if detail['workorder'] == before['order_no']
+            if detail['workorder'] == next(
+                row['order_no']
+                for row in before
+                if row['id'] == ids['workorder_id']
+            )
         )
         assert matching['status'] == '待排程'
+        assert {
+            detail['workorder']
+            for detail in payload['data']['details']
+        } == {
+            row['order_no']
+            for row in before
+        }
 
         with auth_client.application.app_context():
-            after = dict(get_db().execute(
-                'SELECT * FROM prod_workorder WHERE id=?',
-                (ids['workorder_id'],),
-            ).fetchone())
+            after = [
+                dict(row)
+                for row in get_db().execute(
+                    """SELECT * FROM prod_workorder
+                       WHERE status=0 ORDER BY id"""
+                ).fetchall()
+            ]
         assert after == before

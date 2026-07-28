@@ -20,9 +20,9 @@ function loginLogLoad(page) {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(l) {
-            return '<tr><td>'+l.id+'</td><td>'+l.username+'</td><td>'+(l.login_ip||'-')+'</td>'
+            return '<tr><td>'+MESUI.escapeHtml(l.id)+'</td><td>'+MESUI.escapeHtml(l.username)+'</td><td>'+MESUI.escapeHtml(l.login_ip||'-')+'</td>'
                 +'<td><span class="tag '+(l.status?'tag-ok':'tag-no')+'">'+(l.status?'成功':'失败')+'</span></td>'
-                +'<td>'+(l.login_time||'')+'</td></tr>';
+                +'<td>'+MESUI.escapeHtml(l.login_time||'')+'</td></tr>';
         }).join('');
     });
 }
@@ -53,11 +53,22 @@ function configLoad() {
         var list = r.data && r.data.list ? r.data.list : [];
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">暂无配置</td></tr>'; return; }
-        tb.innerHTML = list.map(function(c) {
-            return '<tr><td>'+c.id+'</td><td><b>'+c.config_key+'</b></td><td>'+((c.config_value||'').substring(0,50))+'</td>'
-                +'<td>'+c.config_type+'</td><td>'+(c.description||'-')+'</td>'
-                +'<td class="actions"><button class="btn btn-blue btn-sm" onclick=\'configEdit('+escapeJson(c)+')\'>编辑</button></td></tr>';
+        tb.innerHTML = list.map(function(c, index) {
+            var value = c.value_configured
+                ? '<span class="tag tag-ok">已配置</span>'
+                : MESUI.escapeHtml((c.config_value||'').substring(0,50));
+            return '<tr><td>'+MESUI.escapeHtml(c.id)+'</td><td><b>'+MESUI.escapeHtml(c.config_key)+'</b></td><td>'+value+'</td>'
+                +'<td>'+MESUI.escapeHtml(c.config_type)+'</td><td>'+MESUI.escapeHtml(c.description||'-')+'</td>'
+                +'<td class="actions"><button class="btn btn-blue btn-sm config-edit" data-config-index="'+index+'">编辑</button></td></tr>';
         }).join('');
+        Array.prototype.forEach.call(
+            tb.querySelectorAll('.config-edit'),
+            function(button) {
+                button.onclick = function() {
+                    configEdit(list[Number(button.getAttribute('data-config-index'))]);
+                };
+            }
+        );
     });
 }
 function configAdd() {
@@ -77,12 +88,17 @@ function configAdd() {
     document.getElementById('modal').classList.add('show');
 }
 function configEdit(row) {
+    var configuredSecret = row.value_configured === true;
     document.getElementById('mTitle').textContent = '编辑配置';
-    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>配置键</label><input value="'+row.config_key+'" disabled></div></div>'
-        + '<div class="form-row"><div class="form-item"><label>配置值</label><input id="f_value" value="'+(row.config_value||'')+'"></div></div>'
-        + '<div class="form-row"><div class="form-item"><label>说明</label><input id="f_desc" value="'+(row.description||'')+'"></div></div>';
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>配置键</label><input value="'+MESUI.escapeHtml(row.config_key)+'" disabled></div></div>'
+        + '<div class="form-row"><div class="form-item"><label>配置值</label><input id="f_value" value="'+(configuredSecret?'':MESUI.escapeHtml(row.config_value||''))+'"'
+        +(configuredSecret?' placeholder="留空则保留现有值"':'')+'></div></div>'
+        + '<div class="form-row"><div class="form-item"><label>说明</label><input id="f_desc" value="'+MESUI.escapeHtml(row.description||'')+'"></div></div>';
     modalSaveHandler = function() {
-        api('/api/sys/config/save',{method:'POST',body:{config_key:row.config_key, config_value:document.getElementById('f_value').value, description:document.getElementById('f_desc').value}}).then(function(r) {
+        var value = document.getElementById('f_value').value;
+        var body = {config_key:row.config_key, description:document.getElementById('f_desc').value};
+        if(!configuredSecret || String(value).trim()) body.config_value = value;
+        api('/api/sys/config/save',{method:'POST',body:body}).then(function(r) {
             if(r&&r.code===0) { closeModal(); configLoad(); } else alert(r?r.message:'保存失败');
         });
     };
@@ -105,11 +121,12 @@ function annLoad() {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">暂无公告</td></tr>'; return; }
         tb.innerHTML = list.map(function(a) {
-            return '<tr><td>'+a.id+'</td><td>'+a.title+'</td><td>'+a.notice_type+'</td>'
-                +'<td>'+a.priority+'</td>'
+            var id = Number(a.id);
+            return '<tr><td>'+MESUI.escapeHtml(a.id)+'</td><td>'+MESUI.escapeHtml(a.title)+'</td><td>'+MESUI.escapeHtml(a.notice_type)+'</td>'
+                +'<td>'+MESUI.escapeHtml(a.priority)+'</td>'
                 +'<td><span class="tag '+(a.status?'tag-ok':'tag-draft')+'">'+(a.status?'发布':'草稿')+'</span></td>'
-                +'<td>'+(a.publish_time||'')+'</td>'
-                +'<td><button class="btn btn-red btn-sm" onclick="annDel('+a.id+')">删除</button></td></tr>';
+                +'<td>'+MESUI.escapeHtml(a.publish_time||'')+'</td>'
+                +'<td><button class="btn btn-red btn-sm" onclick="annDel('+id+')">删除</button></td></tr>';
         }).join('');
     });
 }
@@ -145,14 +162,15 @@ function onlineLoad() {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">暂无在线用户</td></tr>'; return; }
         tb.innerHTML = list.map(function(u) {
-            return '<tr><td>'+u.user_id+'</td><td>'+u.username+'</td><td>'+(u.login_ip||'-')+'</td>'
-                +'<td>'+(u.login_time||'')+'</td><td>'+(u.last_active||'')+'</td>'
-                +'<td><button class="btn btn-red btn-sm" onclick="kickUser('+u.user_id+')">强制下线</button></td></tr>';
+            var userId = Number(u.user_id);
+            return '<tr><td>'+MESUI.escapeHtml(u.user_id)+'</td><td>'+MESUI.escapeHtml(u.username)+'</td><td>'+MESUI.escapeHtml(u.login_ip||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(u.login_time||'')+'</td><td>'+MESUI.escapeHtml(u.last_active||'')+'</td>'
+                +'<td><button class="btn btn-red btn-sm" onclick="kickUser('+userId+')">移出在线列表</button></td></tr>';
         }).join('');
     });
 }
 function kickUser(userId) {
-    if(!confirm('确定强制下线？')) return;
+    if(!confirm('确定从在线列表移除？现有会话不会被强制失效。')) return;
     api('/api/sys/online/kick',{method:'POST',body:{user_id:userId}}).then(function(r) {
         if(r&&r.code===0) { onlineLoad(); } else alert(r?r.message:'操作失败');
     });
@@ -207,9 +225,10 @@ function ipLoad() {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">暂无IP白名单</td></tr>'; return; }
         tb.innerHTML = list.map(function(ip) {
-            return '<tr><td>'+ip.id+'</td><td><b>'+ip.ip_address+'</b></td><td>'+(ip.description||'-')+'</td>'
+            var id = Number(ip.id);
+            return '<tr><td>'+MESUI.escapeHtml(ip.id)+'</td><td><b>'+MESUI.escapeHtml(ip.ip_address)+'</b></td><td>'+MESUI.escapeHtml(ip.description||'-')+'</td>'
                 +'<td><span class="tag '+(ip.status?'tag-ok':'tag-draft')+'">'+(ip.status?'启用':'禁用')+'</span></td>'
-                +'<td><button class="btn btn-red btn-sm" onclick="ipDel('+ip.id+')">删除</button></td></tr>';
+                +'<td><button class="btn btn-red btn-sm" onclick="ipDel('+id+')">删除</button></td></tr>';
         }).join('');
     });
 }
@@ -244,9 +263,10 @@ function ptLoad() {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">暂无模板</td></tr>'; return; }
         tb.innerHTML = list.map(function(t) {
-            return '<tr><td>'+t.id+'</td><td>'+t.template_name+'</td><td>'+t.biz_type+'</td>'
+            var id = Number(t.id);
+            return '<tr><td>'+MESUI.escapeHtml(t.id)+'</td><td>'+MESUI.escapeHtml(t.template_name)+'</td><td>'+MESUI.escapeHtml(t.biz_type)+'</td>'
                 +'<td><span class="tag '+(t.status?'tag-ok':'tag-draft')+'">'+(t.status?'启用':'禁用')+'</span></td>'
-                +'<td><button class="btn btn-red btn-sm" onclick="ptDel('+t.id+')">删除</button></td></tr>';
+                +'<td><button class="btn btn-red btn-sm" onclick="ptDel('+id+')">删除</button></td></tr>';
         }).join('');
     });
 }
@@ -283,10 +303,11 @@ function ncLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">暂无渠道</td></tr>'; return; }
         var types = {email:'邮件',dingtalk:'钉钉',wechat:'企业微信',sms:'短信'};
         tb.innerHTML = list.map(function(n) {
-            return '<tr><td>'+n.id+'</td><td>'+n.channel_name+'</td><td>'+(types[n.channel_type]||n.channel_type)+'</td>'
+            var id = Number(n.id);
+            return '<tr><td>'+MESUI.escapeHtml(n.id)+'</td><td>'+MESUI.escapeHtml(n.channel_name)+'</td><td>'+MESUI.escapeHtml(types[n.channel_type]||n.channel_type)+'</td>'
                 +'<td><span class="tag '+(n.enabled?'tag-ok':'tag-draft')+'">'+(n.enabled?'启用':'禁用')+'</span></td>'
-                +'<td><button class="btn btn-blue btn-sm" onclick="ncTest('+n.id+')">测试</button> '
-                +'<button class="btn btn-red btn-sm" onclick="ncDel('+n.id+')">删除</button></td></tr>';
+                +'<td><button class="btn btn-blue btn-sm" onclick="ncTest('+id+')">测试</button> '
+                +'<button class="btn btn-red btn-sm" onclick="ncDel('+id+')">删除</button></td></tr>';
         }).join('');
     });
 }

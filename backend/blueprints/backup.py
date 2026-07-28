@@ -4,7 +4,7 @@ import shutil
 import datetime
 from flask import Blueprint, request, jsonify, send_file
 from utils.database import get_db, DB_PATH, BASE_DIR
-from utils.helpers import login_required
+from utils.helpers import admin_required
 
 backup_bp = Blueprint('backup', __name__)
 
@@ -13,7 +13,7 @@ os.makedirs(BACKUP_DIR, exist_ok=True)
 
 
 @backup_bp.route('/api/backup/list')
-@login_required
+@admin_required
 def backup_list():
     db = get_db()
     rows = db.execute("SELECT * FROM sys_backup ORDER BY id DESC").fetchall()
@@ -21,7 +21,7 @@ def backup_list():
 
 
 @backup_bp.route('/api/backup/create', methods=['POST'])
-@login_required
+@admin_required
 def backup_create():
     timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
     backup_name = f"mes_backup_{timestamp}.db"
@@ -38,7 +38,7 @@ def backup_create():
 
 
 @backup_bp.route('/api/backup/restore', methods=['POST'])
-@login_required
+@admin_required
 def backup_restore():
     d = request.json
     backup_id = d.get('id')
@@ -55,7 +55,7 @@ def backup_restore():
 
 
 @backup_bp.route('/api/backup/download/<int:backup_id>')
-@login_required
+@admin_required
 def backup_download(backup_id):
     db = get_db()
     backup = db.execute("SELECT * FROM sys_backup WHERE id=?", (backup_id,)).fetchone()
@@ -65,7 +65,7 @@ def backup_download(backup_id):
 
 
 @backup_bp.route('/api/backup/delete', methods=['POST'])
-@login_required
+@admin_required
 def backup_delete():
     d = request.json
     backup_id = d.get('id')

@@ -193,15 +193,50 @@ def transaction_add():
 @login_required
 def arrival_list():
     db = get_db()
-    page = int(request.args.get('page', 1))
-    size = int(request.args.get('size', 20))
+    page = max(1, int(request.args.get('page', 1)))
+    size = max(1, int(request.args.get('size', 20)))
     offset = (page - 1) * size
-    total = db.execute("SELECT COUNT(*) as c FROM inv_arrival_notice").fetchone()['c']
-    rows = db.execute('''SELECT a.*, s.supplier_name 
-        FROM inv_arrival_notice a 
-        LEFT JOIN base_supplier s ON a.supplier_id=s.id
-        ORDER BY a.id DESC LIMIT ? OFFSET ?''', (size, offset)).fetchall()
-    return jsonify({'code': 0, 'data': {'list': [dict(r) for r in rows], 'total': total}})
+    where = ' WHERE 1=1'
+    params = []
+    keyword = request.args.get('keyword', '').strip()
+    if keyword:
+        where += ''' AND (
+            a.notice_no LIKE ? OR a.expected_date LIKE ?
+            OR a.remark LIKE ? OR s.supplier_name LIKE ?
+        )'''
+        like = f'%{keyword}%'
+        params.extend([like, like, like, like])
+    sort_columns = {
+        'id': 'a.id',
+        'notice_no': 'a.notice_no',
+        'supplier_id': 'a.supplier_id',
+        'supplier_name': 's.supplier_name',
+        'expected_date': 'a.expected_date',
+        'status': 'a.status',
+        'remark': 'a.remark',
+        'created_at': 'a.created_at',
+    }
+    sort = sort_columns.get(request.args.get('sort'), 'a.id')
+    order = request.args.get('order', 'DESC').upper()
+    if order not in ('ASC', 'DESC'):
+        order = 'DESC'
+    from_clause = ''' FROM inv_arrival_notice a
+        LEFT JOIN base_supplier s ON a.supplier_id=s.id'''
+    total = db.execute(
+        'SELECT COUNT(*) AS c' + from_clause + where,
+        params,
+    ).fetchone()['c']
+    rows = db.execute(
+        'SELECT a.*, s.supplier_name' + from_clause + where
+        + f' ORDER BY {sort} {order} LIMIT ? OFFSET ?',
+        params + [size, offset],
+    ).fetchall()
+    return jsonify({'code': 0, 'data': {
+        'list': [dict(r) for r in rows],
+        'total': total,
+        'page': page,
+        'size': size,
+    }})
 
 
 @warehouse_bp.route('/api/arrival/add', methods=['POST'])

@@ -126,7 +126,7 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-function loadApi(sequence) {
+function loadApi(sequence, options = {}) {
   let calls = 0;
   let logoutCalls = 0;
   const context = vm.createContext({
@@ -138,6 +138,7 @@ function loadApi(sequence) {
     String,
     doLogout() {
       logoutCalls += 1;
+      if (options.logoutError) throw options.logoutError;
     },
     fetch: async () => {
       const next = sequence[Math.min(calls, sequence.length - 1)];
@@ -271,4 +272,16 @@ test('non-JSON 401 responses also trigger logout', async () => {
   assert.equal(loaded.logoutCalls(), 1);
   assert.equal(result.code, 401);
   assert.match(result.message, /HTTP 401/);
+});
+
+test('programming errors during response handling are not mislabeled as network failures', async () => {
+  const programmingError = new Error('logout implementation bug');
+  const loaded = loadApi([
+    jsonResponse({code: 401, message: '登录已失效'}, 401),
+  ], {logoutError: programmingError});
+
+  await assert.rejects(
+    loaded.api('/api/items'),
+    /logout implementation bug/
+  );
 });

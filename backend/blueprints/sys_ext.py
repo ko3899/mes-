@@ -1,11 +1,19 @@
 """系统管理增强蓝图 - 密码/权限/在线用户/登录日志/配置/公告/审计/监控/IP白名单/打印模板"""
 import os
-import hashlib
 import datetime
 import psutil
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db, BASE_DIR
-from utils.helpers import admin_required, login_required, crud_list, crud_add, crud_update, crud_delete
+from utils.helpers import (
+    admin_required,
+    crud_add,
+    crud_delete,
+    crud_list,
+    crud_update,
+    hash_password,
+    login_required,
+    verify_password,
+)
 
 sys_ext_bp = Blueprint('sys_ext', __name__)
 
@@ -33,11 +41,10 @@ def change_password():
     if not user:
         return jsonify({'code': 404, 'message': '用户不存在'})
     
-    old_hash = hashlib.md5(old_pwd.encode()).hexdigest()
-    if old_hash != user['password']:
+    if not verify_password(old_pwd, user['password']):
         return jsonify({'code': 400, 'message': '旧密码错误'})
     
-    new_hash = hashlib.md5(new_pwd.encode()).hexdigest()
+    new_hash = hash_password(new_pwd)
     db.execute("UPDATE sys_user SET password=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", (new_hash, user_id))
     db.commit()
     return jsonify({'code': 0, 'message': '密码修改成功'})
@@ -51,7 +58,7 @@ def reset_password():
     new_pwd = d.get('new_password', '123456')
     
     db = get_db()
-    new_hash = hashlib.md5(new_pwd.encode()).hexdigest()
+    new_hash = hash_password(new_pwd)
     db.execute("UPDATE sys_user SET password=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", (new_hash, target_id))
     db.commit()
     return jsonify({'code': 0, 'message': f'密码已重置为: {new_pwd}'})
@@ -84,7 +91,7 @@ def set_role_permissions():
 
 # ==================== 在线用户 ====================
 @sys_ext_bp.route('/api/sys/online/list')
-@login_required
+@admin_required
 def online_list():
     now = datetime.datetime.now()
     # 清理超过30分钟的用户
@@ -97,13 +104,16 @@ def online_list():
 
 
 @sys_ext_bp.route('/api/sys/online/kick', methods=['POST'])
-@login_required
+@admin_required
 def kick_user():
     d = request.json
     target_id = str(d.get('user_id'))
     if target_id in _online_users:
         del _online_users[target_id]
-        return jsonify({'code': 0, 'message': '已强制下线'})
+        return jsonify({
+            'code': 0,
+            'message': '已从在线列表移除；现有会话不会被强制失效',
+        })
     return jsonify({'code': 404, 'message': '用户不在线'})
 
 
@@ -120,13 +130,13 @@ def record_online_user(user_id, username, ip):
 
 # ==================== 登录日志 ====================
 @sys_ext_bp.route('/api/sys/login-log/list')
-@login_required
+@admin_required
 def login_log_list():
     return jsonify(crud_list('sys_login_log', request.args))
 
 
 @sys_ext_bp.route('/api/sys/login-log/statistics')
-@login_required
+@admin_required
 def login_log_stats():
     db = get_db()
     today = datetime.date.today().strftime('%Y-%m-%d')
@@ -151,36 +161,72 @@ def login_log_stats():
 
 
 # ==================== 系统配置 ====================
+_SENSITIVE_CONFIG_KEY_PARTS = (
+    'api_key',
+    'secret',
+    'password',
+    'token',
+)
+
+
+def _is_sensitive_config_key(key):
+    normalized = str(key or '').lower()
+    return any(part in normalized for part in _SENSITIVE_CONFIG_KEY_PARTS)
+
+
+def _redact_config(config):
+    result = dict(config)
+    if _is_sensitive_config_key(result.get('config_key')):
+        value = result.pop('config_value', None)
+        result['value_configured'] = bool(str(value or '').strip())
+    return result
+
+
 @sys_ext_bp.route('/api/sys/config/list')
-@login_required
+@admin_required
 def config_list():
-    return jsonify(crud_list('sys_config', request.args))
+    result = crud_list('sys_config', request.args)
+    result['data']['list'] = [
+        _redact_config(config)
+        for config in result['data']['list']
+    ]
+    return jsonify(result)
 
 
 @sys_ext_bp.route('/api/sys/config/get')
-@login_required
+@admin_required
 def config_get():
     key = request.args.get('key', '')
     db = get_db()
     config = db.execute("SELECT * FROM sys_config WHERE config_key=?", (key,)).fetchone()
     if config:
-        return jsonify({'code': 0, 'data': dict(config)})
+        return jsonify({'code': 0, 'data': _redact_config(config)})
     return jsonify({'code': 404, 'message': '配置不存在'})
 
 
 @sys_ext_bp.route('/api/sys/config/save', methods=['POST'])
-@login_required
+@admin_required
 def config_save():
     d = request.json
     db = get_db()
     key = d.get('config_key')
-    existing = db.execute("SELECT id FROM sys_config WHERE config_key=?", (key,)).fetchone()
+    existing = db.execute(
+        "SELECT id, config_value FROM sys_config WHERE config_key=?",
+        (key,),
+    ).fetchone()
+    value = d.get('config_value', '')
+    if (
+        existing
+        and _is_sensitive_config_key(key)
+        and not str(value or '').strip()
+    ):
+        value = existing['config_value']
     if existing:
         db.execute("UPDATE sys_config SET config_value=?, description=?, updated_at=CURRENT_TIMESTAMP WHERE config_key=?",
-                   (d.get('config_value', ''), d.get('description', ''), key))
+                   (value, d.get('description', ''), key))
     else:
         db.execute("INSERT INTO sys_config (config_key, config_value, config_type, description) VALUES (?,?,?,?)",
-                   (key, d.get('config_value', ''), d.get('config_type', 'string'), d.get('description', '')))
+                   (key, value, d.get('config_type', 'string'), d.get('description', '')))
     db.commit()
     return jsonify({'code': 0, 'message': '保存成功'})
 
@@ -193,7 +239,7 @@ def announcement_list():
 
 
 @sys_ext_bp.route('/api/sys/announcement/add', methods=['POST'])
-@login_required
+@admin_required
 def announcement_add():
     data = request.json
     data['publisher'] = session.get('user_id')
@@ -201,13 +247,13 @@ def announcement_add():
 
 
 @sys_ext_bp.route('/api/sys/announcement/update', methods=['POST'])
-@login_required
+@admin_required
 def announcement_update():
     return jsonify(crud_update('sys_announcement', request.json))
 
 
 @sys_ext_bp.route('/api/sys/announcement/delete', methods=['POST'])
-@login_required
+@admin_required
 def announcement_delete():
     return jsonify(crud_delete('sys_announcement', request.json.get('id')))
 
@@ -256,7 +302,7 @@ def audit_stats():
 
 # ==================== 数据清理 ====================
 @sys_ext_bp.route('/api/sys/cleanup/logs', methods=['POST'])
-@login_required
+@admin_required
 def cleanup_logs():
     d = request.json
     days = int(d.get('days', 90))
@@ -268,7 +314,7 @@ def cleanup_logs():
 
 
 @sys_ext_bp.route('/api/sys/cleanup/login-logs', methods=['POST'])
-@login_required
+@admin_required
 def cleanup_login_logs():
     d = request.json
     days = int(d.get('days', 90))
@@ -280,7 +326,7 @@ def cleanup_login_logs():
 
 
 @sys_ext_bp.route('/api/sys/cleanup/vacuum', methods=['POST'])
-@login_required
+@admin_required
 def vacuum_database():
     db = get_db()
     db.execute("VACUUM")
@@ -319,75 +365,79 @@ def system_monitor():
 
 # ==================== IP白名单 ====================
 @sys_ext_bp.route('/api/sys/ip-whitelist/list')
-@login_required
+@admin_required
 def ip_whitelist_list():
     return jsonify(crud_list('sys_ip_whitelist', request.args))
 
 
 @sys_ext_bp.route('/api/sys/ip-whitelist/add', methods=['POST'])
-@login_required
+@admin_required
 def ip_whitelist_add():
     return jsonify(crud_add('sys_ip_whitelist', request.json))
 
 
 @sys_ext_bp.route('/api/sys/ip-whitelist/delete', methods=['POST'])
-@login_required
+@admin_required
 def ip_whitelist_delete():
     return jsonify(crud_delete('sys_ip_whitelist', request.json.get('id')))
 
 
 # ==================== 打印模板 ====================
 @sys_ext_bp.route('/api/sys/print-template/list')
-@login_required
+@admin_required
 def print_template_list():
     return jsonify(crud_list('sys_print_template', request.args))
 
 
 @sys_ext_bp.route('/api/sys/print-template/add', methods=['POST'])
-@login_required
+@admin_required
 def print_template_add():
     return jsonify(crud_add('sys_print_template', request.json))
 
 
 @sys_ext_bp.route('/api/sys/print-template/update', methods=['POST'])
-@login_required
+@admin_required
 def print_template_update():
     return jsonify(crud_update('sys_print_template', request.json))
 
 
 @sys_ext_bp.route('/api/sys/print-template/delete', methods=['POST'])
-@login_required
+@admin_required
 def print_template_delete():
     return jsonify(crud_delete('sys_print_template', request.json.get('id')))
 
 
 # ==================== 通知渠道 ====================
 @sys_ext_bp.route('/api/sys/notify-channel/list')
-@login_required
+@admin_required
 def notify_channel_list():
-    return jsonify(crud_list('sys_notify_channel', request.args))
+    result = crud_list('sys_notify_channel', request.args)
+    for channel in result['data']['list']:
+        config = channel.pop('config', None)
+        channel['config_configured'] = bool(str(config or '').strip())
+    return jsonify(result)
 
 
 @sys_ext_bp.route('/api/sys/notify-channel/add', methods=['POST'])
-@login_required
+@admin_required
 def notify_channel_add():
     return jsonify(crud_add('sys_notify_channel', request.json))
 
 
 @sys_ext_bp.route('/api/sys/notify-channel/update', methods=['POST'])
-@login_required
+@admin_required
 def notify_channel_update():
     return jsonify(crud_update('sys_notify_channel', request.json))
 
 
 @sys_ext_bp.route('/api/sys/notify-channel/delete', methods=['POST'])
-@login_required
+@admin_required
 def notify_channel_delete():
     return jsonify(crud_delete('sys_notify_channel', request.json.get('id')))
 
 
 @sys_ext_bp.route('/api/sys/notify-channel/test', methods=['POST'])
-@login_required
+@admin_required
 def notify_channel_test():
     """测试通知渠道"""
     return jsonify({

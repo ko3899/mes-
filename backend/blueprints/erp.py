@@ -1,13 +1,13 @@
 """ERP集成蓝图 - 用友/金蝶/SAP对接"""
 from flask import Blueprint, request, jsonify
 from utils.database import get_db
-from utils.helpers import login_required
+from utils.helpers import admin_required, login_required
 
 erp_bp = Blueprint('erp', __name__)
 
 
 @erp_bp.route('/api/erp/config')
-@login_required
+@admin_required
 def erp_config():
     """获取ERP配置"""
     db = get_db()
@@ -21,12 +21,22 @@ def erp_config():
 
 
 @erp_bp.route('/api/erp/config/save', methods=['POST'])
-@login_required
+@admin_required
 def erp_config_save():
     """保存ERP配置"""
     d = request.json
     db = get_db()
+    allowed_keys = {
+        'erp_type',
+        'erp_url',
+        'erp_api_key',
+        'erp_sync_enabled',
+    }
     for key, val in d.items():
+        if key not in allowed_keys:
+            continue
+        if key == 'erp_api_key' and not str(val or '').strip():
+            continue
         existing = db.execute("SELECT id FROM sys_config WHERE config_key=?", (key,)).fetchone()
         if existing:
             db.execute("UPDATE sys_config SET config_value=? WHERE config_key=?", (val, key))

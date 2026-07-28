@@ -1,7 +1,7 @@
 """AI质检蓝图 - 视觉检测/智能分析"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add
+from utils.helpers import admin_required, login_required, crud_list, crud_add
 
 ai_bp = Blueprint('ai', __name__)
 
@@ -17,7 +17,7 @@ def ai_inspect():
 
 
 @ai_bp.route('/api/ai/config')
-@login_required
+@admin_required
 def ai_config():
     """AI配置"""
     keys = ('ai_enabled', 'ai_provider', 'ai_api_key', 'ai_model')
@@ -41,12 +41,22 @@ def ai_config():
 
 
 @ai_bp.route('/api/ai/config/save', methods=['POST'])
-@login_required
+@admin_required
 def ai_config_save():
     """保存AI配置"""
     d = request.json
     db = get_db()
+    allowed_keys = {
+        'ai_enabled',
+        'ai_provider',
+        'ai_api_key',
+        'ai_model',
+    }
     for key, val in d.items():
+        if key not in allowed_keys:
+            continue
+        if key == 'ai_api_key' and not str(val or '').strip():
+            continue
         existing = db.execute("SELECT id FROM sys_config WHERE config_key=?", (key,)).fetchone()
         if existing:
             db.execute("UPDATE sys_config SET config_value=? WHERE config_key=?", (val, key))

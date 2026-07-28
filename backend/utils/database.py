@@ -124,6 +124,14 @@ def init_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
 
+    db.execute('''CREATE TABLE IF NOT EXISTS sys_login_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        login_ip TEXT,
+        status INTEGER DEFAULT 1,
+        login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
     # ==================== 基础数据 ====================
     db.execute('''CREATE TABLE IF NOT EXISTS base_workshop (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -207,6 +215,17 @@ def init_db():
         unit_name TEXT NOT NULL,
         unit_symbol TEXT NOT NULL,
         status INTEGER DEFAULT 1
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS base_supplier (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_name TEXT NOT NULL,
+        code TEXT NOT NULL UNIQUE,
+        contact TEXT,
+        phone TEXT,
+        address TEXT,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
 
     db.execute('''CREATE TABLE IF NOT EXISTS base_salary_config (
@@ -712,6 +731,32 @@ def init_db():
         link TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES sys_user(id)
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS sys_ip_whitelist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip_address TEXT NOT NULL UNIQUE,
+        description TEXT,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS sys_print_template (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_name TEXT NOT NULL,
+        biz_type TEXT,
+        template_content TEXT,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS sys_notify_channel (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_name TEXT NOT NULL,
+        channel_type TEXT NOT NULL,
+        config TEXT,
+        enabled INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
 
     # ==================== 初始化数据 ====================

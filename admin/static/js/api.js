@@ -50,14 +50,14 @@ function api(url, opts) {
                 clearApiCache();
             }
             return data;
-        }).catch(function(error) {
+        }, function(error) {
             console.error('API Parse Error:', error);
             return {
                 code: response.status || -1,
                 message: '请求失败（HTTP ' + response.status + '）'
             };
         });
-    }).catch(function(error) {
+    }, function(error) {
         console.error('API Error:', error);
         return {code: -1, message: '网络请求失败'};
     });

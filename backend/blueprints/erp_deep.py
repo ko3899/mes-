@@ -2,7 +2,7 @@
 import json
 from flask import Blueprint, request, jsonify
 from utils.database import get_db
-from utils.helpers import login_required
+from utils.helpers import admin_required, login_required
 
 erp_deep_bp = Blueprint('erp_deep', __name__)
 
@@ -48,7 +48,7 @@ def erp_sync_status():
 
 
 @erp_deep_bp.route('/api/erp/config/yonyou', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def yonyou_config():
     """用友配置"""
     db = get_db()
@@ -64,7 +64,19 @@ def yonyou_config():
         return jsonify({'code': 0, 'data': configs})
     else:
         d = request.json
+        allowed_keys = {
+            'yonyou_url',
+            'yonyou_app_key',
+            'yonyou_app_secret',
+        }
         for key, val in d.items():
+            if key not in allowed_keys:
+                continue
+            if (
+                key == 'yonyou_app_secret'
+                and not str(val or '').strip()
+            ):
+                continue
             existing = db.execute("SELECT id FROM sys_config WHERE config_key=?", (key,)).fetchone()
             if existing:
                 db.execute("UPDATE sys_config SET config_value=? WHERE config_key=?", (val, key))
@@ -75,7 +87,7 @@ def yonyou_config():
 
 
 @erp_deep_bp.route('/api/erp/config/kingdee', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def kingdee_config():
     """金蝶配置"""
     db = get_db()
@@ -91,7 +103,19 @@ def kingdee_config():
         return jsonify({'code': 0, 'data': configs})
     else:
         d = request.json
+        allowed_keys = {
+            'kingdee_url',
+            'kingdee_app_key',
+            'kingdee_app_secret',
+        }
         for key, val in d.items():
+            if key not in allowed_keys:
+                continue
+            if (
+                key == 'kingdee_app_secret'
+                and not str(val or '').strip()
+            ):
+                continue
             existing = db.execute("SELECT id FROM sys_config WHERE config_key=?", (key,)).fetchone()
             if existing:
                 db.execute("UPDATE sys_config SET config_value=? WHERE config_key=?", (val, key))

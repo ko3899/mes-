@@ -1,11 +1,34 @@
 """辅助函数模块"""
 import datetime
+import hashlib
 import json
 import sqlite3
 import re
+import secrets
 from functools import wraps
 from flask import session, jsonify, request
 from .database import get_db
+
+
+def hash_password(password, salt=None):
+    """Hash a password with PBKDF2-SHA256 and a per-password salt."""
+    if salt is None:
+        salt = secrets.token_hex(16)
+    password_hash = hashlib.pbkdf2_hmac(
+        'sha256',
+        password.encode(),
+        salt.encode(),
+        100000,
+    )
+    return f"{salt}${password_hash.hex()}"
+
+
+def verify_password(password, stored_hash):
+    """Verify PBKDF2 hashes while retaining legacy MD5 compatibility."""
+    if '$' not in stored_hash:
+        return hashlib.md5(password.encode()).hexdigest() == stored_hash
+    salt, _ = stored_hash.split('$', 1)
+    return hash_password(password, salt) == stored_hash
 
 
 def _validate_column_name(name):

@@ -474,6 +474,94 @@ test('an older list response cannot overwrite a newly rendered page', async () =
   assert.doesNotMatch(elements.tb.innerHTML, /crudEdit\(1\)/);
 });
 
+test('a pending delete cannot reload a page after navigation', async () => {
+  const deletion = deferred();
+  let reloads = 0;
+  const context = loadBrowserScript('admin/static/js/crud.js', {
+    MESUI: {escapeHtml, statusHtml},
+    localStorage: {getItem() { return null; }, setItem() {}},
+    selectedRows: new Set(),
+    confirm() { return true; },
+    alert() {},
+    api() { return deletion.promise; },
+  });
+  context.curCrudActions = {delete: true};
+  context.crudRenderToken = 10;
+  context.curApiBase = '/api/old-page';
+  context.crudLoad = function() { reloads += 1; };
+
+  context.crudDel(7);
+  context.crudRenderToken = 11;
+  context.curApiBase = '/api/new-page';
+  deletion.resolve({code: 0});
+  await nextTurn();
+
+  assert.equal(reloads, 0);
+});
+
+test('a pending import cannot update or close a page after navigation', async () => {
+  const upload = deferred();
+  const elements = {
+    mTitle: browserElement(),
+    mBody: browserElement(),
+    modal: browserElement(),
+    importFile: {
+      ...browserElement(),
+      files: [{name: 'rows.csv', size: 32}],
+    },
+    importPreview: browserElement(),
+    importResult: browserElement(),
+  };
+  let cacheInvalidations = 0;
+  let closes = 0;
+  let reloads = 0;
+  let delayed = null;
+  class FormDataDouble {
+    append() {}
+  }
+  const context = loadBrowserScript('admin/static/js/crud.js', {
+    MESUI: {escapeHtml, statusHtml},
+    localStorage: {getItem() { return null; }, setItem() {}},
+    document: {
+      getElementById(id) { return elements[id] || null; },
+    },
+    selectedRows: new Set(),
+    FormData: FormDataDouble,
+    fetch() { return upload.promise; },
+    clearApiCache() { cacheInvalidations += 1; },
+    closeModal() { closes += 1; },
+    setTimeout(callback) { delayed = callback; },
+    alert() {},
+  });
+  context.curCrudActions = {import: true};
+  context.crudRenderToken = 20;
+  context.curApiBase = '/api/old-page';
+  context.curDataTable = 'inv_warehouse';
+  context.crudLoad = function() { reloads += 1; };
+
+  context.doImport();
+  context.modalSaveHandler();
+  const loadingHtml = elements.importResult.innerHTML;
+  context.crudRenderToken = 21;
+  context.curApiBase = '/api/new-page';
+  upload.resolve({
+    json() {
+      return Promise.resolve({
+        code: 0,
+        message: '导入成功',
+        data: {success: 1, errors: []},
+      });
+    },
+  });
+  await nextTurn();
+  if (delayed) delayed();
+
+  assert.equal(cacheInvalidations, 1);
+  assert.equal(elements.importResult.innerHTML, loadingHtml);
+  assert.equal(closes, 0);
+  assert.equal(reloads, 0);
+});
+
 test('a stale select response cannot open a modal after page invalidation', async () => {
   const options = deferred();
   let modalShown = false;

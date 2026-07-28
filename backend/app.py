@@ -483,6 +483,17 @@ def create_app():
                     except Exception as e:
                         error_rows.append(f"第{i}行: {str(e)}")
 
+            if error_rows:
+                db.rollback()
+                return jsonify({
+                    'code': 400,
+                    'message': '导入失败，文件中的数据未写入',
+                    'data': {
+                        'success': 0,
+                        'errors': error_rows[:10],
+                    },
+                })
+
             db.commit()
             return jsonify({
                 'code': 0,
@@ -490,6 +501,7 @@ def create_app():
                 'data': {'success': success_count, 'errors': error_rows[:10]}
             })
         except Exception as e:
+            db.rollback()
             return jsonify({'code': 500, 'message': f'导入失败: {str(e)}'})
 
     @app.route('/api/template/<table>')

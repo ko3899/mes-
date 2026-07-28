@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { escapeHtml, menuPage, statusHtml } =
+const { escapeHtml, menuPage, statusHtml, errorMessage } =
   require('../admin/static/js/ui_utils.js');
 
 const projectRoot = path.resolve(__dirname, '..');
@@ -89,6 +89,7 @@ function createImportFlow(response) {
         },
       });
     },
+    clearApiCache() {},
     setTimeout() {},
     alert() {},
   });
@@ -118,6 +119,25 @@ test('escapeHtml covers all attribute-breaking characters', () => {
   assert.equal(
     escapeHtml(`&<>"'`),
     '&amp;&lt;&gt;&quot;&#39;'
+  );
+});
+
+test('errorMessage is exported for modules and attached to the browser global', () => {
+  assert.equal(
+    errorMessage({message: '服务明确失败'}, '默认失败'),
+    '服务明确失败'
+  );
+  assert.equal(errorMessage(null, '默认失败'), '默认失败');
+
+  const context = vm.createContext({});
+  const source = fs.readFileSync(
+    path.join(projectRoot, 'admin/static/js/ui_utils.js'),
+    'utf8'
+  );
+  vm.runInContext(source, context, {filename: 'ui_utils.js'});
+  assert.equal(
+    context.MESUI.errorMessage({message: '浏览器错误'}, '默认失败'),
+    '浏览器错误'
   );
 });
 
@@ -441,6 +461,23 @@ test('doImport escapes successful response messages and row errors', async () =>
     elements.importResult.innerHTML,
     /&lt;svg onload=alert\(3\)&gt;/
   );
+});
+
+test('successful raw-file import invalidates cached GET data before reload', async () => {
+  const {context} = createImportFlow({
+    code: 0,
+    message: '导入成功',
+    data: {success: 1, errors: []},
+  });
+  let invalidations = 0;
+  context.clearApiCache = function() {
+    invalidations += 1;
+  };
+
+  context.modalSaveHandler();
+  await nextTurn();
+
+  assert.equal(invalidations, 1);
 });
 
 test('doImport escapes failed response messages', async () => {
