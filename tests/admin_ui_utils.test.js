@@ -52,6 +52,50 @@ function nextTurn() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
+function createImportFlow(response) {
+  const elements = {
+    mTitle: browserElement(),
+    mBody: browserElement(),
+    importFile: {
+      ...browserElement(),
+      files: [{
+        name: '<img src=x onerror=alert(1)>.csv',
+        size: 1024,
+      }],
+    },
+    importPreview: browserElement(),
+    importResult: browserElement(),
+    modal: browserElement(),
+  };
+  class FormDataDouble {
+    constructor() {
+      this.entries = [];
+    }
+    append(key, value) {
+      this.entries.push([key, value]);
+    }
+  }
+  const context = loadBrowserScript('admin/static/js/crud.js', {
+    MESUI: {escapeHtml, statusHtml},
+    localStorage: {getItem() { return null; }, setItem() {}},
+    document: {getElementById(id) { return elements[id] || null; }},
+    curApiBase: '/api/base/workshop',
+    selectedRows: new Set(),
+    FormData: FormDataDouble,
+    fetch() {
+      return Promise.resolve({
+        json() {
+          return Promise.resolve(response);
+        },
+      });
+    },
+    setTimeout() {},
+    alert() {},
+  });
+  context.doImport();
+  return {context, elements};
+}
+
 test('escapeHtml renders business input as text', () => {
   assert.equal(
     escapeHtml('<img src=x onerror=alert(1)>'),
@@ -195,4 +239,61 @@ test('showCompareResult escapes record keys and values', () => {
   assert.doesNotMatch(elements.mBody.innerHTML, /<svg\b/i);
   assert.match(elements.mBody.innerHTML, /&lt;img src=x onerror=alert\(1\)&gt;/);
   assert.match(elements.mBody.innerHTML, /&lt;svg onload=alert\(2\)&gt;/);
+});
+
+test('doImport escapes the selected file name in its real change event', () => {
+  const {elements} = createImportFlow({
+    code: 0,
+    message: '导入成功',
+    data: {success: 1, errors: []},
+  });
+
+  elements.importFile.onchange.call(elements.importFile);
+
+  assert.doesNotMatch(elements.importPreview.innerHTML, /<img\b/i);
+  assert.match(
+    elements.importPreview.innerHTML,
+    /&lt;img src=x onerror=alert\(1\)&gt;\.csv/
+  );
+});
+
+test('doImport escapes successful response messages and row errors', async () => {
+  const {context, elements} = createImportFlow({
+    code: 0,
+    message: '<img src=x onerror=alert(2)>',
+    data: {
+      success: 0,
+      errors: ['<svg onload=alert(3)>'],
+    },
+  });
+
+  context.modalSaveHandler();
+  await nextTurn();
+
+  assert.doesNotMatch(elements.importResult.innerHTML, /<img\b/i);
+  assert.doesNotMatch(elements.importResult.innerHTML, /<svg\b/i);
+  assert.match(
+    elements.importResult.innerHTML,
+    /&lt;img src=x onerror=alert\(2\)&gt;/
+  );
+  assert.match(
+    elements.importResult.innerHTML,
+    /&lt;svg onload=alert\(3\)&gt;/
+  );
+});
+
+test('doImport escapes failed response messages', async () => {
+  const {context, elements} = createImportFlow({
+    code: 400,
+    message: '<img src=x onerror=alert(4)>',
+  });
+
+  context.modalSaveHandler();
+  await nextTurn();
+
+  assert.doesNotMatch(elements.importResult.innerHTML, /<img\b/i);
+  assert.match(
+    elements.importResult.innerHTML,
+    /&lt;img src=x onerror=alert\(4\)&gt;/
+  );
 });

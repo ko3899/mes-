@@ -10,7 +10,7 @@ import secrets
 # 确保可以导入模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flask import Flask, request, jsonify, send_from_directory, make_response
+from flask import Flask, request, jsonify, send_from_directory, make_response, session
 from openpyxl import Workbook, load_workbook
 
 from utils.database import close_db, init_db, _init_extra_tables, DB_PATH, BASE_DIR, get_db
@@ -354,6 +354,11 @@ def create_app():
     @app.route('/api/import/<table>', methods=['POST'])
     @login_required
     def import_data(table):
+        if table.startswith('sys_') and session.get('username') != 'admin':
+            return jsonify({
+                'code': 403,
+                'message': '仅管理员可导入系统管理数据',
+            }), 403
         if table not in TABLE_CONFIG:
             return jsonify({'code': 400, 'message': '不支持的表'})
 

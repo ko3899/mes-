@@ -53,6 +53,37 @@ def auth_client(client):
     return client
 
 
+@pytest.fixture()
+def plain_auth_client(app):
+    username = f"plain_{os.urandom(6).hex()}"
+    password = 'plainpass123'
+    with app.app_context():
+        db = get_db()
+        role = db.execute(
+            "INSERT INTO sys_role (role_name, role_key, menu_ids) VALUES (?,?,?)",
+            (f'{username}角色', f'{username}_role', json.dumps(['sys:user:list'])),
+        )
+        role_id = role.lastrowid
+        user = db.execute(
+            "INSERT INTO sys_user (username, password, role_id) VALUES (?,?,?)",
+            (username, hashlib.md5(password.encode()).hexdigest(), role_id),
+        )
+        user_id = user.lastrowid
+        db.commit()
+
+    plain = app.test_client()
+    response = plain.post('/api/login', json={
+        'username': username,
+        'password': password,
+    })
+    assert response.get_json()['code'] == 0
+    plain.user_id = user_id
+    plain.role_id = role_id
+    plain.username = username
+    plain.password = password
+    return plain
+
+
 def _setup_test_db(path):
     db = sqlite3.connect(path)
     db.execute("PRAGMA foreign_keys = ON")
@@ -668,6 +699,31 @@ def _call_permission_guard(app, user_id, username, *perms):
         return status, response.get_json()
 
 
+SYSTEM_WRITE_CASES = [
+    ('/api/sys/user/add', {'username': 'blocked_user', 'password': 'blocked123'}),
+    ('/api/sys/user/update', {'id': 999999, 'real_name': 'blocked'}),
+    ('/api/sys/user/delete', {'id': 999999}),
+    ('/api/sys/role/add', {'role_name': 'blocked', 'role_key': 'blocked_role'}),
+    ('/api/sys/role/update', {'id': 999999, 'role_name': 'blocked'}),
+    ('/api/sys/role/delete', {'id': 999999}),
+    ('/api/sys/dept/add', {'dept_name': 'blocked'}),
+    ('/api/sys/dept/update', {'id': 999999, 'dept_name': 'blocked'}),
+    ('/api/sys/dept/delete', {'id': 999999}),
+    ('/api/sys/menu/add', {'menu_name': 'blocked'}),
+    ('/api/sys/menu/update', {'id': 999999, 'menu_name': 'blocked'}),
+    ('/api/sys/menu/delete', {'id': 999999}),
+    ('/api/sys/dict/add', {
+        'dict_type': 'blocked',
+        'dict_label': 'blocked',
+        'dict_value': 'blocked',
+    }),
+    ('/api/sys/dict/update', {'id': 999999, 'dict_label': 'blocked'}),
+    ('/api/sys/dict/delete', {'id': 999999}),
+]
+
+SYSTEM_IMPORT_TABLES = ['sys_user', 'sys_role', 'sys_dept', 'sys_menu', 'sys_dict']
+
+
 class TestAuthorization:
     def test_plain_user_cannot_write_system_data(self, auth_client, client):
         created = auth_client.post('/api/sys/user/add', json={
@@ -696,6 +752,136 @@ class TestAuthorization:
         assert response.status_code == 200
         assert response.get_json()['code'] == 0
 
+    @pytest.mark.parametrize(('route', 'payload'), SYSTEM_WRITE_CASES)
+    def test_all_system_writes_reject_plain_users(
+        self,
+        plain_auth_client,
+        route,
+        payload,
+    ):
+        response = plain_auth_client.post(route, json=payload)
+
+        assert response.status_code == 403
+        assert response.get_json()['code'] == 403
+
+    @pytest.mark.parametrize(('route', 'payload'), SYSTEM_WRITE_CASES)
+    def test_all_system_writes_reject_unauthenticated_users(
+        self,
+        client,
+        route,
+        payload,
+    ):
+        response = client.post(route, json=payload)
+
+        assert response.status_code == 401
+        assert response.get_json()['code'] == 401
+
+    def test_plain_user_can_still_read_system_data(self, plain_auth_client):
+        response = plain_auth_client.get('/api/sys/dept/list')
+
+        assert response.status_code == 200
+        assert response.get_json()['code'] == 0
+
+    @pytest.mark.parametrize('table', SYSTEM_IMPORT_TABLES)
+    def test_plain_user_cannot_import_system_tables(
+        self,
+        plain_auth_client,
+        table,
+    ):
+        response = plain_auth_client.post(f'/api/import/{table}')
+
+        assert response.status_code == 403
+        assert response.get_json()['code'] == 403
+
+    @pytest.mark.parametrize('table', SYSTEM_IMPORT_TABLES)
+    def test_admin_reaches_existing_system_import_validation(
+        self,
+        auth_client,
+        table,
+    ):
+        response = auth_client.post(f'/api/import/{table}')
+
+        assert response.status_code != 403
+        assert response.get_json()['code'] == 400
+
+    @pytest.mark.parametrize(
+        ('route', 'payload_key'),
+        [
+            ('/api/sys/user/reset-password', 'user'),
+            ('/api/sys/role/permissions', 'role'),
+        ],
+    )
+    def test_plain_user_cannot_reset_passwords_or_change_role_permissions(
+        self,
+        plain_auth_client,
+        route,
+        payload_key,
+    ):
+        payload = (
+            {'user_id': plain_auth_client.user_id, 'new_password': 'hackedpass'}
+            if payload_key == 'user'
+            else {'role_id': plain_auth_client.role_id, 'menu_ids': 'sys:admin'}
+        )
+
+        response = plain_auth_client.post(route, json=payload)
+
+        assert response.status_code == 403
+        assert response.get_json()['code'] == 403
+
+    @pytest.mark.parametrize(
+        ('route', 'payload'),
+        [
+            ('/api/sys/user/reset-password', {'user_id': 1, 'new_password': 'newpass'}),
+            ('/api/sys/role/permissions', {'role_id': 1, 'menu_ids': 'sys:admin'}),
+        ],
+    )
+    def test_admin_only_system_extensions_reject_unauthenticated_users(
+        self,
+        client,
+        route,
+        payload,
+    ):
+        response = client.post(route, json=payload)
+
+        assert response.status_code == 401
+        assert response.get_json()['code'] == 401
+
+    def test_plain_user_can_change_own_password(self, plain_auth_client):
+        response = plain_auth_client.post('/api/sys/user/change-password', json={
+            'old_password': plain_auth_client.password,
+            'new_password': 'newplainpass',
+        })
+
+        assert response.status_code == 200
+        assert response.get_json()['code'] == 0
+
+    def test_plain_user_can_read_role_permissions(self, plain_auth_client):
+        response = plain_auth_client.get(
+            f'/api/sys/role/permissions/{plain_auth_client.role_id}'
+        )
+
+        assert response.status_code == 200
+        assert response.get_json()['code'] == 0
+
+    def test_admin_can_reset_password_and_change_role_permissions(
+        self,
+        auth_client,
+        plain_auth_client,
+    ):
+        reset = auth_client.post('/api/sys/user/reset-password', json={
+            'user_id': plain_auth_client.user_id,
+            'new_password': 'adminreset',
+        })
+        permissions = auth_client.post('/api/sys/role/permissions', json={
+            'role_id': plain_auth_client.role_id,
+            'menu_ids': json.dumps(['sys:admin']),
+        })
+
+        assert reset.status_code == 200
+        assert reset.get_json()['code'] == 0
+        assert permissions.status_code == 200
+        assert permissions.get_json()['code'] == 0
+
     def test_permission_required_fails_closed(self, app):
         user_id = _create_permission_user(
             app,
@@ -719,6 +905,58 @@ class TestAuthorization:
         assert empty_body['code'] == 403
         assert missing_status == 403
         assert missing_body['code'] == 403
+
+    @pytest.mark.parametrize(
+        ('username', 'stored_permissions'),
+        [
+            ('permission_corrupt_user', '[not-valid-json'),
+            ('permission_empty_user', None),
+        ],
+    )
+    def test_permission_required_rejects_corrupt_or_empty_permissions(
+        self,
+        app,
+        username,
+        stored_permissions,
+    ):
+        user_id = _create_permission_user(app, username, stored_permissions)
+
+        status, body = _call_permission_guard(
+            app,
+            user_id,
+            username,
+            'sys:user:write',
+        )
+
+        assert status == 403
+        assert body['code'] == 403
+
+    def test_permission_required_rejects_missing_user_or_role(self, app):
+        missing_user_status, missing_user_body = _call_permission_guard(
+            app,
+            987654321,
+            'missing_user',
+            'sys:user:write',
+        )
+        with app.app_context():
+            db = get_db()
+            user = db.execute(
+                "INSERT INTO sys_user (username, password, role_id) VALUES (?,?,?)",
+                ('missing_role_user', 'not-used', 987654321),
+            )
+            db.commit()
+            missing_role_user_id = user.lastrowid
+        missing_role_status, missing_role_body = _call_permission_guard(
+            app,
+            missing_role_user_id,
+            'missing_role_user',
+            'sys:user:write',
+        )
+
+        assert missing_user_status == 403
+        assert missing_user_body['code'] == 403
+        assert missing_role_status == 403
+        assert missing_role_body['code'] == 403
 
     @pytest.mark.parametrize(
         ('username', 'stored_permissions'),

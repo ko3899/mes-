@@ -160,7 +160,8 @@ function doImport() {
         if(!file) return;
         var preview = document.getElementById('importPreview');
         preview.innerHTML = '<div style="background:#f0f5ff;padding:12px;border-radius:6px;margin-bottom:12px">'
-            + '<b>文件：</b>' + file.name + ' (' + (file.size/1024).toFixed(1) + 'KB)</div>';
+            + '<b>文件：</b>' + MESUI.escapeHtml(file.name) + ' ('
+            + (file.size/1024).toFixed(1) + 'KB)</div>';
     };
 
     modalSaveHandler = function() {
@@ -177,19 +178,22 @@ function doImport() {
             body: formData
         }).then(function(r) { return r.json(); }).then(function(r) {
             if (r.code === 0) {
-                var resultHtml = '<div style="color:#52c41a">' + r.message + '</div>';
+                var resultHtml = '<div style="color:#52c41a">'
+                    + MESUI.escapeHtml(r.message) + '</div>';
                 if (r.data && r.data.errors && r.data.errors.length) {
                     resultHtml += '<div style="color:#f5222d;margin-top:8px"><b>错误信息：</b></div>';
                     resultHtml += '<div style="background:#fff2f0;padding:8px;border-radius:4px;margin-top:4px">';
                     r.data.errors.forEach(function(err) {
-                        resultHtml += '<div style="color:#666;font-size:12px;padding:2px 0">' + err + '</div>';
+                        resultHtml += '<div style="color:#666;font-size:12px;padding:2px 0">'
+                            + MESUI.escapeHtml(err) + '</div>';
                     });
                     resultHtml += '</div>';
                 }
                 document.getElementById('importResult').innerHTML = resultHtml;
                 setTimeout(function() { closeModal(); crudLoad(1); }, 3000);
             } else {
-                document.getElementById('importResult').innerHTML = '<div style="color:#f5222d">' + (r.message || '导入失败') + '</div>';
+                document.getElementById('importResult').innerHTML = '<div style="color:#f5222d">'
+                    + MESUI.escapeHtml(r.message || '导入失败') + '</div>';
             }
         }).catch(function(e) {
             document.getElementById('importResult').innerHTML = '<div style="color:#f5222d">网络错误</div>';

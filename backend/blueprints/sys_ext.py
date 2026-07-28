@@ -5,7 +5,7 @@ import datetime
 import psutil
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db, BASE_DIR
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete
+from utils.helpers import admin_required, login_required, crud_list, crud_add, crud_update, crud_delete
 
 sys_ext_bp = Blueprint('sys_ext', __name__)
 
@@ -44,7 +44,7 @@ def change_password():
 
 
 @sys_ext_bp.route('/api/sys/user/reset-password', methods=['POST'])
-@login_required
+@admin_required
 def reset_password():
     d = request.json
     target_id = d.get('user_id')
@@ -70,7 +70,7 @@ def get_role_permissions(role_id):
 
 
 @sys_ext_bp.route('/api/sys/role/permissions', methods=['POST'])
-@login_required
+@admin_required
 def set_role_permissions():
     d = request.json
     role_id = d.get('role_id')
