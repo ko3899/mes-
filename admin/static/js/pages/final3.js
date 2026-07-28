@@ -249,7 +249,17 @@ function csAdd() {
         document.getElementById('modal').classList.add('show');
     });
 }
-function csDel(id) { if(!confirm('确定删除？')) return; api('/api/svc/complaint/delete',{method:'POST',body:{id:id}}).then(function(){csLoad();csStatsLoad()}); }
+function csDel(id) {
+    if(!confirm('确定删除？')) return;
+    api('/api/svc/complaint/delete', {method:'POST', body:{id:id}}).then(function(r) {
+        if(r && r.code === 0) {
+            csLoad();
+            csStatsLoad();
+        } else {
+            alert(r ? r.message : '删除失败');
+        }
+    });
+}
 
 // 退换货
 function renderReturn(el) {

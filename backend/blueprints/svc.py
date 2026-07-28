@@ -38,6 +38,12 @@ def complaint_update():
     return jsonify(crud_update('svc_complaint', request.json))
 
 
+@svc_bp.route('/api/svc/complaint/delete', methods=['POST'])
+@login_required
+def complaint_delete():
+    return jsonify(crud_delete('svc_complaint', request.json.get('id')))
+
+
 # ==================== 退换货 ====================
 @svc_bp.route('/api/svc/return/list')
 @login_required

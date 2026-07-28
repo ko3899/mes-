@@ -75,14 +75,20 @@ function buildMenu() {
     var h = '';
     MENUS.forEach(function(m) {
         if(m.home) {
-            h += '<div class="menu-title" data-page="home">' + m.t + '</div>';
+            h += '<div class="menu-title" data-page="'
+                + MESUI.escapeHtml(MESUI.menuPage(m)) + '">'
+                + MESUI.escapeHtml(m.t) + '</div>';
             return;
         }
         var op = openMenus[m.k];
-        h += '<div class="menu-title" data-menu="' + m.k + '">' + m.t + '<span class="arr">' + (op ? '&#9660;' : '&#9654;') + '</span></div>';
-        h += '<div class="sub' + (op ? ' show' : '') + '" id="sub_' + m.k + '">';
+        h += '<div class="menu-title" data-menu="' + MESUI.escapeHtml(m.k) + '">'
+            + MESUI.escapeHtml(m.t) + '<span class="arr">'
+            + (op ? '&#9660;' : '&#9654;') + '</span></div>';
+        h += '<div class="sub' + (op ? ' show' : '') + '" id="sub_'
+            + MESUI.escapeHtml(m.k) + '">';
         m.sub.forEach(function(s) {
-            h += '<div class="menu-title" data-page="' + s.k + '">' + s.t + '</div>';
+            h += '<div class="menu-title" data-page="' + MESUI.escapeHtml(s.k) + '">'
+                + MESUI.escapeHtml(s.t) + '</div>';
         });
         h += '</div>';
     });

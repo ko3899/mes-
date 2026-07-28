@@ -241,6 +241,167 @@ test('showCompareResult escapes record keys and values', () => {
   assert.match(elements.mBody.innerHTML, /&lt;svg onload=alert\(2\)&gt;/);
 });
 
+function createComparisonContext(selectedIds, rows) {
+  const elements = {
+    mTitle: browserElement(),
+    mBody: browserElement(),
+    modal: browserElement(),
+  };
+  const alerts = [];
+  let apiCalls = 0;
+  const document = {
+    documentElement: {
+      getAttribute() { return 'light'; },
+      setAttribute() {},
+    },
+    getElementById(id) { return elements[id] || browserElement(); },
+    querySelector() { return null; },
+    querySelectorAll() { return []; },
+    addEventListener() {},
+  };
+  const context = loadBrowserScript('admin/static/js/app.js', {
+    MESUI: {escapeHtml, statusHtml},
+    document,
+    localStorage: {getItem() { return null; }, setItem() {}},
+    alert(message) { alerts.push(message); },
+    confirm() { return true; },
+    curApiBase: '/api/base/workshop',
+    api() {
+      apiCalls += 1;
+      return Promise.resolve({code: 0, data: {list: []}});
+    },
+  });
+  context.selectedRows = new Set(selectedIds.map(String));
+  context.currentRowsById = Object.assign(Object.create(null), rows);
+  return {context, elements, alerts, apiCalls: () => apiCalls};
+}
+
+test('compareRecords uses the two records from the current page without API calls', () => {
+  const loaded = createComparisonContext(
+    [11, 12],
+    {
+      11: {id: 11, name: '甲'},
+      12: {id: 12, name: '乙'},
+    },
+  );
+
+  loaded.context.compareRecords();
+
+  assert.equal(loaded.apiCalls(), 0);
+  assert.match(loaded.elements.mBody.innerHTML, /甲/);
+  assert.match(loaded.elements.mBody.innerHTML, /乙/);
+  assert.doesNotMatch(loaded.elements.mBody.innerHTML, /加载中/);
+});
+
+test('compareRecords immediately reports a missing current-page record', () => {
+  const loaded = createComparisonContext(
+    [11, 99],
+    {11: {id: 11, name: '甲'}},
+  );
+
+  loaded.context.compareRecords();
+
+  assert.equal(loaded.apiCalls(), 0);
+  assert.equal(loaded.alerts.length, 1);
+  assert.match(loaded.alerts[0], /记录不存在|重新加载/);
+  assert.doesNotMatch(loaded.elements.mBody.innerHTML, /加载中/);
+});
+
+test('buildMenu preserves top-level dashboard and notification destinations', () => {
+  const sideBar = {
+    ...browserElement(),
+    querySelectorAll() { return []; },
+  };
+  const context = loadBrowserScript(
+    'admin/static/js/menu.js',
+    {
+      MESUI: {escapeHtml, menuPage},
+      document: {
+        getElementById(id) { return id === 'sideBar' ? sideBar : null; },
+        querySelectorAll() { return []; },
+      },
+    },
+  );
+
+  context.buildMenu();
+
+  assert.match(sideBar.innerHTML, /data-page="analytics\/dashboard"/);
+  assert.match(sideBar.innerHTML, /data-page="notifications"/);
+});
+
+test('buildMenu escapes dynamic destination keys and labels', () => {
+  const sideBar = {
+    ...browserElement(),
+    querySelectorAll() { return []; },
+  };
+  const context = loadBrowserScript(
+    'admin/static/js/menu.js',
+    {
+      MESUI: {escapeHtml, menuPage},
+      document: {
+        getElementById(id) { return id === 'sideBar' ? sideBar : null; },
+        querySelectorAll() { return []; },
+      },
+    },
+  );
+  context.MENUS = [{
+    k: `home" onclick="alert(1)`,
+    t: '<img src=x onerror=alert(2)>',
+    home: true,
+  }];
+
+  context.buildMenu();
+
+  assert.doesNotMatch(sideBar.innerHTML, /<img\b/i);
+  assert.doesNotMatch(sideBar.innerHTML, /data-page="[^"]*"\s+onclick=/i);
+  assert.match(sideBar.innerHTML, /&lt;img src=x onerror=alert\(2\)&gt;/);
+  assert.match(sideBar.innerHTML, /data-page="home&quot; onclick=&quot;alert\(1\)"/);
+});
+
+function createComplaintDeleteContext(response) {
+  let listCalls = 0;
+  let statsCalls = 0;
+  const alerts = [];
+  const context = loadBrowserScript('admin/static/js/pages/final3.js', {
+    confirm() { return true; },
+    alert(message) { alerts.push(message); },
+    api() { return Promise.resolve(response); },
+  });
+  context.csLoad = function() { listCalls += 1; };
+  context.csStatsLoad = function() { statsCalls += 1; };
+  return {
+    context,
+    listCalls: () => listCalls,
+    statsCalls: () => statsCalls,
+    alerts,
+  };
+}
+
+test('csDel refreshes both complaint views only after successful deletion', async () => {
+  const loaded = createComplaintDeleteContext({code: 0});
+
+  loaded.context.csDel(7);
+  await nextTurn();
+
+  assert.equal(loaded.listCalls(), 1);
+  assert.equal(loaded.statsCalls(), 1);
+  assert.deepEqual(loaded.alerts, []);
+});
+
+test('csDel shows a service error without refreshing complaint views', async () => {
+  const loaded = createComplaintDeleteContext({
+    code: 409,
+    message: '客诉已被关联，无法删除',
+  });
+
+  loaded.context.csDel(7);
+  await nextTurn();
+
+  assert.equal(loaded.listCalls(), 0);
+  assert.equal(loaded.statsCalls(), 0);
+  assert.deepEqual(loaded.alerts, ['客诉已被关联，无法删除']);
+});
+
 test('doImport escapes the selected file name in its real change event', () => {
   const {elements} = createImportFlow({
     code: 0,

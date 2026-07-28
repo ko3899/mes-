@@ -75,25 +75,17 @@ function batchDelete() {
 function compareRecords() {
     if(selectedRows.size !== 2) { alert('请选择2条记录进行对比'); return; }
     var ids = Array.from(selectedRows);
+    var first = currentRowsById[String(ids[0])];
+    var second = currentRowsById[String(ids[1])];
+    if(!first || !second) {
+        alert('记录不存在或已刷新，请重新加载');
+        return;
+    }
+
     document.getElementById('mTitle').textContent = '记录对比';
-    document.getElementById('mBody').innerHTML = '<div style="text-align:center;padding:20px"><div class="loading"></div> 加载中...</div>';
     modalSaveHandler = function() { closeModal(); };
     document.getElementById('modal').classList.add('show');
-    
-    // 获取选中记录详情
-    var results = [];
-    ids.forEach(function(id, i) {
-        api(curApiBase + '/list?size=1').then(function(r) {
-            if(r && r.data) {
-                var list = r.data.list || r.data;
-                var record = list.find(function(item) { return String(item.id) === String(id); });
-                if(record) results.push(record);
-            }
-            if(results.length === 2) {
-                showCompareResult(results[0], results[1]);
-            }
-        });
-    });
+    showCompareResult(first, second);
 }
 
 function showCompareResult(r1, r2) {

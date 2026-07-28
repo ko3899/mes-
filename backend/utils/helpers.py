@@ -167,7 +167,7 @@ def crud_list(table, params):
     total = db.execute(f"SELECT COUNT(*) as cnt FROM {table}{where}", args).fetchone()['cnt']
 
     sort = params.get('sort', 'id')
-    order = params.get('order', 'DESC')
+    order = str(params.get('order', 'DESC')).upper()
     # 验证排序列名
     if not _validate_column_name(sort) or sort not in valid_columns:
         sort = 'id'

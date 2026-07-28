@@ -2674,3 +2674,73 @@ class TestDataIntegrity:
         auth_client.post('/api/prod/workorder/delete', json={'id': wo_id})
         auth_client.post('/api/base/product/delete', json={'id': prd_id})
         auth_client.post('/api/base/workshop/delete', json={'id': ws_id})
+
+
+class TestAdminInteractionBackend:
+    def test_lowercase_sort_order_is_honored(self, auth_client):
+        suffix = uuid.uuid4().hex[:8]
+        first = response_id(auth_client.post('/api/base/workshop/add', json={
+            'workshop_name': '排序一',
+            'code': f'SORT_1_{suffix}',
+        }))
+        second = response_id(auth_client.post('/api/base/workshop/add', json={
+            'workshop_name': '排序二',
+            'code': f'SORT_2_{suffix}',
+        }))
+
+        asc = auth_client.get(
+            '/api/base/workshop/list?sort=id&order=asc&size=1000'
+        ).get_json()
+        desc = auth_client.get(
+            '/api/base/workshop/list?sort=id&order=desc&size=1000'
+        ).get_json()
+        asc_ids = [
+            row['id'] for row in asc['data']['list']
+            if row['id'] in (first, second)
+        ]
+        desc_ids = [
+            row['id'] for row in desc['data']['list']
+            if row['id'] in (first, second)
+        ]
+
+        assert asc_ids == [first, second]
+        assert desc_ids == [second, first]
+
+    def test_complaint_can_be_deleted(self, auth_client):
+        suffix = uuid.uuid4().hex[:8]
+        with auth_client.application.app_context():
+            db = get_db()
+            db.execute('''
+                CREATE TABLE IF NOT EXISTS svc_complaint (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    complaint_no TEXT NOT NULL UNIQUE,
+                    customer_id INTEGER,
+                    product_id INTEGER,
+                    complaint_type TEXT,
+                    description TEXT,
+                    severity TEXT,
+                    status INTEGER DEFAULT 0,
+                    handler INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            db.commit()
+        created = auth_client.post('/api/svc/complaint/add', json={
+            'complaint_type': '质量',
+            'description': f'删除测试-{suffix}',
+        })
+        complaint_id = response_id(created)
+
+        deleted = auth_client.post(
+            '/api/svc/complaint/delete',
+            json={'id': complaint_id},
+        )
+
+        assert deleted.status_code == 200
+        assert deleted.get_json()['code'] == 0
+        with auth_client.application.app_context():
+            remaining = get_db().execute(
+                'SELECT 1 FROM svc_complaint WHERE id=?',
+                (complaint_id,),
+            ).fetchone()
+        assert remaining is None
