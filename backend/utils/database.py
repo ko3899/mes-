@@ -228,6 +228,19 @@ def init_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
 
+    db.execute('''CREATE TABLE IF NOT EXISTS base_customer (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_name TEXT NOT NULL,
+        code TEXT NOT NULL UNIQUE,
+        contact TEXT,
+        phone TEXT,
+        email TEXT,
+        address TEXT,
+        credit_limit REAL DEFAULT 0,
+        status INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+
     db.execute('''CREATE TABLE IF NOT EXISTS base_salary_config (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         process_id INTEGER,
@@ -437,6 +450,33 @@ def init_db():
         remark TEXT,
         FOREIGN KEY (task_id) REFERENCES prod_task(id),
         FOREIGN KEY (workorder_id) REFERENCES prod_workorder(id)
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_exception (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        exception_no TEXT NOT NULL UNIQUE,
+        exception_type TEXT,
+        station TEXT,
+        description TEXT,
+        severity TEXT DEFAULT 'medium',
+        handler INTEGER,
+        status INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        resolved_at TIMESTAMP
+    )''')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_defect_receive (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        receive_no TEXT NOT NULL UNIQUE,
+        sn TEXT,
+        product_id INTEGER,
+        defect_id INTEGER,
+        station TEXT,
+        quantity INTEGER DEFAULT 1,
+        process_type TEXT DEFAULT '待处理',
+        operator INTEGER,
+        status INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
 
     # ==================== 质量管理 ====================

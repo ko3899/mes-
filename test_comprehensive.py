@@ -520,6 +520,7 @@ def test_fresh_production_schema_supports_login_and_core_pages():
             '/api/qm/template/list',
             '/api/eqp/check-project/list',
             '/api/sched/calendar/list',
+            '/api/analytics/data-dashboard',
         ]
         for route in core_routes:
             response = fresh_client.get(route)
@@ -528,6 +529,43 @@ def test_fresh_production_schema_supports_login_and_core_pages():
                 response.get_data(as_text=True),
             )
             assert response.get_json()['code'] == 0
+
+        search_response = fresh_client.get('/api/search/global?q=WO-NOT-EXIST')
+        assert search_response.status_code == 200, search_response.get_data(as_text=True)
+        assert search_response.get_json()['code'] == 0
+        assert search_response.get_json()['data'] == []
+
+        customer_response = fresh_client.post('/api/base/customer/add', json={
+            'customer_name': 'Fresh Install Customer',
+            'code': 'FRESH-CUSTOMER-001',
+            'email': 'fresh.customer@example.com',
+            'credit_limit': 12345.67,
+        })
+        assert customer_response.status_code == 200
+        assert customer_response.get_json()['code'] == 0
+
+        customer_list_response = fresh_client.get(
+            '/api/base/customer/list?keyword=FRESH-CUSTOMER-001'
+        )
+        assert customer_list_response.status_code == 200
+        customer_list_payload = customer_list_response.get_json()
+        assert customer_list_payload['code'] == 0
+        assert customer_list_payload['data']['total'] == 1
+        stored_customer = customer_list_payload['data']['list'][0]
+        assert stored_customer['email'] == 'fresh.customer@example.com'
+        assert stored_customer['credit_limit'] == 12345.67
+
+        positive_search_response = fresh_client.get(
+            '/api/search/global?q=FRESH-CUSTOMER-001'
+        )
+        assert positive_search_response.status_code == 200
+        assert positive_search_response.get_json()['code'] == 0
+        assert positive_search_response.get_json()['data'] == [{
+            'id': customer_response.get_json()['data']['id'],
+            'name': 'Fresh Install Customer',
+            'code': 'FRESH-CUSTOMER-001',
+            'type': 'customer',
+        }]
     finally:
         db_mod.DB_PATH = previous_path
         if os.path.exists(fresh_path):
