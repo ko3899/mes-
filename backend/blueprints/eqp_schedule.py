@@ -36,16 +36,53 @@ def check_project_delete():
 @login_required
 def calendar_list():
     db = get_db()
+    page = max(1, int(request.args.get('page', 1)))
+    size = max(1, int(request.args.get('size', 20)))
+    offset = (page - 1) * size
     plan_id = request.args.get('plan_id')
-    where = "WHERE c.plan_id=?" if plan_id else ""
-    params = [int(plan_id)] if plan_id else []
-    
+    where = ' WHERE 1=1'
+    params = []
+    if plan_id:
+        where += ' AND c.plan_id=?'
+        params.append(int(plan_id))
+    keyword = request.args.get('keyword', '').strip()
+    if keyword:
+        where += ''' AND (
+            c.work_date LIKE ? OR c.shift_type LIKE ?
+            OR c.user_ids LIKE ? OR sp.plan_name LIKE ?
+        )'''
+        like = f'%{keyword}%'
+        params.extend([like, like, like, like])
+    sort_columns = {
+        'id': 'c.id',
+        'plan_id': 'c.plan_id',
+        'work_date': 'c.work_date',
+        'shift_type': 'c.shift_type',
+        'user_ids': 'c.user_ids',
+        'created_at': 'c.created_at',
+        'plan_name': 'sp.plan_name',
+    }
+    sort = sort_columns.get(request.args.get('sort'), 'c.work_date')
+    order = request.args.get('order', 'DESC').upper()
+    if order not in ('ASC', 'DESC'):
+        order = 'DESC'
+    from_clause = ''' FROM sched_calendar c
+        LEFT JOIN sched_plan sp ON c.plan_id=sp.id'''
+    total = db.execute(
+        'SELECT COUNT(*) AS cnt' + from_clause + where,
+        params,
+    ).fetchone()['cnt']
     rows = db.execute(f'''SELECT c.*, sp.plan_name
-        FROM sched_calendar c
-        LEFT JOIN sched_plan sp ON c.plan_id=sp.id
-        {where}
-        ORDER BY c.work_date DESC''', params).fetchall()
-    return jsonify({'code': 0, 'data': [dict(r) for r in rows]})
+        {from_clause} {where}
+        ORDER BY {sort} {order} LIMIT ? OFFSET ?''',
+        params + [size, offset],
+    ).fetchall()
+    return jsonify({'code': 0, 'data': {
+        'list': [dict(r) for r in rows],
+        'total': total,
+        'page': page,
+        'size': size,
+    }})
 
 
 @eqp_schedule_bp.route('/api/sched/calendar/add', methods=['POST'])

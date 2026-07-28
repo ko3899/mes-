@@ -46,6 +46,12 @@ function toggleSelectRow(id, checked) {
 function updateBatchBar() {
     var bar = document.getElementById('batchBar');
     if(!bar) return;
+    var deleteBtn = bar.querySelector('.btn-red');
+    if(deleteBtn) {
+        var canDelete = typeof curCrudActions === 'undefined'
+            || curCrudActions.delete !== false;
+        deleteBtn.style.display = canDelete ? '' : 'none';
+    }
     if(selectedRows.size > 0) {
         bar.classList.add('show');
         var countEl = bar.querySelector('.count');
@@ -57,6 +63,10 @@ function updateBatchBar() {
 
 function batchDelete() {
     if(!selectedRows.size) return;
+    if(typeof curCrudActions !== 'undefined' && curCrudActions.delete === false) {
+        alert('当前页面不允许删除');
+        return;
+    }
     if(!confirm('确定删除选中的 ' + selectedRows.size + ' 项？')) return;
     var count = 0;
     selectedRows.forEach(function(id) {
@@ -259,6 +269,7 @@ function doLogout() {
 }
 
 function renderPage(key) {
+    if(typeof crudRenderToken !== 'undefined') crudRenderToken += 1;
     var el = document.getElementById('pageContent');
     if(key === 'home') { renderHome(el); return; }
 
@@ -371,7 +382,15 @@ function renderPage(key) {
         'analytics/dashboard': function(e){renderDataDashboard(e)},
         'tool/borrow': function(e){renderToolBorrow(e)},
         'qm/process': function(e){renderQMProcess(e)},
-        'notifications': function(e){renderNotifications(e)}
+        'notifications': function(e){renderNotifications(e)},
+        'warehouse/list': function(e){renderWarehousePage(e)},
+        'warehouse/area': function(e){renderAreaPage(e)},
+        'warehouse/location': function(e){renderLocationPage(e)},
+        'warehouse/arrival': function(e){renderArrivalPage(e)},
+        'warehouse/transaction': function(e){renderTransactionPage(e)},
+        'qm/template': function(e){renderQualityTemplatePage(e)},
+        'eqp/check-project': function(e){renderCheckProjectPage(e)},
+        'sched/calendar': function(e){renderScheduleCalendarPage(e)}
     };
 
     if(special[key]) { special[key](el); return; }

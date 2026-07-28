@@ -5,22 +5,39 @@ var curApiBase = '';
 var modalSaveHandler = null;
 
 function openModal(title, fields, data) {
-    var apiFields = fields.filter(function(f) { return f.type === 'select' && f.api; });
+    var requestToken = typeof crudRenderToken === 'undefined'
+        ? null : crudRenderToken;
+    var requestApiBase = curApiBase;
+    var apiFields = fields.filter(function(f) {
+        return !f.generated && f.type === 'select' && f.api;
+    });
     if (apiFields.length > 0) {
         var promises = apiFields.map(function(f) {
             return api(f.api).then(function(r) {
                 f._options = (r && r.data) ? (Array.isArray(r.data) ? r.data : (r.data.list || [])) : [];
             });
         });
-        Promise.all(promises).then(function() { openModalSync(title, fields, data); });
+        Promise.all(promises).then(function() {
+            if(requestToken !== null && (
+                requestToken !== crudRenderToken
+                || requestApiBase !== curApiBase
+            )) return;
+            openModalSync(title, fields, data);
+        });
     } else {
         openModalSync(title, fields, data);
     }
 }
 
 function openModalSync(title, fields, data) {
+    var formToken = typeof crudRenderToken === 'undefined'
+        ? null : crudRenderToken;
+    var formApiBase = curApiBase;
+    var formEditId = editId;
     document.getElementById('mTitle').textContent = title;
     var h = '';
+    fields = fields.filter(function(f) { return !f.generated; });
+    var formFields = fields.slice();
     fields.forEach(function(f, i) {
         if(i % 2 === 0) h += '<div class="form-row">';
         var val = data[f.k] != null ? data[f.k] : '';
@@ -57,10 +74,15 @@ function openModalSync(title, fields, data) {
     document.getElementById('mBody').innerHTML = h;
 
     modalSaveHandler = function() {
+        if(formToken !== null && formToken !== crudRenderToken) {
+            alert('页面已切换，请重新操作');
+            closeModal();
+            return;
+        }
         var data = {};
-        if(editId) data.id = editId;
-        for(var i = 0; i < curFields.length; i++) {
-            var f = curFields[i];
+        if(formEditId) data.id = formEditId;
+        for(var i = 0; i < formFields.length; i++) {
+            var f = formFields[i];
             var el = document.getElementById('f_' + f.k);
             if(!el) continue;
             var v = el.value;
@@ -73,8 +95,11 @@ function openModalSync(title, fields, data) {
                 data[f.k] = v;
             }
         }
-        api(curApiBase + (editId ? '/update' : '/add'), {method:'POST', body:data}).then(function(r) {
-            if(r && r.code === 0) { closeModal(); crudLoad(1); }
+        api(formApiBase + (formEditId ? '/update' : '/add'), {method:'POST', body:data}).then(function(r) {
+            if(r && r.code === 0) {
+                closeModal();
+                if(formToken === null || formToken === crudRenderToken) crudLoad(1);
+            }
             else alert(r ? r.message : '保存失败');
         });
     };

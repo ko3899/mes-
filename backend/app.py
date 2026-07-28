@@ -317,6 +317,65 @@ def create_app():
             'columns': ['dict_type', 'dict_label', 'dict_value', 'sort_order', 'status'],
             'headers': ['类型', '标签', '值', '排序', '状态'],
             'types': ['str', 'str', 'str', 'int', 'int']
+        },
+        'inv_warehouse': {
+            'name': '仓库',
+            'columns': ['warehouse_name', 'code', 'address', 'status'],
+            'headers': ['仓库名称', '仓库编码', '地址', '状态'],
+            'types': ['str', 'str', 'str', 'int']
+        },
+        'inv_area': {
+            'name': '库区',
+            'columns': ['warehouse_id', 'area_name', 'code', 'status'],
+            'headers': ['仓库ID', '库区名称', '库区编码', '状态'],
+            'types': ['int', 'str', 'str', 'int']
+        },
+        'inv_location': {
+            'name': '库位',
+            'columns': ['area_id', 'location_name', 'code', 'status'],
+            'headers': ['库区ID', '库位名称', '库位编码', '状态'],
+            'types': ['int', 'str', 'str', 'int']
+        },
+        'inv_arrival_notice': {
+            'name': '到货通知',
+            'columns': ['notice_no', 'supplier_id', 'expected_date', 'status', 'remark'],
+            'headers': ['通知单号', '供应商ID', '预计到货日', '状态', '备注'],
+            'types': ['str', 'int', 'str', 'int', 'str']
+        },
+        'inv_transaction_log': {
+            'name': '库存事务',
+            'columns': [
+                'trans_type', 'product_id', 'quantity', 'warehouse_id',
+                'area_id', 'location_id', 'batch_no', 'ref_no',
+                'ref_type', 'remark'
+            ],
+            'headers': [
+                '事务类型', '产品ID', '数量', '仓库ID', '库区ID',
+                '库位ID', '批次号', '关联单号', '关联类型', '备注'
+            ],
+            'types': [
+                'str', 'int', 'float', 'int', 'int', 'int',
+                'str', 'str', 'str', 'str'
+            ],
+            'importable': False
+        },
+        'qm_inspect_template': {
+            'name': '质检模板',
+            'columns': ['template_name', 'inspect_type', 'items', 'status'],
+            'headers': ['模板名称', '检验类型', '检验项目JSON', '状态'],
+            'types': ['str', 'str', 'str', 'int']
+        },
+        'eqp_check_project': {
+            'name': '设备点检项目',
+            'columns': ['project_name', 'check_type', 'standard', 'method', 'status'],
+            'headers': ['项目名称', '点检类型', '点检标准', '点检方法', '状态'],
+            'types': ['str', 'str', 'str', 'str', 'int']
+        },
+        'sched_calendar': {
+            'name': '排班日历',
+            'columns': ['plan_id', 'work_date', 'shift_type', 'user_ids'],
+            'headers': ['排班计划ID', '工作日期', '班次类型', '人员ID'],
+            'types': ['int', 'str', 'str', 'str']
         }
     }
 
@@ -361,6 +420,8 @@ def create_app():
             }), 403
         if table not in TABLE_CONFIG:
             return jsonify({'code': 400, 'message': '不支持的表'})
+        if TABLE_CONFIG[table].get('importable') is False:
+            return jsonify({'code': 400, 'message': '不支持导入该表'})
 
         if 'file' not in request.files:
             return jsonify({'code': 400, 'message': '请选择文件'})
@@ -437,6 +498,8 @@ def create_app():
         if table not in TABLE_CONFIG:
             return jsonify({'code': 400, 'message': '不支持的表'})
         config = TABLE_CONFIG[table]
+        if config.get('importable') is False:
+            return jsonify({'code': 400, 'message': '不支持导入该表'})
 
         wb = Workbook()
         ws = wb.active

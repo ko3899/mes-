@@ -2749,6 +2749,26 @@ class TestAdminInteractionBackend:
 
 
 class TestWarehouseScheduleCrud:
+    EXPORT_TABLES = [
+        'inv_warehouse',
+        'inv_area',
+        'inv_location',
+        'inv_arrival_notice',
+        'inv_transaction_log',
+        'qm_inspect_template',
+        'eqp_check_project',
+        'sched_calendar',
+    ]
+    IMPORT_TABLES = [
+        'inv_warehouse',
+        'inv_area',
+        'inv_location',
+        'inv_arrival_notice',
+        'qm_inspect_template',
+        'eqp_check_project',
+        'sched_calendar',
+    ]
+
     @pytest.mark.parametrize('path', [
         '/api/area/update',
         '/api/area/delete',
@@ -2764,6 +2784,112 @@ class TestWarehouseScheduleCrud:
 
         assert response.status_code == 401
         assert response.get_json()['code'] == 401
+
+    @pytest.mark.parametrize('table', EXPORT_TABLES)
+    def test_connected_page_table_can_export(self, auth_client, table):
+        response = auth_client.get(f'/api/export/{table}')
+
+        assert response.status_code == 200
+        assert response.headers['Content-Type'].startswith(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    @pytest.mark.parametrize('table', IMPORT_TABLES)
+    def test_connected_page_table_accepts_import_requests(self, auth_client, table):
+        response = auth_client.post(f'/api/import/{table}')
+
+        assert response.status_code == 200
+        assert response.get_json()['message'] == '请选择文件'
+
+    def test_inventory_transaction_import_is_rejected(self, auth_client):
+        response = auth_client.post('/api/import/inv_transaction_log')
+
+        assert response.status_code == 200
+        assert response.get_json()['message'] == '不支持导入该表'
+        template = auth_client.get('/api/template/inv_transaction_log')
+        assert template.status_code == 200
+        assert template.get_json()['message'] == '不支持导入该表'
+
+    def test_area_list_supports_paging_keyword_and_sort(self, auth_client):
+        suffix = uuid.uuid4().hex[:8]
+        warehouse_id = response_id(auth_client.post(
+            '/api/warehouse/add',
+            json={'warehouse_name': f'分页仓-{suffix}', 'code': f'WHP_{suffix}'},
+        ))
+        for index in range(3):
+            response_id(auth_client.post('/api/area/add', json={
+                'warehouse_id': warehouse_id,
+                'area_name': f'分页库区-{suffix}-{index}',
+                'code': f'AP_{suffix}_{index}',
+            }))
+
+        data = assert_success(auth_client.get(
+            f'/api/area/list?page=2&size=1&keyword={suffix}'
+            '&sort=area_name&order=asc'
+        ))['data']
+
+        assert data['total'] == 3
+        assert len(data['list']) == 1
+        assert data['list'][0]['area_name'] == f'分页库区-{suffix}-1'
+
+    def test_location_list_supports_paging_keyword_and_sort(self, auth_client):
+        suffix = uuid.uuid4().hex[:8]
+        warehouse_id = response_id(auth_client.post(
+            '/api/warehouse/add',
+            json={'warehouse_name': f'库位分页仓-{suffix}', 'code': f'WHLP_{suffix}'},
+        ))
+        area_id = response_id(auth_client.post('/api/area/add', json={
+            'warehouse_id': warehouse_id,
+            'area_name': f'库位分页区-{suffix}',
+            'code': f'ALP_{suffix}',
+        }))
+        for index in range(3):
+            response_id(auth_client.post('/api/location/add', json={
+                'area_id': area_id,
+                'location_name': f'分页库位-{suffix}-{index}',
+                'code': f'LP_{suffix}_{index}',
+            }))
+
+        data = assert_success(auth_client.get(
+            f'/api/location/list?page=2&size=1&keyword={suffix}'
+            '&sort=location_name&order=asc'
+        ))['data']
+
+        assert data['total'] == 3
+        assert len(data['list']) == 1
+        assert data['list'][0]['location_name'] == f'分页库位-{suffix}-1'
+
+    def test_calendar_list_supports_paging_keyword_sort_and_plan_filter(
+        self,
+        auth_client,
+    ):
+        suffix = uuid.uuid4().hex[:8]
+        team_id = response_id(auth_client.post('/api/sched/team/add', json={
+            'team_name': f'分页班组-{suffix}',
+            'code': f'TP_{suffix}',
+        }))
+        plan_id = response_id(auth_client.post('/api/sched/plan/add', json={
+            'plan_name': f'分页计划-{suffix}',
+            'team_id': team_id,
+            'start_date': '2026-07-01',
+            'end_date': '2026-07-31',
+        }))
+        for index in range(3):
+            response_id(auth_client.post('/api/sched/calendar/add', json={
+                'plan_id': plan_id,
+                'work_date': f'2026-07-{20 + index:02d}',
+                'shift_type': 'day',
+                'user_ids': f'{suffix},{index}',
+            }))
+
+        data = assert_success(auth_client.get(
+            f'/api/sched/calendar/list?plan_id={plan_id}&page=2&size=1'
+            f'&keyword={suffix}&sort=work_date&order=asc'
+        ))['data']
+
+        assert data['total'] == 3
+        assert len(data['list']) == 1
+        assert data['list'][0]['work_date'] == '2026-07-21'
 
     def test_area_update_and_delete(self, auth_client):
         suffix = uuid.uuid4().hex[:8]
@@ -2789,7 +2915,9 @@ class TestWarehouseScheduleCrud:
         })
 
         assert_success(updated)
-        areas = assert_success(auth_client.get('/api/area/list'))['data']
+        areas = assert_success(
+            auth_client.get('/api/area/list?size=1000')
+        )['data']['list']
         area = next(row for row in areas if row['id'] == area_id)
         assert area['area_name'] == f'A1区-{suffix}'
 
@@ -2834,7 +2962,9 @@ class TestWarehouseScheduleCrud:
         })
 
         assert_success(updated)
-        locations = assert_success(auth_client.get('/api/location/list'))['data']
+        locations = assert_success(
+            auth_client.get('/api/location/list?size=1000')
+        )['data']['list']
         location = next(row for row in locations if row['id'] == location_id)
         assert location['location_name'] == f'L02-{suffix}'
 
@@ -2927,7 +3057,7 @@ class TestWarehouseScheduleCrud:
         assert_success(updated)
         calendars = assert_success(
             auth_client.get(f'/api/sched/calendar/list?plan_id={plan_id}')
-        )['data']
+        )['data']['list']
         calendar = next(row for row in calendars if row['id'] == calendar_id)
         assert calendar['shift_type'] == 'night'
 

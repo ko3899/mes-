@@ -35,10 +35,51 @@ def warehouse_delete():
 @login_required
 def area_list():
     db = get_db()
+    page = max(1, int(request.args.get('page', 1)))
+    size = max(1, int(request.args.get('size', 20)))
+    offset = (page - 1) * size
+    where = ' WHERE 1=1'
+    params = []
+    keyword = request.args.get('keyword', '').strip()
+    warehouse_id = request.args.get('warehouse_id')
+    if warehouse_id:
+        where += ' AND a.warehouse_id=?'
+        params.append(warehouse_id)
+    if keyword:
+        where += ''' AND (
+            a.area_name LIKE ? OR a.code LIKE ? OR w.warehouse_name LIKE ?
+        )'''
+        like = f'%{keyword}%'
+        params.extend([like, like, like])
+    sort_columns = {
+        'id': 'a.id',
+        'warehouse_id': 'a.warehouse_id',
+        'area_name': 'a.area_name',
+        'code': 'a.code',
+        'status': 'a.status',
+        'created_at': 'a.created_at',
+        'warehouse_name': 'w.warehouse_name',
+    }
+    sort = sort_columns.get(request.args.get('sort'), 'a.id')
+    order = request.args.get('order', 'DESC').upper()
+    if order not in ('ASC', 'DESC'):
+        order = 'DESC'
+    total = db.execute(
+        '''SELECT COUNT(*) AS cnt FROM inv_area a
+        LEFT JOIN inv_warehouse w ON a.warehouse_id=w.id''' + where,
+        params,
+    ).fetchone()['cnt']
     rows = db.execute('''SELECT a.*, w.warehouse_name 
-        FROM inv_area a LEFT JOIN inv_warehouse w ON a.warehouse_id=w.id 
-        ORDER BY a.id''').fetchall()
-    return jsonify({'code': 0, 'data': [dict(r) for r in rows]})
+        FROM inv_area a LEFT JOIN inv_warehouse w ON a.warehouse_id=w.id'''
+        + where + f' ORDER BY {sort} {order} LIMIT ? OFFSET ?',
+        params + [size, offset],
+    ).fetchall()
+    return jsonify({'code': 0, 'data': {
+        'list': [dict(r) for r in rows],
+        'total': total,
+        'page': page,
+        'size': size,
+    }})
 
 
 @warehouse_bp.route('/api/area/add', methods=['POST'])
@@ -63,12 +104,55 @@ def area_delete():
 @login_required
 def location_list():
     db = get_db()
-    rows = db.execute('''SELECT l.*, a.area_name, w.warehouse_name 
-        FROM inv_location l 
+    page = max(1, int(request.args.get('page', 1)))
+    size = max(1, int(request.args.get('size', 20)))
+    offset = (page - 1) * size
+    where = ' WHERE 1=1'
+    params = []
+    keyword = request.args.get('keyword', '').strip()
+    area_id = request.args.get('area_id')
+    if area_id:
+        where += ' AND l.area_id=?'
+        params.append(area_id)
+    if keyword:
+        where += ''' AND (
+            l.location_name LIKE ? OR l.code LIKE ?
+            OR a.area_name LIKE ? OR w.warehouse_name LIKE ?
+        )'''
+        like = f'%{keyword}%'
+        params.extend([like, like, like, like])
+    sort_columns = {
+        'id': 'l.id',
+        'area_id': 'l.area_id',
+        'location_name': 'l.location_name',
+        'code': 'l.code',
+        'status': 'l.status',
+        'created_at': 'l.created_at',
+        'area_name': 'a.area_name',
+        'warehouse_name': 'w.warehouse_name',
+    }
+    sort = sort_columns.get(request.args.get('sort'), 'l.id')
+    order = request.args.get('order', 'DESC').upper()
+    if order not in ('ASC', 'DESC'):
+        order = 'DESC'
+    from_clause = ''' FROM inv_location l
         LEFT JOIN inv_area a ON l.area_id=a.id
-        LEFT JOIN inv_warehouse w ON a.warehouse_id=w.id
-        ORDER BY l.id''').fetchall()
-    return jsonify({'code': 0, 'data': [dict(r) for r in rows]})
+        LEFT JOIN inv_warehouse w ON a.warehouse_id=w.id'''
+    total = db.execute(
+        'SELECT COUNT(*) AS cnt' + from_clause + where,
+        params,
+    ).fetchone()['cnt']
+    rows = db.execute('''SELECT l.*, a.area_name, w.warehouse_name
+        ''' + from_clause + where
+        + f' ORDER BY {sort} {order} LIMIT ? OFFSET ?',
+        params + [size, offset],
+    ).fetchall()
+    return jsonify({'code': 0, 'data': {
+        'list': [dict(r) for r in rows],
+        'total': total,
+        'page': page,
+        'size': size,
+    }})
 
 
 @warehouse_bp.route('/api/location/add', methods=['POST'])

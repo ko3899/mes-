@@ -3,6 +3,15 @@ var sortField = '';
 var sortOrder = 'DESC';
 var pageSize = 15;
 var currentRowsById = Object.create(null);
+var crudRenderToken = 0;
+var curDataTable = '';
+var curCrudActions = {
+    add: true,
+    edit: true,
+    delete: true,
+    import: true,
+    export: true
+};
 
 // 加载用户偏好
 function loadUserPrefs() {
@@ -12,19 +21,45 @@ function loadUserPrefs() {
 loadUserPrefs();
 
 function renderCrud(el, path, cfg) {
+    crudRenderToken += 1;
     curFields = cfg.f;
-    curApiBase = '/api/' + path.split('/')[0] + '/' + path.split('/')[1];
+    curApiBase = cfg.apiBase || ('/api/' + path.split('/')[0] + '/' + path.split('/')[1]);
+    curDataTable = cfg.dataTable
+        || curApiBase.replace('/api/', '').replace(/\//g, '_');
+    curCrudActions = Object.assign({
+        add: true,
+        edit: true,
+        delete: true,
+        import: true,
+        export: true
+    }, cfg.actions || {});
     var fkey = path.replace(/\//g, '_');
+    var hasRowActions = curCrudActions.edit || curCrudActions.delete;
     var ths = '<th><input type="checkbox" onchange="toggleSelectAll(this.checked)"></th><th>ID</th>';
-    cfg.f.forEach(function(f){ ths += '<th class="sortable" data-sort="'+f.k+'" onclick="sortTable(\''+f.k+'\')">' + f.l + '</th>'; });
-    ths += '<th>创建时间</th><th>操作</th>';
+    cfg.f.forEach(function(f){
+        ths += '<th class="sortable" data-sort="' + MESUI.escapeHtml(f.k)
+            + '" onclick="sortTable(\'' + MESUI.escapeHtml(f.k) + '\')">'
+            + MESUI.escapeHtml(f.l) + '</th>';
+    });
+    ths += '<th>创建时间</th>';
+    if(hasRowActions) ths += '<th>操作</th>';
 
-    el.innerHTML = '<div class="card"><div class="card-title"><span>' + cfg.t + '</span>'
+    var actionButtons = '<button class="btn btn-gray" onclick="crudLoad(1)">刷新</button>';
+    if(curCrudActions.export) {
+        actionButtons += '<button class="btn btn-green" id="exportBtn">导出</button>';
+    }
+    if(curCrudActions.import) {
+        actionButtons += '<button class="btn btn-orange" id="importBtn" '
+            + 'style="background:#fa8c16;color:#fff">导入</button>';
+    }
+    if(curCrudActions.add) {
+        actionButtons += '<button class="btn btn-blue" id="addBtn">+ 新增</button>';
+    }
+
+    el.innerHTML = '<div class="card"><div class="card-title"><span>'
+        + MESUI.escapeHtml(cfg.t) + '</span>'
         + '<div style="display:flex;gap:8px">'
-        + '<button class="btn btn-gray" onclick="crudLoad(1)">刷新</button>'
-        + '<button class="btn btn-green" id="exportBtn">导出</button>'
-        + '<button class="btn btn-orange" id="importBtn" style="background:#fa8c16;color:#fff">导入</button>'
-        + '<button class="btn btn-blue" id="addBtn">+ 新增</button></div></div>'
+        + actionButtons + '</div></div>'
         + '<div class="toolbar"><input id="kw" placeholder="搜索...">'
         + '<button class="btn btn-blue btn-sm" id="searchBtn">搜索</button>'
         + '<button class="btn btn-gray btn-sm" id="resetBtn">重置</button>'
@@ -34,15 +69,20 @@ function renderCrud(el, path, cfg) {
         + '<option value="20"' + (pageSize===20?' selected':'') + '>20条/页</option>'
         + '<option value="50"' + (pageSize===50?' selected':'') + '>50条/页</option>'
         + '</select></div>'
-        + '<table><thead><tr>' + ths + '</tr></thead><tbody id="tb"><tr><td colspan="' + (cfg.f.length + 4) + '" class="empty">加载中...</td></tr></tbody></table>'
+        + '<table><thead><tr>' + ths + '</tr></thead><tbody id="tb"><tr><td colspan="'
+        + (cfg.f.length + (hasRowActions ? 4 : 3))
+        + '" class="empty">加载中...</td></tr></tbody></table>'
         + '<div class="page" id="pg"></div></div>';
 
-    document.getElementById('addBtn').onclick = function() { crudAdd(); };
+    var addBtn = document.getElementById('addBtn');
+    var exportBtn = document.getElementById('exportBtn');
+    var importBtn = document.getElementById('importBtn');
+    if(addBtn) addBtn.onclick = function() { crudAdd(); };
     document.getElementById('searchBtn').onclick = function() { crudLoad(1); };
     document.getElementById('resetBtn').onclick = function() { document.getElementById('kw').value = ''; sortField = ''; crudLoad(1); };
     document.getElementById('kw').onkeydown = function(e) { if(e.key === 'Enter') crudLoad(1); };
-    document.getElementById('exportBtn').onclick = function() { doExport(); };
-    document.getElementById('importBtn').onclick = function() { doImport(); };
+    if(exportBtn) exportBtn.onclick = function() { doExport(); };
+    if(importBtn) importBtn.onclick = function() { doImport(); };
 
     selectedRows.clear();
     updateBatchBar();
@@ -59,12 +99,18 @@ function changePageSize(val) {
 
 function crudLoad(page, sort, order) {
     page = page || 1;
+    var loadToken = crudRenderToken;
+    var loadApiBase = curApiBase;
+    var loadFields = curFields.slice();
+    var loadActions = Object.assign({}, curCrudActions);
+    var hasRowActions = loadActions.edit || loadActions.delete;
     var kw = document.getElementById('kw') ? document.getElementById('kw').value : '';
     var url = curApiBase + '/list?page=' + page + '&size=' + pageSize;
     if(kw) url += '&keyword=' + encodeURIComponent(kw);
     if(sort) { sortField = sort; sortOrder = order || 'DESC'; }
     if(sortField) url += '&sort=' + sortField + '&order=' + sortOrder;
     api(url).then(function(r) {
+        if(loadToken !== crudRenderToken || loadApiBase !== curApiBase) return;
         if(!r) return;
         var list = Array.isArray(r.data) ? r.data : (r.data && r.data.list ? r.data.list : []);
         var total = Array.isArray(r.data) ? list.length : (r.data ? r.data.total : 0);
@@ -82,7 +128,7 @@ function crudLoad(page, sort, order) {
             h += '<tr><td><input type="checkbox" data-id="' + MESUI.escapeHtml(rowKey) + '" '
                 + (isSelected ? 'checked' : '') + ' onchange="toggleSelectRow(' + rowIdArg
                 + ',this.checked)"></td><td>' + MESUI.escapeHtml(row.id) + '</td>';
-            curFields.forEach(function(f) {
+            loadFields.forEach(function(f) {
                 var v = row[f.k] != null ? row[f.k] : '';
                 if(f.k === 'status') {
                     v = MESUI.statusHtml(f, v);
@@ -95,10 +141,19 @@ function crudLoad(page, sort, order) {
                 h += '<td>' + v + '</td>';
             });
             h += '<td>' + MESUI.escapeHtml(row.created_at || '') + '</td>';
-            h += '<td class="actions"><button class="btn btn-blue btn-sm" onclick="crudEdit('
-                + rowIdArg + ')">编辑</button>';
-            h += '<button class="btn btn-red btn-sm" onclick="crudDel(' + rowIdArg
-                + ')">删除</button></td></tr>';
+            if(hasRowActions) {
+                h += '<td class="actions">';
+                if(loadActions.edit) {
+                    h += '<button class="btn btn-blue btn-sm" onclick="crudEdit('
+                        + rowIdArg + ')">编辑</button>';
+                }
+                if(loadActions.delete) {
+                    h += '<button class="btn btn-red btn-sm" onclick="crudDel('
+                        + rowIdArg + ')">删除</button>';
+                }
+                h += '</td>';
+            }
+            h += '</tr>';
         });
         tb.innerHTML = h;
 
@@ -113,12 +168,28 @@ function crudLoad(page, sort, order) {
     });
 }
 
+function crudActionAllowed(action) {
+    if(curCrudActions && curCrudActions[action] === false) {
+        alert('当前页面不允许' + ({
+            add: '新增',
+            edit: '编辑',
+            delete: '删除',
+            import: '导入',
+            export: '导出'
+        }[action] || '执行该操作'));
+        return false;
+    }
+    return true;
+}
+
 function crudAdd() {
+    if(!crudActionAllowed('add')) return;
     editId = null;
     openModal('新增', curFields, {});
 }
 
 function crudEdit(id) {
+    if(!crudActionAllowed('edit')) return;
     var row = currentRowsById[String(id)];
     if(!row) {
         alert('记录不存在或已刷新，请重新加载');
@@ -129,6 +200,7 @@ function crudEdit(id) {
 }
 
 function crudDel(id) {
+    if(!crudActionAllowed('delete')) return;
     if(!confirm('确定删除？')) return;
     api(curApiBase + '/delete', {method:'POST', body:{id:id}}).then(function(r) {
         if(r && r.code === 0) crudLoad(1);
@@ -137,12 +209,13 @@ function crudDel(id) {
 }
 
 function doExport() {
-    var table = curApiBase.replace('/api/', '').replace(/\//g, '_');
-    window.open('/api/export/' + table, '_blank');
+    if(!crudActionAllowed('export')) return;
+    window.open('/api/export/' + curDataTable, '_blank');
 }
 
 function doImport() {
-    var table = curApiBase.replace('/api/', '').replace(/\//g, '_');
+    if(!crudActionAllowed('import')) return;
+    var table = curDataTable;
     document.getElementById('mTitle').textContent = '导入数据';
     document.getElementById('mBody').innerHTML =
         '<div style="margin-bottom:14px">'
@@ -204,7 +277,8 @@ function doImport() {
 
 // 导出自定义字段选择
 function doExportCustom() {
-    var table = curApiBase.replace('/api/', '').replace(/\//g, '_');
+    if(!crudActionAllowed('export')) return;
+    var table = curDataTable;
     document.getElementById('mTitle').textContent = '自定义导出';
     document.getElementById('mBody').innerHTML = '<div style="margin-bottom:12px"><b>选择导出字段：</b></div>'
         + '<div id="exportFields" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"></div>';
