@@ -54,6 +54,18 @@ def calendar_add():
     return jsonify(crud_add('sched_calendar', request.json))
 
 
+@eqp_schedule_bp.route('/api/sched/calendar/update', methods=['POST'])
+@login_required
+def calendar_update():
+    return jsonify(crud_update('sched_calendar', request.json))
+
+
+@eqp_schedule_bp.route('/api/sched/calendar/delete', methods=['POST'])
+@login_required
+def calendar_delete():
+    return jsonify(crud_delete('sched_calendar', request.json.get('id')))
+
+
 # ==================== 质检方案模板 ====================
 @eqp_schedule_bp.route('/api/qm/template/list')
 @login_required
@@ -71,6 +83,12 @@ def qm_template_add():
 @login_required
 def qm_template_update():
     return jsonify(crud_update('qm_inspect_template', request.json))
+
+
+@eqp_schedule_bp.route('/api/qm/template/delete', methods=['POST'])
+@login_required
+def qm_template_delete():
+    return jsonify(crud_delete('qm_inspect_template', request.json.get('id')))
 
 
 # ==================== 工序流转卡 ====================

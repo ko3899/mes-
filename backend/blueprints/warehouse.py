@@ -47,6 +47,18 @@ def area_add():
     return jsonify(crud_add('inv_area', request.json))
 
 
+@warehouse_bp.route('/api/area/update', methods=['POST'])
+@login_required
+def area_update():
+    return jsonify(crud_update('inv_area', request.json))
+
+
+@warehouse_bp.route('/api/area/delete', methods=['POST'])
+@login_required
+def area_delete():
+    return jsonify(crud_delete('inv_area', request.json.get('id')))
+
+
 @warehouse_bp.route('/api/location/list')
 @login_required
 def location_list():
@@ -63,6 +75,18 @@ def location_list():
 @login_required
 def location_add():
     return jsonify(crud_add('inv_location', request.json))
+
+
+@warehouse_bp.route('/api/location/update', methods=['POST'])
+@login_required
+def location_update():
+    return jsonify(crud_update('inv_location', request.json))
+
+
+@warehouse_bp.route('/api/location/delete', methods=['POST'])
+@login_required
+def location_delete():
+    return jsonify(crud_delete('inv_location', request.json.get('id')))
 
 
 # ==================== 库存事务 ====================
@@ -108,3 +132,9 @@ def arrival_add():
 @login_required
 def arrival_update():
     return jsonify(crud_update('inv_arrival_notice', request.json))
+
+
+@warehouse_bp.route('/api/arrival/delete', methods=['POST'])
+@login_required
+def arrival_delete():
+    return jsonify(crud_delete('inv_arrival_notice', request.json.get('id')))

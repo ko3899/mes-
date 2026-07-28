@@ -27,6 +27,8 @@ def app():
 
     import utils.database as db_mod
     db_mod.DB_PATH = TEST_DB_PATH
+    db_mod.init_db()
+    db_mod._init_extra_tables()
 
     application = create_app()
     application.config['TESTING'] = True
@@ -2744,3 +2746,234 @@ class TestAdminInteractionBackend:
                 (complaint_id,),
             ).fetchone()
         assert remaining is None
+
+
+class TestWarehouseScheduleCrud:
+    @pytest.mark.parametrize('path', [
+        '/api/area/update',
+        '/api/area/delete',
+        '/api/location/update',
+        '/api/location/delete',
+        '/api/arrival/delete',
+        '/api/qm/template/delete',
+        '/api/sched/calendar/update',
+        '/api/sched/calendar/delete',
+    ])
+    def test_write_routes_require_login(self, client, path):
+        response = client.post(path, json={'id': 1})
+
+        assert response.status_code == 401
+        assert response.get_json()['code'] == 401
+
+    def test_area_update_and_delete(self, auth_client):
+        suffix = uuid.uuid4().hex[:8]
+        warehouse_id = response_id(auth_client.post(
+            '/api/warehouse/add',
+            json={
+                'warehouse_name': f'成品仓-{suffix}',
+                'code': f'WH_{suffix}',
+            },
+        ))
+        area_id = response_id(auth_client.post(
+            '/api/area/add',
+            json={
+                'warehouse_id': warehouse_id,
+                'area_name': f'A区-{suffix}',
+                'code': f'AREA_{suffix}',
+            },
+        ))
+
+        updated = auth_client.post('/api/area/update', json={
+            'id': area_id,
+            'area_name': f'A1区-{suffix}',
+        })
+
+        assert_success(updated)
+        areas = assert_success(auth_client.get('/api/area/list'))['data']
+        area = next(row for row in areas if row['id'] == area_id)
+        assert area['area_name'] == f'A1区-{suffix}'
+
+        deleted = auth_client.post('/api/area/delete', json={'id': area_id})
+        assert_success(deleted)
+        with auth_client.application.app_context():
+            row = get_db().execute(
+                'SELECT 1 FROM inv_area WHERE id=?',
+                (area_id,),
+            ).fetchone()
+        assert row is None
+
+    def test_location_update_and_delete(self, auth_client):
+        suffix = uuid.uuid4().hex[:8]
+        warehouse_id = response_id(auth_client.post(
+            '/api/warehouse/add',
+            json={
+                'warehouse_name': f'库位测试仓-{suffix}',
+                'code': f'WH_LOC_{suffix}',
+            },
+        ))
+        area_id = response_id(auth_client.post(
+            '/api/area/add',
+            json={
+                'warehouse_id': warehouse_id,
+                'area_name': f'库位测试区-{suffix}',
+                'code': f'AREA_LOC_{suffix}',
+            },
+        ))
+        location_id = response_id(auth_client.post(
+            '/api/location/add',
+            json={
+                'area_id': area_id,
+                'location_name': f'L01-{suffix}',
+                'code': f'LOC_{suffix}',
+            },
+        ))
+
+        updated = auth_client.post('/api/location/update', json={
+            'id': location_id,
+            'location_name': f'L02-{suffix}',
+        })
+
+        assert_success(updated)
+        locations = assert_success(auth_client.get('/api/location/list'))['data']
+        location = next(row for row in locations if row['id'] == location_id)
+        assert location['location_name'] == f'L02-{suffix}'
+
+        deleted = auth_client.post(
+            '/api/location/delete',
+            json={'id': location_id},
+        )
+        assert_success(deleted)
+        with auth_client.application.app_context():
+            row = get_db().execute(
+                'SELECT 1 FROM inv_location WHERE id=?',
+                (location_id,),
+            ).fetchone()
+        assert row is None
+
+    def test_arrival_delete(self, auth_client):
+        suffix = uuid.uuid4().hex[:8]
+        arrival_id = response_id(auth_client.post(
+            '/api/arrival/add',
+            json={
+                'expected_date': '2026-07-29',
+                'remark': f'删除测试-{suffix}',
+            },
+        ))
+
+        deleted = auth_client.post(
+            '/api/arrival/delete',
+            json={'id': arrival_id},
+        )
+
+        assert_success(deleted)
+        with auth_client.application.app_context():
+            row = get_db().execute(
+                'SELECT 1 FROM inv_arrival_notice WHERE id=?',
+                (arrival_id,),
+            ).fetchone()
+        assert row is None
+
+    def test_qm_template_delete(self, auth_client):
+        suffix = uuid.uuid4().hex[:8]
+        template_id = response_id(auth_client.post(
+            '/api/qm/template/add',
+            json={
+                'template_name': f'来料模板-{suffix}',
+                'inspect_type': 'incoming',
+                'items': '[]',
+            },
+        ))
+
+        deleted = auth_client.post(
+            '/api/qm/template/delete',
+            json={'id': template_id},
+        )
+
+        assert_success(deleted)
+        with auth_client.application.app_context():
+            row = get_db().execute(
+                'SELECT 1 FROM qm_inspect_template WHERE id=?',
+                (template_id,),
+            ).fetchone()
+        assert row is None
+
+    def test_calendar_update_and_delete(self, auth_client):
+        suffix = uuid.uuid4().hex[:8]
+        team_id = response_id(auth_client.post('/api/sched/team/add', json={
+            'team_name': f'日历班组-{suffix}',
+            'code': f'TEAM_{suffix}',
+        }))
+        plan_id = response_id(auth_client.post('/api/sched/plan/add', json={
+            'plan_name': f'白班-{suffix}',
+            'team_id': team_id,
+            'start_date': '2026-07-01',
+            'end_date': '2026-07-31',
+            'shift_type': 'day',
+        }))
+        calendar_id = response_id(auth_client.post(
+            '/api/sched/calendar/add',
+            json={
+                'plan_id': plan_id,
+                'work_date': '2026-07-29',
+                'shift_type': 'day',
+            },
+        ))
+
+        updated = auth_client.post('/api/sched/calendar/update', json={
+            'id': calendar_id,
+            'shift_type': 'night',
+        })
+
+        assert_success(updated)
+        calendars = assert_success(
+            auth_client.get(f'/api/sched/calendar/list?plan_id={plan_id}')
+        )['data']
+        calendar = next(row for row in calendars if row['id'] == calendar_id)
+        assert calendar['shift_type'] == 'night'
+
+        deleted = auth_client.post(
+            '/api/sched/calendar/delete',
+            json={'id': calendar_id},
+        )
+        assert_success(deleted)
+        with auth_client.application.app_context():
+            row = get_db().execute(
+                'SELECT 1 FROM sched_calendar WHERE id=?',
+                (calendar_id,),
+            ).fetchone()
+        assert row is None
+
+    def test_check_project_existing_crud_smoke(self, auth_client):
+        suffix = uuid.uuid4().hex[:8]
+        project_id = response_id(auth_client.post(
+            '/api/eqp/check-project/add',
+            json={
+                'project_name': f'温度检查-{suffix}',
+                'check_type': 'daily',
+                'standard': '20-30℃',
+            },
+        ))
+
+        updated = auth_client.post('/api/eqp/check-project/update', json={
+            'id': project_id,
+            'standard': '21-29℃',
+        })
+
+        assert_success(updated)
+        projects = assert_success(
+            auth_client.get('/api/eqp/check-project/list?size=1000')
+        )['data']['list']
+        project = next(row for row in projects if row['id'] == project_id)
+        assert project['standard'] == '21-29℃'
+
+        deleted = auth_client.post(
+            '/api/eqp/check-project/delete',
+            json={'id': project_id},
+        )
+        assert_success(deleted)
+        with auth_client.application.app_context():
+            row = get_db().execute(
+                'SELECT 1 FROM eqp_check_project WHERE id=?',
+                (project_id,),
+            ).fetchone()
+        assert row is None
