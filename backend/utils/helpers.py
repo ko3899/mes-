@@ -90,28 +90,43 @@ def permission_required(*perms):
     return decorator
 
 
+def gen_no_in_transaction(db, prefix):
+    """在调用方已经开启的事务中生成编号，不自行提交。"""
+    row = db.execute(
+        "SELECT * FROM sys_numbering WHERE entity_type=?",
+        (prefix,),
+    ).fetchone()
+    if not row:
+        db.execute(
+            """INSERT INTO sys_numbering
+               (prefix, entity_type, current_no, digit_count)
+               VALUES (?,?,1,6)""",
+            (prefix, prefix),
+        )
+        no = 1
+        digits = 6
+    else:
+        no = row['current_no'] + 1
+        digits = row['digit_count']
+        db.execute(
+            "UPDATE sys_numbering SET current_no=? WHERE entity_type=?",
+            (no, prefix),
+        )
+    today = datetime.datetime.now().strftime('%Y%m%d')
+    return f"{prefix}{today}{str(no).zfill(digits)}"
+
+
 def gen_no(prefix):
     """生成编号（原子操作，防止竞态条件）"""
     db = get_db()
     try:
-        # 使用事务保证原子性
         db.execute("BEGIN IMMEDIATE")
-        row = db.execute("SELECT * FROM sys_numbering WHERE entity_type=?", (prefix,)).fetchone()
-        if not row:
-            db.execute("INSERT INTO sys_numbering (prefix, entity_type, current_no, digit_count) VALUES (?,?,1,6)",
-                       (prefix, prefix))
-            no = 1
-            digits = 6
-        else:
-            no = row['current_no'] + 1
-            db.execute("UPDATE sys_numbering SET current_no=? WHERE entity_type=?", (no, prefix))
-            digits = row['digit_count']
+        number = gen_no_in_transaction(db, prefix)
         db.commit()
-    except Exception as e:
+        return number
+    except Exception:
         db.rollback()
-        raise e
-    today = datetime.datetime.now().strftime('%Y%m%d')
-    return f"{prefix}{today}{str(no).zfill(digits)}"
+        raise
 
 
 def crud_list(table, params):

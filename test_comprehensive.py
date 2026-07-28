@@ -5,6 +5,7 @@ import hashlib
 import sqlite3
 import tempfile
 import json
+import uuid
 import pytest
 from flask import jsonify, session
 
@@ -488,6 +489,51 @@ def assert_success(resp, expect_code=0):
     assert data is not None, "Response is not JSON"
     assert data.get('code') == expect_code, f"Expected code {expect_code}, got {data.get('code')}: {data.get('message')}"
     return data
+
+
+def response_id(response):
+    payload = response.get_json()
+    assert payload['code'] == 0, payload
+    return payload['data']['id']
+
+
+def create_production_chain(client, planned_qty=10):
+    suffix = uuid.uuid4().hex[:8]
+    workshop_id = response_id(client.post('/api/base/workshop/add', json={
+        'workshop_name': f'报工车间-{suffix}',
+        'code': f'WS_{suffix}',
+    }))
+    process_id = response_id(client.post('/api/base/process/add', json={
+        'process_name': f'报工工序-{suffix}',
+        'code': f'PS_{suffix}',
+        'workshop_id': workshop_id,
+    }))
+    product_id = response_id(client.post('/api/base/product/add', json={
+        'product_name': f'报工产品-{suffix}',
+        'code': f'PD_{suffix}',
+        'unit': '件',
+    }))
+    workorder_id = response_id(client.post('/api/prod/workorder/add', json={
+        'product_id': product_id,
+        'workshop_id': workshop_id,
+        'planned_qty': planned_qty,
+    }))
+    task_id = response_id(client.post('/api/prod/task/add', json={
+        'workorder_id': workorder_id,
+        'process_id': process_id,
+        'planned_qty': planned_qty,
+    }))
+    return {
+        'workshop_id': workshop_id,
+        'process_id': process_id,
+        'product_id': product_id,
+        'workorder_id': workorder_id,
+        'task_id': task_id,
+    }
+
+
+def find_by_id(payload, row_id):
+    return next(row for row in payload['data']['list'] if row['id'] == row_id)
 
 
 def assert_fail(resp, expect_code=400):
@@ -1194,6 +1240,223 @@ class TestInventory:
 
 
 # ==================== 5. Production Tests ====================
+
+class TestProductionConsistency:
+    def test_report_updates_task_and_workorder_progress(self, auth_client):
+        ids = create_production_chain(auth_client, planned_qty=10)
+        result = auth_client.post('/api/prod/report/add', json={
+            'task_id': ids['task_id'],
+            'workorder_id': ids['workorder_id'],
+            'process_id': ids['process_id'],
+            'qualified_qty': 6,
+            'defect_qty': 1,
+        }).get_json()
+        assert result['code'] == 0
+
+        task = find_by_id(
+            auth_client.get('/api/prod/task/list?size=1000').get_json(),
+            ids['task_id'],
+        )
+        workorder = find_by_id(
+            auth_client.get('/api/prod/workorder/list?size=1000').get_json(),
+            ids['workorder_id'],
+        )
+        assert task['completed_qty'] == 6
+        assert task['defect_qty'] == 1
+        assert task['status'] == 1
+        assert workorder['completed_qty'] == 6
+        assert workorder['defect_qty'] == 1
+        assert workorder['status'] == 1
+
+        finished = auth_client.post('/api/prod/report/add', json={
+            'task_id': ids['task_id'],
+            'workorder_id': ids['workorder_id'],
+            'process_id': ids['process_id'],
+            'qualified_qty': 4,
+            'defect_qty': 0,
+        }).get_json()
+        assert finished['code'] == 0
+        task = find_by_id(
+            auth_client.get('/api/prod/task/list?size=1000').get_json(),
+            ids['task_id'],
+        )
+        workorder = find_by_id(
+            auth_client.get('/api/prod/workorder/list?size=1000').get_json(),
+            ids['workorder_id'],
+        )
+        assert task['completed_qty'] == 10
+        assert task['defect_qty'] == 1
+        assert task['status'] == 3
+        assert workorder['completed_qty'] == 10
+        assert workorder['defect_qty'] == 1
+        assert workorder['status'] == 3
+
+    def test_workorder_completes_only_after_all_tasks(self, auth_client):
+        ids = create_production_chain(auth_client, planned_qty=10)
+        suffix = uuid.uuid4().hex[:8]
+        second_process = response_id(auth_client.post('/api/base/process/add', json={
+            'process_name': f'第二工序-{suffix}',
+            'code': f'PS_SECOND_{suffix}',
+            'workshop_id': ids['workshop_id'],
+        }))
+        second_task = response_id(auth_client.post('/api/prod/task/add', json={
+            'workorder_id': ids['workorder_id'],
+            'process_id': second_process,
+            'planned_qty': 10,
+        }))
+
+        for task_id, process_id, expected_status in (
+            (ids['task_id'], ids['process_id'], 1),
+            (second_task, second_process, 3),
+        ):
+            response = auth_client.post('/api/prod/report/add', json={
+                'task_id': task_id,
+                'workorder_id': ids['workorder_id'],
+                'process_id': process_id,
+                'qualified_qty': 10,
+                'defect_qty': 0,
+            })
+            assert response.status_code == 200
+            assert response.get_json()['code'] == 0
+            workorder = find_by_id(
+                auth_client.get('/api/prod/workorder/list?size=1000').get_json(),
+                ids['workorder_id'],
+            )
+            assert workorder['status'] == expected_status
+
+    def test_gps_report_updates_progress_and_stores_coordinates(self, auth_client):
+        ids = create_production_chain(auth_client, planned_qty=8)
+        response = auth_client.post('/api/prod/report/gps', json={
+            'task_id': ids['task_id'],
+            'workorder_id': ids['workorder_id'],
+            'process_id': ids['process_id'],
+            'qualified_qty': 3,
+            'defect_qty': 1,
+            'latitude': 31.2304,
+            'longitude': 121.4737,
+        })
+        assert response.status_code == 200
+        report_id = response_id(response)
+
+        task = find_by_id(
+            auth_client.get('/api/prod/task/list?size=1000').get_json(),
+            ids['task_id'],
+        )
+        workorder = find_by_id(
+            auth_client.get('/api/prod/workorder/list?size=1000').get_json(),
+            ids['workorder_id'],
+        )
+        report = find_by_id(
+            auth_client.get('/api/prod/report/list?size=1000').get_json(),
+            report_id,
+        )
+        assert task['completed_qty'] == 3
+        assert task['defect_qty'] == 1
+        assert task['status'] == 1
+        assert workorder['completed_qty'] == 3
+        assert workorder['defect_qty'] == 1
+        assert workorder['status'] == 1
+        assert report['remark'] == 'GPS: 31.2304,121.4737'
+
+    @pytest.mark.parametrize(
+        ('qualified_qty', 'defect_qty'),
+        ((0, 0), (-1, 0), (1, -1), ('invalid', 0)),
+    )
+    def test_invalid_report_quantity_does_not_change_progress(
+            self, auth_client, qualified_qty, defect_qty):
+        ids = create_production_chain(auth_client, planned_qty=10)
+        response = auth_client.post('/api/prod/report/add', json={
+            'task_id': ids['task_id'],
+            'workorder_id': ids['workorder_id'],
+            'process_id': ids['process_id'],
+            'qualified_qty': qualified_qty,
+            'defect_qty': defect_qty,
+        })
+        assert response.status_code == 400
+        assert response.get_json()['code'] == 400
+        self._assert_no_report_or_progress(auth_client, ids)
+
+    def test_missing_task_does_not_insert_report(self, auth_client):
+        ids = create_production_chain(auth_client, planned_qty=10)
+        response = auth_client.post('/api/prod/report/add', json={
+            'task_id': 999999999,
+            'workorder_id': ids['workorder_id'],
+            'process_id': ids['process_id'],
+            'qualified_qty': 1,
+            'defect_qty': 0,
+        })
+        assert response.status_code == 404
+        assert response.get_json()['code'] == 404
+        self._assert_no_report_or_progress(auth_client, ids)
+
+    def test_task_workorder_mismatch_does_not_insert_report(self, auth_client):
+        ids = create_production_chain(auth_client, planned_qty=10)
+        other = create_production_chain(auth_client, planned_qty=10)
+        response = auth_client.post('/api/prod/report/add', json={
+            'task_id': ids['task_id'],
+            'workorder_id': other['workorder_id'],
+            'process_id': ids['process_id'],
+            'qualified_qty': 1,
+            'defect_qty': 0,
+        })
+        assert response.status_code == 400
+        assert response.get_json()['code'] == 400
+        self._assert_no_report_or_progress(auth_client, ids)
+        self._assert_no_report_or_progress(auth_client, other)
+
+    def test_task_process_mismatch_does_not_insert_report(self, auth_client):
+        ids = create_production_chain(auth_client, planned_qty=10)
+        other = create_production_chain(auth_client, planned_qty=10)
+        response = auth_client.post('/api/prod/report/add', json={
+            'task_id': ids['task_id'],
+            'workorder_id': ids['workorder_id'],
+            'process_id': other['process_id'],
+            'qualified_qty': 1,
+            'defect_qty': 0,
+        })
+        assert response.status_code == 400
+        assert response.get_json()['code'] == 400
+        self._assert_no_report_or_progress(auth_client, ids)
+        self._assert_no_report_or_progress(auth_client, other)
+
+    def test_workorder_keyword_does_not_fall_back_to_latest(self, auth_client):
+        create_production_chain(auth_client, planned_qty=10)
+        payload = auth_client.get(
+            '/api/prod/workorder/list?keyword=WO_DOES_NOT_EXIST'
+        ).get_json()
+        assert payload['data']['list'] == []
+        assert payload['data']['total'] == 0
+
+    def test_task_keyword_does_not_fall_back_to_latest(self, auth_client):
+        create_production_chain(auth_client, planned_qty=10)
+        payload = auth_client.get(
+            '/api/prod/task/list?keyword=TK_DOES_NOT_EXIST'
+        ).get_json()
+        assert payload['data']['list'] == []
+        assert payload['data']['total'] == 0
+
+    @staticmethod
+    def _assert_no_report_or_progress(client, ids):
+        reports = client.get('/api/prod/report/list?size=1000').get_json()
+        assert all(
+            report['task_id'] != ids['task_id']
+            for report in reports['data']['list']
+        )
+        task = find_by_id(
+            client.get('/api/prod/task/list?size=1000').get_json(),
+            ids['task_id'],
+        )
+        workorder = find_by_id(
+            client.get('/api/prod/workorder/list?size=1000').get_json(),
+            ids['workorder_id'],
+        )
+        assert task['completed_qty'] == 0
+        assert task['defect_qty'] == 0
+        assert task['status'] == 0
+        assert workorder['completed_qty'] == 0
+        assert workorder['defect_qty'] == 0
+        assert workorder['status'] == 0
+
 
 class TestProduction:
     def test_sales_order_list(self, auth_client):
