@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#071426">
+  <link rel="stylesheet" href="/frontend/static/css/kanban.css">
+  <title>MES生产指挥看板</title>
+</head>
+<body>
+  <main class="kanban-shell">
+    <header id="kanbanHeader" class="command-header">
+      <div class="command-brand"><span class="command-mark">M</span><div><span>MES FACTORY COMMAND</span><h1>生产指挥看板</h1></div></div>
+      <div class="header-center"><span id="currentClock">--:--:--</span><small id="currentDate">----</small></div>
+      <div class="header-actions">
+        <div class="live-state"><i></i><div><span id="connectionLabel">数据在线</span><small>更新于 <b id="lastUpdated">--:--</b></small></div></div>
+        <button id="refreshButton" type="button" aria-label="立即刷新">↻</button>
+        <button id="fullscreenButton" type="button" aria-label="切换全屏">⛶</button>
+      </div>
+    </header>
+
+    <div id="staleState" class="stale-banner is-hidden" role="status"><strong>数据可能已过期</strong><span>正在保留最近一次成功快照</span></div>
+
+    <section class="metric-strip" aria-label="今日生产核心指标">
+      <article class="metric-block accent"><span>今日合格产出</span><strong id="metricQualified">—</strong><small>QUALIFIED OUTPUT</small></article>
+      <article class="metric-block danger"><span>今日不良数量</span><strong id="metricDefect">—</strong><small>DEFECT QUANTITY</small></article>
+      <article class="metric-block success"><span>今日合格率</span><strong id="metricYield">—</strong><small>FIRST PASS YIELD</small></article>
+      <article class="metric-block"><span>活跃工单</span><strong id="metricOrders">—</strong><small>ACTIVE ORDERS</small></article>
+      <article class="metric-block"><span>设备运行率</span><strong id="metricEquipment">—</strong><small>EQUIPMENT UPTIME</small></article>
+    </section>
+
+    <section class="command-grid">
+      <article class="command-panel order-panel">
+        <div class="panel-heading"><div><span>LIVE ORDERS</span><h2>进行中工单</h2></div><small id="orderCount">0 条</small></div>
+        <div class="table-scroll">
+          <table><thead><tr><th>工单 / 产品</th><th>车间</th><th>计划</th><th>完成</th><th>进度</th><th>状态</th></tr></thead><tbody id="orderTableBody"></tbody></table>
+          <div id="orderEmpty" class="empty-state is-hidden">当前没有进行中的生产工单</div>
+        </div>
+      </article>
+      <article class="command-panel output-panel"><div class="panel-heading"><div><span>WORKSHOP OUTPUT</span><h2>车间今日产出</h2></div></div><div id="outputChart" class="chart"></div></article>
+      <article class="command-panel equipment-panel"><div class="panel-heading"><div><span>EQUIPMENT HEALTH</span><h2>设备运行状态</h2></div></div><div id="equipmentChart" class="chart"></div></article>
+      <article class="command-panel quality-panel"><div class="panel-heading"><div><span>QUALITY ALERT</span><h2>质量待处理</h2></div><small id="qualitySummary">0 项</small></div><div id="qualityChart" class="chart"></div></article>
+    </section>
+
+    <section id="errorState" class="error-state is-hidden" role="alert"><strong>看板暂时无法读取数据</strong><span id="errorMessage">请稍后重试</span><a href="/admin">进入管理后台登录</a></section>
+    <footer class="command-footer"><span>MES 工厂管家 · 生产数据每 30 秒自动刷新</span><span>F11 全屏模式</span></footer>
+  </main>
+  <script src="/frontend/static/vendor/echarts.min.js"></script>
+  <script src="/frontend/static/js/kanban.js"></script>
+</body>
+</html>
