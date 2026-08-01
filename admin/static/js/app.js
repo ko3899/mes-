@@ -28,6 +28,9 @@ function toggleTheme() {
     document.documentElement.setAttribute('data-theme', next);
     localStorage.setItem('theme', next);
     updateThemeIcon();
+    if(curPage === 'home' && typeof renderHome === 'function') {
+        renderHome(document.getElementById('pageContent'));
+    }
 }
 
 function updateThemeIcon() {
@@ -35,6 +38,7 @@ function updateThemeIcon() {
     if(btn) {
         var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         btn.textContent = isDark ? '☀️' : '🌙';
+        btn.setAttribute('aria-label', isDark ? '切换浅色主题' : '切换深色主题');
     }
 }
 
@@ -199,6 +203,10 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('globalSearch').onkeydown = function(e) { if(e.key === 'Enter') doGlobalSearch(); };
     document.getElementById('logoutBtn').onclick = doLogout;
     document.getElementById('toggleBtn').onclick = toggleSidebar;
+    document.getElementById('sidebarOverlay').onclick = function() {
+        document.getElementById('appPage').classList.remove('sidebar-open');
+        document.getElementById('toggleBtn').setAttribute('aria-expanded', 'false');
+    };
     document.getElementById('modalCloseBtn').onclick = closeModal;
     document.getElementById('modalCancelBtn').onclick = closeModal;
     document.getElementById('mSave').onclick = function() {
@@ -232,6 +240,9 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('click', resetActivity);
     document.addEventListener('keypress', resetActivity);
     document.addEventListener('scroll', resetActivity);
+    window.addEventListener('resize', function() {
+        if(window.innerWidth >= 768) document.getElementById('appPage').classList.remove('sidebar-open');
+    });
     
     setInterval(function() {
         if(curUser && (Date.now() - lastActivity > sessionTimeout)) {

@@ -121,3 +121,21 @@ test('dashboard text helper escapes API-provided warning values', () => {
     '&lt;img src=x onerror=alert(1)&gt;'
   );
 });
+
+test('dark and responsive contracts cover desktop, tablet, and mobile', () => {
+  const css = read('admin/static/css/style.css');
+
+  assert.match(css, /\[data-theme="dark"\]/);
+  assert.match(css, /@media\s*\(max-width:\s*1199px\)/);
+  assert.match(css, /@media\s*\(max-width:\s*767px\)/);
+  assert.match(css, /prefers-reduced-motion:\s*reduce/);
+  assert.match(css, /sidebar-open/);
+});
+
+test('theme and sidebar controls expose their state to assistive technology', () => {
+  const source = read('admin/static/js/app.js');
+
+  assert.match(source, /setAttribute\('aria-label',\s*isDark/);
+  assert.match(source, /setAttribute\('aria-expanded'/);
+  assert.match(source, /classList\.toggle\(className\)/);
+});
