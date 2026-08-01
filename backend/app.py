@@ -134,6 +134,10 @@ def create_app():
     def manifest():
         return send_from_directory(FRONTEND_DIR, 'manifest.json')
 
+    @app.route('/frontend/static/<path:filename>')
+    def frontend_static(filename):
+        return send_from_directory(os.path.join(FRONTEND_DIR, 'static'), filename)
+
     @app.route('/admin')
     def admin_page():
         return send_from_directory(ADMIN_DIR, 'index.html')

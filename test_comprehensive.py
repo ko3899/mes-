@@ -3894,6 +3894,11 @@ class TestIntegrationStatus:
 
 
 class TestCollectorQueries:
+    def test_collector_static_assets_are_served(self, client):
+        response = client.get('/frontend/static/js/core.js')
+        assert response.status_code == 200
+        assert 'classifyBarcode' in response.get_data(as_text=True)
+
     def test_collector_personal_lists_filter_by_current_user(self, auth_client):
         current_user = auth_client.get('/api/user/info').get_json()['data']['id']
         own_chain = create_production_chain(auth_client)
