@@ -3,6 +3,11 @@ var curUser = null;
 var curPage = '';
 var selectedRows = new Set();
 
+function setAuthenticatedView(authenticated) {
+    document.getElementById('loginPage').classList.toggle('is-hidden', authenticated);
+    document.getElementById('appPage').classList.toggle('is-hidden', !authenticated);
+}
+
 // 主题切换
 function toggleTheme() {
     var current = document.documentElement.getAttribute('data-theme');
@@ -178,6 +183,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('loginBtn').onclick = doLogin;
     document.getElementById('lu').onkeydown = function(e) { if(e.key === 'Enter') document.getElementById('lp').focus(); };
     document.getElementById('lp').onkeydown = function(e) { if(e.key === 'Enter') doLogin(); };
+    document.getElementById('globalSearch').onkeydown = function(e) { if(e.key === 'Enter') doGlobalSearch(); };
     document.getElementById('logoutBtn').onclick = doLogout;
     document.getElementById('toggleBtn').onclick = function() {
         var sb = document.getElementById('sideBar');
@@ -251,8 +257,7 @@ function doLogin() {
         if(!r) { document.getElementById('lerr').textContent = '网络错误'; return; }
         if(r.code !== 0) { document.getElementById('lerr').textContent = r.message; return; }
         curUser = r.data;
-        document.getElementById('loginPage').style.display = 'none';
-        document.getElementById('appPage').style.display = 'flex';
+        setAuthenticatedView(true);
         document.getElementById('uname').textContent = curUser.real_name || curUser.username;
         document.getElementById('uav').textContent = (curUser.real_name || curUser.username).charAt(0);
         buildMenu();
@@ -264,8 +269,7 @@ function doLogin() {
 function doLogout() {
     api('/api/logout', {method:'POST'});
     curUser = null;
-    document.getElementById('loginPage').style.display = '';
-    document.getElementById('appPage').style.display = 'none';
+    setAuthenticatedView(false);
 }
 
 function renderPage(key) {

@@ -10,38 +10,51 @@
 <body>
 
 <!-- Login -->
-<div id="loginPage" class="login-bg">
+<section id="loginPage" class="login-layout">
+<div class="login-brand" aria-hidden="true">
+<div class="brand-lockup"><span class="brand-mark">M</span><span>MES 工厂管家</span></div>
+<div class="login-brand-copy">
+<p class="eyebrow">SMART MANUFACTURING</p>
+<h1>让生产现场<br>清晰、协同、可追溯</h1>
+<p>连接计划、生产、质量、仓储与设备，让每一次决策都有实时数据支撑。</p>
+</div>
+<div class="capability-list"><span>生产协同</span><span>质量闭环</span><span>全程追溯</span></div>
+</div>
+<div class="login-panel">
 <div class="login-box">
-<h2>MES工厂管家</h2>
-<input id="lu" type="text" placeholder="用户名" value="admin">
-<input id="lp" type="password" placeholder="密码" value="admin123">
-<button id="loginBtn">登 录</button>
-<div id="lerr" class="login-err"></div>
+<p class="eyebrow">MES CONTROL CENTER</p>
+<h2>欢迎回来</h2>
+<p class="login-subtitle">登录工厂生产管理平台</p>
+<label for="lu">用户名</label>
+<input id="lu" type="text" autocomplete="username" placeholder="请输入用户名" value="admin">
+<label for="lp">密码</label>
+<input id="lp" type="password" autocomplete="current-password" placeholder="请输入密码" value="admin123">
+<button id="loginBtn" type="button">登录系统</button>
+<div id="lerr" class="login-err" role="status"></div>
 </div>
 </div>
+</section>
 
 <!-- App -->
-<div id="appPage" class="app" style="display:none">
-<div class="sidebar" id="sideBar"></div>
-<div class="main">
-<div class="header">
-<div class="left">
-<button class="toggle" id="toggleBtn">&#9776;</button>
-<input type="text" id="globalSearch" placeholder="全局搜索..." style="height:32px;border:1px solid #ddd;border-radius:4px;padding:0 12px;font-size:13px;width:200px;margin-left:12px" onkeydown="if(event.key==='Enter')doGlobalSearch()">
-<span id="bread">工作台</span>
+<div id="appPage" class="app-shell is-hidden">
+<aside class="sidebar-shell">
+<div class="sidebar-brand"><span class="brand-mark">M</span><span class="sidebar-brand-copy"><strong>MES</strong><small>工厂管家</small></span></div>
+<nav id="sideBar" class="sidebar-nav" aria-label="主导航"></nav>
+</aside>
+<div class="main-shell">
+<header class="topbar">
+<div class="topbar-leading">
+<button class="toggle" id="toggleBtn" type="button" aria-label="切换侧栏" aria-expanded="true">&#9776;</button>
+<div class="breadcrumb-block"><span class="eyebrow">MES / OPERATIONS</span><strong id="bread">工作台</strong></div>
 </div>
-<div style="display:flex;align-items:center;gap:16px">
-<div style="position:relative;cursor:pointer" onclick="goPage('notifications')">
-🔔 <span id="notifBadge" style="display:none;position:absolute;top:-8px;right:-8px;background:#f5222d;color:white;border-radius:50%;width:18px;height:18px;font-size:11px;text-align:center;line-height:18px">0</span>
+<div class="topbar-actions">
+<label class="global-search"><span aria-hidden="true">⌕</span><input type="search" id="globalSearch" placeholder="搜索产品、工单、设备…"></label>
+<button class="icon-button notification-button" type="button" aria-label="查看通知" onclick="goPage('notifications')">🔔<span id="notifBadge" class="notification-badge">0</span></button>
+<button class="icon-button theme-toggle" id="themeBtn" type="button" onclick="toggleTheme()" aria-label="切换深色主题">🌙</button>
+<button class="user" id="logoutBtn" type="button" aria-label="退出登录"><span class="avatar" id="uav">A</span><span id="uname">管理员</span></button>
 </div>
-<div class="user" id="logoutBtn">
-<button class="theme-toggle" id="themeBtn" onclick="toggleTheme()">🌙</button>
-<div class="avatar" id="uav">A</div>
-<span id="uname">管理员</span>
-</div>
-</div>
-</div>
-<div class="content" id="pageContent"></div>
+</header>
+<main class="content" id="pageContent"></main>
 <div class="batch-bar" id="batchBar">
 <span>已选 <span class="count">0</span> 项</span>
 <button class="btn btn-red btn-sm" onclick="batchDelete()">批量删除</button>
@@ -55,7 +68,7 @@
 </div>
 
 <!-- Modal -->
-<div id="modal" class="modal-mask">
+<div id="modal" class="modal-mask" role="dialog" aria-modal="true" aria-labelledby="mTitle">
 <div class="modal">
 <div class="modal-hd"><h3 id="mTitle">标题</h3><button class="close" id="modalCloseBtn">&times;</button></div>
 <div class="modal-bd" id="mBody"></div>
