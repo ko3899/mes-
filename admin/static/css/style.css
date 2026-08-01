@@ -132,6 +132,10 @@ button { cursor: pointer; }
 /* Shared surfaces */
 .card { min-width: 0; margin-bottom: 16px; padding: 18px; border: 1px solid var(--border-subtle); border-radius: var(--radius-card); background: var(--surface); box-shadow: 0 1px 2px rgba(15,23,42,.025); }
 .card-title { min-height: 36px; display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 16px; color: var(--text-strong); font-size: 16px; font-weight: 800; }
+.stats { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin-bottom: 16px; }
+.stat { min-width: 0; padding: 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-card); background: var(--surface); box-shadow: 0 1px 2px rgba(15,23,42,.025); }
+.stat .label { overflow: hidden; color: var(--text-muted); font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.stat .val { margin-top: 12px; overflow: hidden; color: var(--text-strong); font-size: 27px; font-weight: 800; line-height: 1.1; text-overflow: ellipsis; }
 .toolbar, .toolbar-actions, .quick-btns { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .toolbar { margin-bottom: 14px; padding: 11px; border: 1px solid var(--border-subtle); border-radius: 9px; background: var(--workspace); }
 .toolbar input, .toolbar select, .form-item input, .form-item select, .form-item textarea { height: 38px; padding: 0 11px; border: 1px solid var(--border-subtle); border-radius: 7px; outline: none; color: var(--text-strong); background: var(--surface); transition: border-color .15s, box-shadow .15s; }
@@ -161,6 +165,7 @@ td.actions { display: flex; align-items: center; gap: 6px; }
 .tag { display: inline-flex; align-items: center; gap: 5px; min-height: 24px; padding: 2px 9px; border-radius: 999px; color: var(--text); background: #eef2f7; font-size: 12px; font-weight: 700; }
 .tag::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .8; }
 .tag-green { color: #116149; background: #e7f6ef; }.tag-red { color: #a82f3c; background: #fdecef; }.tag-orange { color: #925309; background: #fff3df; }.tag-blue { color: #1d4ed8; background: #eaf1ff; }.tag-gray { color: #5e6878; background: #eef2f7; }
+.tag-ok, .tag-run { color: #116149; background: #e7f6ef; }.tag-no { color: #a82f3c; background: #fdecef; }.tag-wait { color: #925309; background: #fff3df; }.tag-draft { color: #5e6878; background: #eef2f7; }
 .page { display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding-top: 14px; }
 .page .info { margin-right: auto; color: var(--text-muted); }
 .pbtn { min-width: 32px; height: 32px; display: inline-grid; place-items: center; padding: 0 8px; border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text); background: var(--surface); cursor: pointer; }
@@ -208,11 +213,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 [data-theme="dark"] .tag-orange { color: #f3c878; background: #3a2b18; }
 [data-theme="dark"] .tag-blue { color: #a8c4ff; background: #1a2f51; }
 [data-theme="dark"] .tag-gray { color: #b0bfd2; background: #26354a; }
+[data-theme="dark"] .tag-ok, [data-theme="dark"] .tag-run { color: #84dfba; background: #17382e; }
+[data-theme="dark"] .tag-no { color: #ff9ba5; background: #3b2029; }
+[data-theme="dark"] .tag-wait { color: #f3c878; background: #3a2b18; }
+[data-theme="dark"] .tag-draft { color: #b0bfd2; background: #26354a; }
 [data-theme="dark"] .modal-ft { background: #0e1929; }
 [data-theme="dark"] .modal-hd .close:hover { background: #3a2028; }
 
 @media (max-width: 1199px) {
     .metrics-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+    .stats { grid-template-columns: repeat(2,minmax(0,1fr)); }
     .quick-actions { grid-template-columns: repeat(2,minmax(0,1fr)); }
     .content { padding: 20px; }
 }
@@ -238,6 +248,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
     .dashboard-date { width: 100%; grid-template-columns: auto 1fr auto; }
     .dashboard-date strong { grid-column: auto; }
     .metrics-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+    .stats { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
     .metric-card { padding: 13px; }
     .metric-value { font-size: 25px; }
     .dashboard-grid, .alert-grid { grid-template-columns: 1fr; gap: 12px; }

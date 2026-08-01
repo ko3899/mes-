@@ -155,3 +155,21 @@ test('navigation starts compact and avoids decorative emoji labels', () => {
   assert.match(source, /var openMenus = \{\};/);
   assert.doesNotMatch(source, /📊/);
 });
+
+test('legacy business renderers inherit the enterprise component theme', () => {
+  const css = read('admin/static/css/style.css');
+
+  for (const selector of [
+    '.stats',
+    '.stat',
+    '.stat .label',
+    '.stat .val',
+    '.tag-ok',
+    '.tag-no',
+    '.tag-run',
+    '.tag-wait',
+    '.tag-draft',
+  ]) {
+    assert.ok(css.includes(selector), `missing legacy theme mapping ${selector}`);
+  }
+});

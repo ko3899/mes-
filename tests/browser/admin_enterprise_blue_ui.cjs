@@ -75,6 +75,16 @@ const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || [
     assert.equal(await page.locator('#mTitle').textContent(), '新增');
     await page.locator('#modalCancelBtn').click();
 
+    await page.locator('button[data-menu="analytics"]').click();
+    await page.locator('button[data-page="analytics/oee"]').click();
+    await page.locator('#oeeChart').waitFor({state: 'visible'});
+    const legacyStats = page.locator('#pageContent .stat');
+    assert.equal(await legacyStats.count(), 4);
+    assert.equal(
+      await legacyStats.first().evaluate((element) => getComputedStyle(element).backgroundColor),
+      'rgb(17, 29, 47)'
+    );
+
     await page.setViewportSize({width: 390, height: 844});
     await page.locator('#toggleBtn').click();
     await page.waitForFunction(() => (
