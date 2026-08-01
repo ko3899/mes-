@@ -1,4 +1,5 @@
 """生产管理蓝图"""
+import datetime
 import math
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -137,13 +138,17 @@ def prod_task_list():
     size = int(request.args.get('size', 20))
     offset = (page - 1) * size
     keyword = request.args.get('keyword', '').strip()
-    where = ""
+    clauses = []
     params = []
     if keyword:
-        where = """ WHERE (
+        clauses.append("""(
             t.task_no LIKE ? OR w.order_no LIKE ? OR pr.process_name LIKE ?
-        )"""
+        )""")
         params = [f"%{keyword}%"] * 3
+    if request.args.get('mine') == '1':
+        clauses.append("t.assigned_to=?")
+        params.append(session.get('user_id'))
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     total = db.execute(
         f'''SELECT COUNT(*) as cnt
             FROM prod_task t
@@ -193,16 +198,136 @@ def prod_report_list():
     page = int(request.args.get('page', 1))
     size = int(request.args.get('size', 20))
     offset = (page - 1) * size
-    total = db.execute("SELECT COUNT(*) as cnt FROM prod_report").fetchone()['cnt']
-    rows = db.execute('''SELECT r.*, t.task_no, w.order_no as workorder_no,
+    clauses = []
+    params = []
+    if request.args.get('mine') == '1':
+        clauses.append("r.user_id=?")
+        params.append(session.get('user_id'))
+    if request.args.get('date') == 'today':
+        clauses.append("DATE(r.report_time)=?")
+        params.append(datetime.date.today().isoformat())
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    total = db.execute(
+        f"SELECT COUNT(*) as cnt FROM prod_report r{where}",
+        params,
+    ).fetchone()['cnt']
+    rows = db.execute(f'''SELECT r.*, t.task_no, w.order_no as workorder_no,
         pr.process_name, u.real_name
         FROM prod_report r
         LEFT JOIN prod_task t ON r.task_id=t.id
         LEFT JOIN prod_workorder w ON r.workorder_id=w.id
         LEFT JOIN base_process pr ON r.process_id=pr.id
         LEFT JOIN sys_user u ON r.user_id=u.id
-        ORDER BY r.id DESC LIMIT ? OFFSET ?''', (size, offset)).fetchall()
+        {where}
+        ORDER BY r.id DESC LIMIT ? OFFSET ?''', params + [size, offset]).fetchall()
     return jsonify({'code': 0, 'data': {'list': [dict(r) for r in rows], 'total': total}})
+
+
+@production_bp.route('/api/collector/summary')
+@login_required
+def collector_summary():
+    """Return current-user, current-day metrics for the collector home page."""
+    db = get_db()
+    user_id = session.get('user_id')
+    today = datetime.date.today().isoformat()
+    pending_tasks = db.execute(
+        """SELECT COUNT(*) AS count FROM prod_task
+           WHERE assigned_to=? AND status<3""",
+        (user_id,),
+    ).fetchone()['count']
+    today_reports = db.execute(
+        """SELECT COUNT(*) AS count FROM prod_report
+           WHERE user_id=? AND DATE(report_time)=?""",
+        (user_id, today),
+    ).fetchone()['count']
+    pending_inspections = db.execute(
+        "SELECT COUNT(*) AS count FROM qm_incoming_inspection WHERE status=0"
+    ).fetchone()['count']
+    return jsonify({'code': 0, 'data': {
+        'pending_tasks': pending_tasks,
+        'today_reports': today_reports,
+        'pending_inspections': pending_inspections,
+    }})
+
+
+def _collector_tasks_for_workorder(db, workorder_id, user_id):
+    rows = db.execute(
+        """SELECT t.*, w.order_no AS workorder_no, p.product_name,
+                  p.code AS product_code, pr.process_name
+           FROM prod_task t
+           JOIN prod_workorder w ON t.workorder_id=w.id
+           LEFT JOIN base_product p ON w.product_id=p.id
+           LEFT JOIN base_process pr ON t.process_id=pr.id
+           WHERE t.workorder_id=? AND t.assigned_to=? AND t.status<3
+           ORDER BY t.id""",
+        (workorder_id, user_id),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+@production_bp.route('/api/collector/barcode/<path:code>')
+@login_required
+def collector_barcode(code):
+    """Resolve exact workorder, task, or product codes for collector scans."""
+    normalized = (code or '').strip()
+    if not normalized:
+        return jsonify({'code': 400, 'message': '条码不能为空'}), 400
+
+    db = get_db()
+    user_id = session.get('user_id')
+    workorder = db.execute(
+        """SELECT w.*, p.product_name, p.code AS product_code,
+                  ws.workshop_name
+           FROM prod_workorder w
+           LEFT JOIN base_product p ON w.product_id=p.id
+           LEFT JOIN base_workshop ws ON w.workshop_id=ws.id
+           WHERE UPPER(w.order_no)=UPPER(?)""",
+        (normalized,),
+    ).fetchone()
+    if workorder:
+        return jsonify({'code': 0, 'data': {
+            'kind': 'workorder',
+            'entity': dict(workorder),
+            'tasks': _collector_tasks_for_workorder(db, workorder['id'], user_id),
+        }})
+
+    task = db.execute(
+        """SELECT t.*, w.order_no AS workorder_no, p.product_name,
+                  p.code AS product_code, pr.process_name
+           FROM prod_task t
+           JOIN prod_workorder w ON t.workorder_id=w.id
+           LEFT JOIN base_product p ON w.product_id=p.id
+           LEFT JOIN base_process pr ON t.process_id=pr.id
+           WHERE UPPER(t.task_no)=UPPER(?) AND t.assigned_to=?""",
+        (normalized, user_id),
+    ).fetchone()
+    if task:
+        return jsonify({'code': 0, 'data': {
+            'kind': 'task',
+            'entity': dict(task),
+            'tasks': [dict(task)] if task['status'] < 3 else [],
+        }})
+
+    product = db.execute(
+        "SELECT * FROM base_product WHERE UPPER(code)=UPPER(?)",
+        (normalized,),
+    ).fetchone()
+    if product:
+        rows = db.execute(
+            """SELECT DISTINCT w.id FROM prod_workorder w
+               WHERE w.product_id=? AND w.status<3 ORDER BY w.id""",
+            (product['id'],),
+        ).fetchall()
+        tasks = []
+        for row in rows:
+            tasks.extend(_collector_tasks_for_workorder(db, row['id'], user_id))
+        return jsonify({'code': 0, 'data': {
+            'kind': 'product',
+            'entity': dict(product),
+            'tasks': tasks,
+        }})
+
+    return jsonify({'code': 404, 'message': '未找到对应的工单、任务或产品'}), 404
 
 
 @production_bp.route('/api/prod/report/add', methods=['POST'])

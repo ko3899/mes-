@@ -3891,3 +3891,101 @@ class TestIntegrationStatus:
                 ).fetchall()
             ]
         assert after == before
+
+
+class TestCollectorQueries:
+    def test_collector_personal_lists_filter_by_current_user(self, auth_client):
+        current_user = auth_client.get('/api/user/info').get_json()['data']['id']
+        own_chain = create_production_chain(auth_client)
+        other_chain = create_production_chain(auth_client)
+        suffix = uuid.uuid4().hex[:8]
+
+        with auth_client.application.app_context():
+            db = get_db()
+            password = hashlib.md5('collector-pass'.encode()).hexdigest()
+            cursor = db.execute(
+                "INSERT INTO sys_user (username, password, real_name) VALUES (?,?,?)",
+                (f'collector_{suffix}', password, '其他采集员'),
+            )
+            other_user = cursor.lastrowid
+            db.execute(
+                "UPDATE prod_task SET assigned_to=? WHERE id=?",
+                (current_user, own_chain['task_id']),
+            )
+            db.execute(
+                "UPDATE prod_task SET assigned_to=? WHERE id=?",
+                (other_user, other_chain['task_id']),
+            )
+            db.commit()
+
+        payload = auth_client.get('/api/prod/task/list?mine=1&size=1000').get_json()
+        task_ids = {row['id'] for row in payload['data']['list']}
+        assert own_chain['task_id'] in task_ids
+        assert other_chain['task_id'] not in task_ids
+        assert all(row['assigned_to'] == current_user for row in payload['data']['list'])
+
+    def test_collector_summary_uses_current_user_and_today(self, auth_client):
+        current_user = auth_client.get('/api/user/info').get_json()['data']['id']
+        chain = create_production_chain(auth_client)
+        with auth_client.application.app_context():
+            db = get_db()
+            db.execute(
+                "UPDATE prod_task SET assigned_to=? WHERE id=?",
+                (current_user, chain['task_id']),
+            )
+            db.commit()
+
+        report = auth_client.post('/api/prod/report/add', json={
+            'task_id': chain['task_id'],
+            'workorder_id': chain['workorder_id'],
+            'process_id': chain['process_id'],
+            'qualified_qty': 1,
+            'defect_qty': 0,
+        })
+        assert report.get_json()['code'] == 0
+
+        with auth_client.application.app_context():
+            db = get_db()
+            expected_tasks = db.execute(
+                "SELECT COUNT(*) FROM prod_task WHERE assigned_to=? AND status<3",
+                (current_user,),
+            ).fetchone()[0]
+            expected_reports = db.execute(
+                """SELECT COUNT(*) FROM prod_report
+                   WHERE user_id=? AND DATE(report_time)=DATE('now','localtime')""",
+                (current_user,),
+            ).fetchone()[0]
+
+        summary = auth_client.get('/api/collector/summary').get_json()
+        assert summary['code'] == 0
+        assert summary['data']['pending_tasks'] == expected_tasks
+        assert summary['data']['today_reports'] == expected_reports
+
+        reports = auth_client.get(
+            '/api/prod/report/list?mine=1&date=today&size=1000'
+        ).get_json()['data']['list']
+        assert reports
+        assert all(row['user_id'] == current_user for row in reports)
+
+    def test_collector_barcode_resolves_product_and_assigned_tasks(self, auth_client):
+        current_user = auth_client.get('/api/user/info').get_json()['data']['id']
+        chain = create_production_chain(auth_client)
+        with auth_client.application.app_context():
+            db = get_db()
+            db.execute(
+                "UPDATE prod_task SET assigned_to=? WHERE id=?",
+                (current_user, chain['task_id']),
+            )
+            product_code = db.execute(
+                "SELECT code FROM base_product WHERE id=?",
+                (chain['product_id'],),
+            ).fetchone()['code']
+            db.commit()
+
+        resolved = auth_client.get(
+            f'/api/collector/barcode/{product_code}'
+        ).get_json()
+        assert resolved['code'] == 0
+        assert resolved['data']['kind'] == 'product'
+        assert resolved['data']['entity']['code'] == product_code
+        assert chain['task_id'] in {row['id'] for row in resolved['data']['tasks']}
