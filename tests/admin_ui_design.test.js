@@ -2,6 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
+const {escapeHtml} = require('../admin/static/js/ui_utils.js');
 
 const projectRoot = path.resolve(__dirname, '..');
 
@@ -90,4 +92,32 @@ test('shared renderers use semantic classes instead of core inline presentation'
   assert.match(crud, /class="toolbar-actions"/);
   assert.match(modal, /class="required-mark"/);
   assert.doesNotMatch(crud, /id="pageSize"[^>]+style=/);
+});
+
+test('home renderer uses production command-center sections', () => {
+  const source = read('admin/static/js/pages/home.js');
+
+  for (const hook of [
+    'dashboard-hero',
+    'metrics-grid',
+    'metric-card',
+    'dashboard-grid',
+    'alert-grid',
+    'quick-actions',
+  ]) {
+    assert.ok(source.includes(hook), `missing dashboard hook ${hook}`);
+  }
+  assert.doesNotMatch(source, /style="display:grid/);
+});
+
+test('dashboard text helper escapes API-provided warning values', () => {
+  const context = vm.createContext({MESUI: {escapeHtml}});
+  vm.runInContext(read('admin/static/js/pages/home.js'), context, {
+    filename: 'admin/static/js/pages/home.js',
+  });
+
+  assert.equal(
+    context.dashboardText('<img src=x onerror=alert(1)>'),
+    '&lt;img src=x onerror=alert(1)&gt;'
+  );
 });
