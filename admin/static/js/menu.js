@@ -1,7 +1,7 @@
 /* 菜单模块 */
 var MENUS = [
     {k:'home', t:'工作台', home:true},
-    {k:'analytics/dashboard', t:'📊 数据看板', home:true},
+    {k:'analytics/dashboard', t:'数据看板', home:true},
     {k:'process', t:'制程管控', sub:[
         {k:'process/station-config',t:'站点配置'},{k:'process/flow',t:'过站记录'},{k:'process/record',t:'操作记录'},
         {k:'process/box',t:'箱号管理'},{k:'process/lock',t:'锁料管理'},
@@ -69,7 +69,7 @@ var MENUS = [
     ]}
 ];
 
-var openMenus = {base:1,inv:1,prod:1,qm:1,eqp:1,trace:1,flow:1,sched:1,tool:1,report:1,sys:1};
+var openMenus = {};
 
 function buildMenu() {
     var h = '';
@@ -130,6 +130,10 @@ function goPage(key) {
     });
     document.getElementById('bread').textContent = bc;
     renderPage(key);
-    var appPage = document.getElementById('appPage');
-    if(appPage) appPage.classList.remove('sidebar-open');
+    if(typeof closeMobileSidebar === 'function') {
+        closeMobileSidebar();
+    } else {
+        var appPage = document.getElementById('appPage');
+        if(appPage) appPage.classList.remove('sidebar-open');
+    }
 }

@@ -139,3 +139,19 @@ test('theme and sidebar controls expose their state to assistive technology', ()
   assert.match(source, /setAttribute\('aria-expanded'/);
   assert.match(source, /classList\.toggle\(className\)/);
 });
+
+test('mobile sidebar closure is centralized across overlay and navigation', () => {
+  const app = read('admin/static/js/app.js');
+  const menu = read('admin/static/js/menu.js');
+
+  assert.match(app, /function closeMobileSidebar\(\)/);
+  assert.match(app, /sidebarOverlay'\)\.onclick = closeMobileSidebar/);
+  assert.match(menu, /closeMobileSidebar\(\)/);
+});
+
+test('navigation starts compact and avoids decorative emoji labels', () => {
+  const source = read('admin/static/js/menu.js');
+
+  assert.match(source, /var openMenus = \{\};/);
+  assert.doesNotMatch(source, /📊/);
+});

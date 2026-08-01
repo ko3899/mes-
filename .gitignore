@@ -40,3 +40,6 @@ reports/
 
 # Local design exploration
 .superpowers/
+
+# Local browser-validation audit store
+/ko.db

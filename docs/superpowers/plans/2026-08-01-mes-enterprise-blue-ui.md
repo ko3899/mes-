@@ -29,7 +29,7 @@
 - `admin/static/js/crud.js`：列表页工具栏、导入/导出与分页的语义类，保留 CRUD 数据流。
 - `admin/static/js/modal.js`：必填标记的语义类，保留表单生成和保存流程。
 - `tests/admin_ui_design.test.js`：静态 DOM/CSS 契约与渲染函数测试。
-- `tests/browser/admin_enterprise_blue_ui.py`：真实浏览器关键路径和截图验收。
+- `tests/browser/admin_enterprise_blue_ui.cjs`：真实浏览器关键路径和截图验收。
 
 ### Task 1: Semantic login and application shell
 
@@ -339,7 +339,7 @@ git commit -m "feat: add responsive dark admin theme"
 ### Task 5: Automated browser acceptance
 
 **Files:**
-- Create: `tests/browser/admin_enterprise_blue_ui.py`
+- Create: `tests/browser/admin_enterprise_blue_ui.cjs`
 - Generated but ignored: `reports/ui/login-desktop.png`
 - Generated but ignored: `reports/ui/dashboard-desktop.png`
 - Generated but ignored: `reports/ui/dashboard-mobile.png`
@@ -351,45 +351,46 @@ git commit -m "feat: add responsive dark admin theme"
 - [ ] **Step 1: Confirm Playwright helper usage before writing the test**
 
 Run: `python C:\Users\huang\.agents\skills\webapp-testing\scripts\with_server.py --help`  
-Expected: usage text. Because the MES server is already running, execute the browser script directly rather than starting a duplicate server.
+Expected: usage text. The environment has no Python Playwright package, so use the bundled Node Playwright runtime and the installed Chrome/Edge executable without adding project dependencies.
 
 - [ ] **Step 2: Create browser acceptance test**
 
-```python
-from pathlib import Path
-from playwright.sync_api import sync_playwright
+```js
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const {chromium} = require('playwright');
+const executablePath = [
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+].find((candidate) => fs.existsSync(candidate));
 
-BASE = "http://127.0.0.1:8080/admin"
-REPORTS = Path(__file__).resolve().parents[2] / "reports" / "ui"
-REPORTS.mkdir(parents=True, exist_ok=True)
-
-with sync_playwright() as playwright:
-    browser = playwright.chromium.launch(headless=True)
-    page = browser.new_page(viewport={"width": 1366, "height": 768})
-    errors = []
-    page.on("console", lambda message: errors.append(message.text) if message.type == "error" else None)
-    page.goto(BASE)
-    page.wait_for_load_state("networkidle")
-    page.screenshot(path=str(REPORTS / "login-desktop.png"), full_page=True)
-    page.locator("#lu").fill("admin")
-    page.locator("#lp").fill("admin123")
-    page.locator("#loginBtn").click()
-    page.locator("#pageContent .dashboard-hero").wait_for()
-    page.screenshot(path=str(REPORTS / "dashboard-desktop.png"), full_page=True)
-    page.locator("#themeBtn").click()
-    assert page.locator("html").get_attribute("data-theme") == "dark"
-    page.locator("#toggleBtn").click()
-    page.set_viewport_size({"width": 390, "height": 844})
-    page.locator("#toggleBtn").click()
-    assert page.locator("#appPage").evaluate("el => el.classList.contains('sidebar-open')")
-    page.screenshot(path=str(REPORTS / "dashboard-mobile.png"), full_page=True)
-    assert not errors, errors
-    browser.close()
+(async () => {
+  const browser = await chromium.launch({headless: true, executablePath});
+  const page = await browser.newPage({viewport: {width: 1366, height: 768}});
+  const errors = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  await page.goto('http://127.0.0.1:8080/admin', {waitUntil: 'domcontentloaded'});
+  await page.locator('#lu').fill('admin');
+  await page.locator('#lp').fill('admin123');
+  await page.locator('#loginBtn').click();
+  await page.locator('.dashboard-hero').waitFor({state: 'visible'});
+  assert.equal(await page.locator('.metric-card').count(), 6);
+  await page.locator('#themeBtn').click();
+  assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+  await page.setViewportSize({width: 390, height: 844});
+  await page.locator('#toggleBtn').click();
+  await page.waitForFunction(() => document.getElementById('appPage').classList.contains('sidebar-open'));
+  assert.deepEqual(errors, []);
+  await browser.close();
+})();
 ```
 
 - [ ] **Step 3: Run browser acceptance**
 
-Run: `python tests/browser/admin_enterprise_blue_ui.py`  
+Run: `$env:NODE_PATH='C:\Users\huang\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\node_modules'; & 'C:\Users\huang\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' tests\browser\admin_enterprise_blue_ui.cjs`
 Expected: exit code 0 and three screenshots in `reports/ui/`.
 
 - [ ] **Step 4: Inspect screenshots and correct visual defects test-first**
@@ -399,7 +400,7 @@ Inspect all three images. If a defect is structural or interactive, add a failin
 - [ ] **Step 5: Commit browser coverage**
 
 ```bash
-git add tests/browser/admin_enterprise_blue_ui.py
+git add tests/browser/admin_enterprise_blue_ui.cjs
 git commit -m "test: cover enterprise blue admin flows"
 ```
 

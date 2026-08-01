@@ -21,6 +21,13 @@ function toggleSidebar() {
     toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
 }
 
+function closeMobileSidebar() {
+    var appPage = document.getElementById('appPage');
+    var toggleBtn = document.getElementById('toggleBtn');
+    appPage.classList.remove('sidebar-open');
+    if(window.innerWidth < 768) toggleBtn.setAttribute('aria-expanded', 'false');
+}
+
 // 主题切换
 function toggleTheme() {
     var current = document.documentElement.getAttribute('data-theme');
@@ -203,10 +210,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('globalSearch').onkeydown = function(e) { if(e.key === 'Enter') doGlobalSearch(); };
     document.getElementById('logoutBtn').onclick = doLogout;
     document.getElementById('toggleBtn').onclick = toggleSidebar;
-    document.getElementById('sidebarOverlay').onclick = function() {
-        document.getElementById('appPage').classList.remove('sidebar-open');
-        document.getElementById('toggleBtn').setAttribute('aria-expanded', 'false');
-    };
+    document.getElementById('sidebarOverlay').onclick = closeMobileSidebar;
     document.getElementById('modalCloseBtn').onclick = closeModal;
     document.getElementById('modalCancelBtn').onclick = closeModal;
     document.getElementById('mSave').onclick = function() {
@@ -241,7 +245,13 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('keypress', resetActivity);
     document.addEventListener('scroll', resetActivity);
     window.addEventListener('resize', function() {
-        if(window.innerWidth >= 768) document.getElementById('appPage').classList.remove('sidebar-open');
+        if(window.innerWidth >= 768) {
+            document.getElementById('appPage').classList.remove('sidebar-open');
+            document.getElementById('toggleBtn').setAttribute(
+                'aria-expanded',
+                document.getElementById('appPage').classList.contains('sidebar-collapsed') ? 'false' : 'true'
+            );
+        }
     });
     
     setInterval(function() {
