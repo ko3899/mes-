@@ -44,7 +44,7 @@ function openModalSync(title, fields, data) {
         var fieldId = MESUI.escapeHtml('f_' + String(f.k));
         var safeVal = MESUI.escapeHtml(val);
         h += '<div class="form-item"><label>' + MESUI.escapeHtml(f.l)
-            + (f.r ? '<span style="color:red">*</span>' : '') + '</label>';
+            + (f.r ? '<span class="required-mark">*</span>' : '') + '</label>';
         if(f.s) {
             h += '<select id="' + fieldId + '"><option value="">请选择</option>';
             f.s.forEach(function(o) {

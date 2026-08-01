@@ -75,28 +75,34 @@ function buildMenu() {
     var h = '';
     MENUS.forEach(function(m) {
         if(m.home) {
-            h += '<div class="menu-title" data-page="'
+            h += '<button class="menu-title menu-item menu-root" type="button" data-page="'
                 + MESUI.escapeHtml(MESUI.menuPage(m)) + '">'
-                + MESUI.escapeHtml(m.t) + '</div>';
+                + '<span class="menu-label">' + MESUI.escapeHtml(m.t) + '</span></button>';
             return;
         }
         var op = openMenus[m.k];
-        h += '<div class="menu-title" data-menu="' + MESUI.escapeHtml(m.k) + '">'
-            + MESUI.escapeHtml(m.t) + '<span class="arr">'
-            + (op ? '&#9660;' : '&#9654;') + '</span></div>';
+        h += '<section class="menu-group" data-group="' + MESUI.escapeHtml(m.k) + '">';
+        h += '<button class="menu-title menu-parent" type="button" data-menu="'
+            + MESUI.escapeHtml(m.k) + '" aria-expanded="' + (op ? 'true' : 'false') + '">'
+            + '<span class="menu-label">' + MESUI.escapeHtml(m.t) + '</span><span class="arr" aria-hidden="true">'
+            + (op ? '&#8722;' : '&#43;') + '</span></button>';
         h += '<div class="sub' + (op ? ' show' : '') + '" id="sub_'
             + MESUI.escapeHtml(m.k) + '">';
         m.sub.forEach(function(s) {
-            h += '<div class="menu-title" data-page="' + MESUI.escapeHtml(s.k) + '">'
-                + MESUI.escapeHtml(s.t) + '</div>';
+            h += '<button class="menu-title menu-item" type="button" data-page="'
+                + MESUI.escapeHtml(s.k) + '"><span class="menu-label">'
+                + MESUI.escapeHtml(s.t) + '</span></button>';
         });
-        h += '</div>';
+        h += '</div></section>';
     });
     var sideBar = document.getElementById('sideBar');
     sideBar.innerHTML = h;
 
     var items = sideBar.querySelectorAll('.menu-title');
     for(var i = 0; i < items.length; i++) {
+        if(typeof curPage !== 'undefined' && items[i].getAttribute('data-page') === curPage) {
+            items[i].classList.add('active');
+        }
         items[i].onclick = function() {
             var page = this.getAttribute('data-page');
             var menu = this.getAttribute('data-menu');
@@ -124,4 +130,6 @@ function goPage(key) {
     });
     document.getElementById('bread').textContent = bc;
     renderPage(key);
+    var appPage = document.getElementById('appPage');
+    if(appPage) appPage.classList.remove('sidebar-open');
 }

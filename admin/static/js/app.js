@@ -8,6 +8,19 @@ function setAuthenticatedView(authenticated) {
     document.getElementById('appPage').classList.toggle('is-hidden', !authenticated);
 }
 
+function toggleSidebar() {
+    var appPage = document.getElementById('appPage');
+    var toggleBtn = document.getElementById('toggleBtn');
+    var mobile = window.innerWidth < 768;
+    var className = mobile ? 'sidebar-open' : 'sidebar-collapsed';
+    appPage.classList.toggle(className);
+    if(!mobile) appPage.classList.remove('sidebar-open');
+    var expanded = mobile
+        ? appPage.classList.contains('sidebar-open')
+        : !appPage.classList.contains('sidebar-collapsed');
+    toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+}
+
 // 主题切换
 function toggleTheme() {
     var current = document.documentElement.getAttribute('data-theme');
@@ -185,10 +198,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('lp').onkeydown = function(e) { if(e.key === 'Enter') doLogin(); };
     document.getElementById('globalSearch').onkeydown = function(e) { if(e.key === 'Enter') doGlobalSearch(); };
     document.getElementById('logoutBtn').onclick = doLogout;
-    document.getElementById('toggleBtn').onclick = function() {
-        var sb = document.getElementById('sideBar');
-        sb.style.display = sb.style.display === 'none' ? '' : 'none';
-    };
+    document.getElementById('toggleBtn').onclick = toggleSidebar;
     document.getElementById('modalCloseBtn').onclick = closeModal;
     document.getElementById('modalCancelBtn').onclick = closeModal;
     document.getElementById('mSave').onclick = function() {

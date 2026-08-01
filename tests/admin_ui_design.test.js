@@ -53,3 +53,41 @@ test('authentication view changes are expressed through a state class', () => {
   assert.match(source, /classList\.toggle\('is-hidden'/);
   assert.doesNotMatch(source, /appPage'\)\.style\.display/);
 });
+
+test('menu output exposes group, parent, item, and label hooks', () => {
+  const source = read('admin/static/js/menu.js');
+
+  for (const hook of ['menu-group', 'menu-parent', 'menu-item', 'menu-label']) {
+    assert.ok(source.includes(hook), `missing navigation hook ${hook}`);
+  }
+  assert.match(source, /aria-expanded/);
+});
+
+test('shared component styles cover data-heavy business screens', () => {
+  const css = read('admin/static/css/style.css');
+
+  for (const selector of [
+    '.card',
+    '.toolbar',
+    '.table-wrap',
+    '.page',
+    '.btn',
+    '.tag',
+    '.form-item',
+    '.modal-mask',
+    '.batch-bar',
+  ]) {
+    assert.ok(css.includes(selector), `missing shared selector ${selector}`);
+  }
+  assert.match(css, /:focus-visible/);
+});
+
+test('shared renderers use semantic classes instead of core inline presentation', () => {
+  const crud = read('admin/static/js/crud.js');
+  const modal = read('admin/static/js/modal.js');
+
+  assert.match(crud, /class="table-wrap"/);
+  assert.match(crud, /class="toolbar-actions"/);
+  assert.match(modal, /class="required-mark"/);
+  assert.doesNotMatch(crud, /id="pageSize"[^>]+style=/);
+});

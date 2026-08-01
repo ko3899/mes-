@@ -49,8 +49,7 @@ function renderCrud(el, path, cfg) {
         actionButtons += '<button class="btn btn-green" id="exportBtn">导出</button>';
     }
     if(curCrudActions.import) {
-        actionButtons += '<button class="btn btn-orange" id="importBtn" '
-            + 'style="background:#fa8c16;color:#fff">导入</button>';
+        actionButtons += '<button class="btn btn-orange" id="importBtn">导入</button>';
     }
     if(curCrudActions.add) {
         actionButtons += '<button class="btn btn-blue" id="addBtn">+ 新增</button>';
@@ -58,20 +57,20 @@ function renderCrud(el, path, cfg) {
 
     el.innerHTML = '<div class="card"><div class="card-title"><span>'
         + MESUI.escapeHtml(cfg.t) + '</span>'
-        + '<div style="display:flex;gap:8px">'
+        + '<div class="toolbar-actions">'
         + actionButtons + '</div></div>'
         + '<div class="toolbar"><input id="kw" placeholder="搜索...">'
         + '<button class="btn btn-blue btn-sm" id="searchBtn">搜索</button>'
         + '<button class="btn btn-gray btn-sm" id="resetBtn">重置</button>'
-        + '<select id="pageSize" onchange="changePageSize(this.value)" style="margin-left:auto">'
+        + '<select id="pageSize" class="page-size" onchange="changePageSize(this.value)">'
         + '<option value="10"' + (pageSize===10?' selected':'') + '>10条/页</option>'
         + '<option value="15"' + (pageSize===15?' selected':'') + '>15条/页</option>'
         + '<option value="20"' + (pageSize===20?' selected':'') + '>20条/页</option>'
         + '<option value="50"' + (pageSize===50?' selected':'') + '>50条/页</option>'
         + '</select></div>'
-        + '<table><thead><tr>' + ths + '</tr></thead><tbody id="tb"><tr><td colspan="'
+        + '<div class="table-wrap"><table><thead><tr>' + ths + '</tr></thead><tbody id="tb"><tr><td colspan="'
         + (cfg.f.length + (hasRowActions ? 4 : 3))
-        + '" class="empty">加载中...</td></tr></tbody></table>'
+        + '" class="empty">加载中...</td></tr></tbody></table></div>'
         + '<div class="page" id="pg"></div></div>';
 
     var addBtn = document.getElementById('addBtn');
