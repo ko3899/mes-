@@ -37,3 +37,6 @@ desktop.ini
 
 # Reports
 reports/
+
+# Local design exploration
+.superpowers/
