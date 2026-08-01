@@ -1,16 +1,16 @@
 {
-    "name": "MES工厂管家",
-    "short_name": "MES",
-    "description": "轻量级制造执行系统",
-    "start_url": "/",
-    "display": "standalone",
-    "background_color": "#f0f2f5",
-    "theme_color": "#1890ff",
-    "icons": [
-        {
-            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏭</text></svg>",
-            "sizes": "any",
-            "type": "image/svg+xml"
-        }
-    ]
+  "name": "MES采集终端",
+  "short_name": "MES采集",
+  "description": "MES工厂现场任务、扫码、报工、质检与库存采集终端",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F3F6FA",
+  "theme_color": "#0B1F3A",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230B1F3A'/><text x='50' y='68' text-anchor='middle' fill='white' font-size='54' font-family='serif' font-weight='bold'>M</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
 }
