@@ -2,6 +2,7 @@
 import os
 import sys
 import hashlib
+import datetime
 import sqlite3
 import tempfile
 import json
@@ -3008,6 +3009,45 @@ class TestReports:
     def test_kanban_realtime(self, auth_client):
         resp = auth_client.get('/api/kanban/realtime')
         assert_success(resp)
+
+    def test_kanban_realtime_requires_login(self, client):
+        assert_unauthorized(client.get('/api/kanban/realtime'))
+
+    def test_kanban_realtime_exposes_complete_snapshot(self, auth_client):
+        payload = auth_client.get('/api/kanban/realtime').get_json()
+        assert payload['code'] == 0
+        data = payload['data']
+        datetime.datetime.fromisoformat(data['server_time'])
+        assert data['active_order_count'] == len(data['active_orders'])
+        assert {item['name'] for item in data['equipment']} == {'运行', '维修', '停用'}
+        assert data['quality_alerts']['pending'] >= 0
+        assert data['quality_alerts']['failed_today'] >= 0
+
+    def test_kanban_realtime_zero_data_is_explicit(self):
+        import utils.database as db_mod
+
+        fresh_path = tempfile.mktemp(suffix='.db')
+        previous_path = db_mod.DB_PATH
+        try:
+            db_mod.DB_PATH = fresh_path
+            db_mod.init_db()
+            db_mod._init_extra_tables()
+            fresh_app = create_app()
+            fresh_app.config.update(TESTING=True, SECRET_KEY='kanban-zero-test')
+            fresh_client = fresh_app.test_client()
+            assert fresh_client.post('/api/login', json={
+                'username': 'admin', 'password': 'admin123',
+            }).get_json()['code'] == 0
+            data = fresh_client.get('/api/kanban/realtime').get_json()['data']
+            assert data['active_order_count'] == 0
+            assert data['active_orders'] == []
+            assert data['today_qualified'] == 0
+            assert data['today_defect'] == 0
+            assert data['quality_alerts'] == {'pending': 0, 'failed_today': 0}
+        finally:
+            db_mod.DB_PATH = previous_path
+            if os.path.exists(fresh_path):
+                os.remove(fresh_path)
 
 
 # ==================== 21. Document and Backup Tests ====================
