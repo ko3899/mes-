@@ -313,7 +313,7 @@ def _setup_test_db(path):
             user_id INTEGER NOT NULL, qualified_qty REAL NOT NULL,
             defect_qty REAL DEFAULT 0,
             report_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            remark TEXT,
+            remark TEXT, client_operation_id TEXT,
             FOREIGN KEY (task_id) REFERENCES prod_task(id),
             FOREIGN KEY (workorder_id) REFERENCES prod_workorder(id)
         );
@@ -3989,3 +3989,36 @@ class TestCollectorQueries:
         assert resolved['data']['kind'] == 'product'
         assert resolved['data']['entity']['code'] == product_code
         assert chain['task_id'] in {row['id'] for row in resolved['data']['tasks']}
+
+    def test_report_client_operation_id_is_idempotent(self, auth_client):
+        chain = create_production_chain(auth_client, planned_qty=10)
+        payload = {
+            'task_id': chain['task_id'],
+            'workorder_id': chain['workorder_id'],
+            'process_id': chain['process_id'],
+            'qualified_qty': 2,
+            'defect_qty': 0,
+            'client_operation_id': f'offline-{uuid.uuid4().hex}',
+        }
+
+        first = auth_client.post('/api/prod/report/add', json=payload)
+        second = auth_client.post('/api/prod/report/add', json=payload)
+        assert first.status_code == 200
+        assert second.status_code == 200
+        first_data = first.get_json()['data']
+        second_data = second.get_json()['data']
+        assert first_data['id'] == second_data['id']
+        assert second_data['duplicate'] is True
+
+        with auth_client.application.app_context():
+            db = get_db()
+            count = db.execute(
+                "SELECT COUNT(*) FROM prod_report WHERE task_id=?",
+                (chain['task_id'],),
+            ).fetchone()[0]
+            progress = db.execute(
+                "SELECT completed_qty FROM prod_task WHERE id=?",
+                (chain['task_id'],),
+            ).fetchone()['completed_qty']
+        assert count == 1
+        assert progress == 2

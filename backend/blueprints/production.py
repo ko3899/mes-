@@ -1,6 +1,7 @@
 """生产管理蓝图"""
 import datetime
 import math
+import sqlite3
 from decimal import Decimal, ROUND_HALF_UP
 
 from flask import Blueprint, request, jsonify, session
@@ -454,6 +455,13 @@ def _recalculate_task_and_workorder(db, task_id, workorder_id):
 
 def _create_report(data, user_id):
     db = get_db()
+    client_operation_id = data.get('client_operation_id')
+    if client_operation_id is not None:
+        if not isinstance(client_operation_id, str):
+            return {'code': 400, 'message': '客户端操作编号不合法'}
+        client_operation_id = client_operation_id.strip()
+        if not client_operation_id or len(client_operation_id) > 80:
+            return {'code': 400, 'message': '客户端操作编号不合法'}
     try:
         task_id = int(data.get('task_id'))
         workorder_id = int(data.get('workorder_id'))
@@ -471,6 +479,19 @@ def _create_report(data, user_id):
 
     try:
         db.execute("BEGIN IMMEDIATE")
+        if client_operation_id:
+            existing = db.execute(
+                """SELECT id FROM prod_report
+                   WHERE user_id=? AND client_operation_id=?""",
+                (user_id, client_operation_id),
+            ).fetchone()
+            if existing:
+                db.commit()
+                return {
+                    'code': 0,
+                    'data': {'id': existing['id'], 'duplicate': True},
+                    'message': '报工已同步',
+                }
         task = db.execute(
             "SELECT * FROM prod_task WHERE id=?",
             (task_id,),
@@ -489,8 +510,8 @@ def _create_report(data, user_id):
         cursor = db.execute(
             """INSERT INTO prod_report
                (report_no, task_id, workorder_id, process_id, user_id,
-                qualified_qty, defect_qty, remark)
-               VALUES (?,?,?,?,?,?,?,?)""",
+                qualified_qty, defect_qty, remark, client_operation_id)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
             (
                 report_no,
                 task_id,
@@ -500,15 +521,31 @@ def _create_report(data, user_id):
                 float(qualified),
                 float(defect),
                 data.get('remark'),
+                client_operation_id,
             ),
         )
         _recalculate_task_and_workorder(db, task_id, workorder_id)
         db.commit()
         return {
             'code': 0,
-            'data': {'id': cursor.lastrowid},
+            'data': {'id': cursor.lastrowid, 'duplicate': False},
             'message': '报工成功',
         }
+    except sqlite3.IntegrityError:
+        db.rollback()
+        if client_operation_id:
+            existing = db.execute(
+                """SELECT id FROM prod_report
+                   WHERE user_id=? AND client_operation_id=?""",
+                (user_id, client_operation_id),
+            ).fetchone()
+            if existing:
+                return {
+                    'code': 0,
+                    'data': {'id': existing['id'], 'duplicate': True},
+                    'message': '报工已同步',
+                }
+        raise
     except Exception:
         db.rollback()
         raise

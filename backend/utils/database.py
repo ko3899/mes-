@@ -448,6 +448,7 @@ def init_db():
         defect_qty REAL DEFAULT 0,
         report_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         remark TEXT,
+        client_operation_id TEXT,
         FOREIGN KEY (task_id) REFERENCES prod_task(id),
         FOREIGN KEY (workorder_id) REFERENCES prod_workorder(id)
     )''')
@@ -1064,6 +1065,15 @@ def _init_extra_tables():
         db.execute("ALTER TABLE base_station_config ADD COLUMN required_process TEXT")
     except:
         pass
+    try:
+        db.execute("ALTER TABLE prod_report ADD COLUMN client_operation_id TEXT")
+    except:
+        pass
+    db.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_prod_report_user_operation
+           ON prod_report(user_id, client_operation_id)
+           WHERE client_operation_id IS NOT NULL"""
+    )
     db.commit()
     db.close()
 
@@ -1077,6 +1087,9 @@ def _create_indexes():
         "CREATE INDEX IF NOT EXISTS idx_prod_task_status ON prod_task(status)",
         "CREATE INDEX IF NOT EXISTS idx_prod_report_task ON prod_report(task_id)",
         "CREATE INDEX IF NOT EXISTS idx_prod_report_time ON prod_report(report_time)",
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_prod_report_user_operation
+           ON prod_report(user_id, client_operation_id)
+           WHERE client_operation_id IS NOT NULL""",
         "CREATE INDEX IF NOT EXISTS idx_inv_balance_product ON inv_balance(product_id)",
         "CREATE INDEX IF NOT EXISTS idx_sys_log_time ON sys_log(created_at)",
         "CREATE INDEX IF NOT EXISTS idx_prod_station_flow_sn ON prod_station_flow(sn)",
