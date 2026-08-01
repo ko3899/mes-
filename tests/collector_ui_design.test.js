@@ -66,3 +66,12 @@ test('collector manifest uses the enterprise-blue terminal identity', () => {
   assert.equal(manifest.theme_color, '#0B1F3A');
   assert.equal(manifest.display, 'standalone');
 });
+
+test('collector launcher uses the shared production backend', () => {
+  const source = read('frontend/run.py');
+  assert.match(source, /from backend\.app import app/);
+  assert.match(source, /init_db\(\)/);
+  assert.doesNotMatch(source, /hashlib/);
+  assert.doesNotMatch(source, /@app\.route/);
+  assert.doesNotMatch(source, /secret_key\s*=/);
+});
