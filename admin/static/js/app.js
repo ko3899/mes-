@@ -144,15 +144,23 @@ function showCompareResult(r1, r2) {
 
 // 表格排序
 function sortTable(key) {
-    var th = document.querySelector('th[data-sort="'+key+'"]');
+    var th = document.querySelector('[data-sort-field="'+key+'"]');
     if(!th) return;
-    var current = th.classList.contains('sort-asc') ? 'asc' : (th.classList.contains('sort-desc') ? 'desc' : '');
-    var next = current === 'asc' ? 'desc' : 'asc';
-    document.querySelectorAll('th.sortable').forEach(function(t) {
-        t.classList.remove('sort-asc', 'sort-desc');
+    var state = MESUI.nextSortState({field: sortField, order: sortOrder}, key);
+    sortField = state.field;
+    sortOrder = state.order || 'DESC';
+    document.querySelectorAll('th.sortable').forEach(function(cell) {
+        var button = cell.querySelector('.table-sort-button');
+        if(!button) return;
+        var field = button.getAttribute('data-sort-field');
+        var active = state.field === field;
+        var order = active ? state.order : '';
+        cell.setAttribute('aria-sort', order === 'ASC' ? 'ascending' : (order === 'DESC' ? 'descending' : 'none'));
+        button.classList.toggle('is-active', active);
+        var label = button.textContent.replace(/\s*[↑↓↕]$/, '');
+        button.textContent = label + (order === 'ASC' ? ' ↑' : (order === 'DESC' ? ' ↓' : ' ↕'));
     });
-    th.classList.add('sort-' + next);
-    crudLoad(1, key, next);
+    crudLoad(1);
 }
 
 // 数据校验
@@ -203,6 +211,12 @@ function confirmAction(message, callback) {
 document.addEventListener('DOMContentLoaded', function() {
     loadTheme();
     updateThemeIcon();
+    var pageContent = document.getElementById('pageContent');
+    if(pageContent && typeof MutationObserver !== 'undefined') {
+        var tableObserver = new MutationObserver(function() { MESUI.enableTableSorting(pageContent); });
+        tableObserver.observe(pageContent, {childList: true, subtree: true});
+    }
+    if(pageContent) MESUI.enableTableSorting(pageContent);
 
     document.getElementById('loginBtn').onclick = doLogin;
     document.getElementById('lu').onkeydown = function(e) { if(e.key === 'Enter') document.getElementById('lp').focus(); };
@@ -428,7 +442,15 @@ function renderPage(key) {
         'sched/calendar': function(e){renderScheduleCalendarPage(e)}
     };
 
-    if(special[key]) { special[key](el); return; }
-    if(configs[key]) { renderCrud(el, key, configs[key]); return; }
+    if(special[key]) {
+        special[key](el);
+        if(MESUI.enableTableSorting) MESUI.enableTableSorting(el);
+        return;
+    }
+    if(configs[key]) {
+        renderCrud(el, key, configs[key]);
+        if(MESUI.enableTableSorting) MESUI.enableTableSorting(el);
+        return;
+    }
     el.innerHTML = '<div class="card"><div class="card-title">页面建设中...</div></div>';
 }

@@ -21,6 +21,16 @@ production_bp = Blueprint('production', __name__)
 _QUANTITY_QUANTUM = Decimal('0.000001')
 
 
+def _safe_sort(args, fields, default):
+    """Return a validated SQL ORDER BY fragment for paginated production lists."""
+    requested = args.get('sort', '')
+    direction = str(args.get('order', 'DESC')).upper()
+    column = fields.get(requested, default)
+    if direction not in ('ASC', 'DESC'):
+        direction = 'DESC'
+    return f'{column} {direction}'
+
+
 @production_bp.route('/api/prod/sales/list')
 @login_required
 def prod_sales_list():
@@ -98,13 +108,19 @@ def prod_workorder_list():
             {where}''',
         params,
     ).fetchone()['cnt']
+    workorder_sort_fields = {
+        'id': 'w.id', 'order_no': 'w.order_no', 'product_name': 'p.product_name',
+        'planned_qty': 'w.planned_qty', 'completed_qty': 'w.completed_qty',
+        'status': 'w.status', 'priority': 'w.priority', 'created_at': 'w.created_at',
+    }
+    order_by = _safe_sort(request.args, workorder_sort_fields, 'w.id')
     rows = db.execute(f'''SELECT w.*, p.product_name, p.code as product_code,
         ws.workshop_name
         FROM prod_workorder w
         LEFT JOIN base_product p ON w.product_id=p.id
         LEFT JOIN base_workshop ws ON w.workshop_id=ws.id
         {where}
-        ORDER BY w.id DESC LIMIT ? OFFSET ?''',
+        ORDER BY {order_by} LIMIT ? OFFSET ?''',
         params + [size, offset],
     ).fetchall()
     return jsonify({'code': 0, 'data': {'list': [dict(r) for r in rows], 'total': total}})
@@ -159,6 +175,13 @@ def prod_task_list():
             {where}''',
         params,
     ).fetchone()['cnt']
+    task_sort_fields = {
+        'id': 't.id', 'task_no': 't.task_no', 'workorder_no': 'w.order_no',
+        'process_name': 'pr.process_name', 'planned_qty': 't.planned_qty',
+        'completed_qty': 't.completed_qty', 'status': 't.status',
+        'priority': 't.priority', 'created_at': 't.created_at',
+    }
+    order_by = _safe_sort(request.args, task_sort_fields, 't.id')
     rows = db.execute(f'''SELECT t.*, w.order_no as workorder_no, pr.process_name,
         u.real_name as assigned_name
         FROM prod_task t
@@ -166,7 +189,7 @@ def prod_task_list():
         LEFT JOIN base_process pr ON t.process_id=pr.id
         LEFT JOIN sys_user u ON t.assigned_to=u.id
         {where}
-        ORDER BY t.id DESC LIMIT ? OFFSET ?''',
+        ORDER BY {order_by} LIMIT ? OFFSET ?''',
         params + [size, offset],
     ).fetchall()
     return jsonify({'code': 0, 'data': {'list': [dict(r) for r in rows], 'total': total}})
@@ -212,6 +235,13 @@ def prod_report_list():
         f"SELECT COUNT(*) as cnt FROM prod_report r{where}",
         params,
     ).fetchone()['cnt']
+    report_sort_fields = {
+        'id': 'r.id', 'report_time': 'r.report_time', 'workorder_no': 'w.order_no',
+        'task_no': 't.task_no', 'process_name': 'pr.process_name',
+        'report_qty': 'r.report_qty', 'qualified_qty': 'r.qualified_qty',
+        'defect_qty': 'r.defect_qty', 'created_at': 'r.created_at',
+    }
+    order_by = _safe_sort(request.args, report_sort_fields, 'r.id')
     rows = db.execute(f'''SELECT r.*, t.task_no, w.order_no as workorder_no,
         pr.process_name, u.real_name
         FROM prod_report r
@@ -220,7 +250,7 @@ def prod_report_list():
         LEFT JOIN base_process pr ON r.process_id=pr.id
         LEFT JOIN sys_user u ON r.user_id=u.id
         {where}
-        ORDER BY r.id DESC LIMIT ? OFFSET ?''', params + [size, offset]).fetchall()
+        ORDER BY {order_by} LIMIT ? OFFSET ?''', params + [size, offset]).fetchall()
     return jsonify({'code': 0, 'data': {'list': [dict(r) for r in rows], 'total': total}})
 
 

@@ -278,3 +278,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
     .login-brand-copy > p:last-child, .capability-list { display: none; }
     .login-panel { align-items: start; padding: 34px 24px; }
 }
+.table-sort-button{appearance:none;border:0;background:transparent;color:inherit;font:inherit;font-weight:700;cursor:pointer;padding:4px 6px;margin:-4px -6px;border-radius:6px;white-space:nowrap}
+.table-sort-button:hover,.table-sort-button:focus-visible{background:#e8f1ff;color:#1557b0;outline:none}
+.table-sort-button.is-active{color:#1557b0}
+.table-sort-arrow{display:inline-block;min-width:1.2em;color:#7b8aa0;font-weight:800}

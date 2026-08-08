@@ -37,9 +37,9 @@ function renderCrud(el, path, cfg) {
     var hasRowActions = curCrudActions.edit || curCrudActions.delete;
     var ths = '<th><input type="checkbox" onchange="toggleSelectAll(this.checked)"></th><th>ID</th>';
     cfg.f.forEach(function(f){
-        ths += '<th class="sortable" data-sort="' + MESUI.escapeHtml(f.k)
-            + '" onclick="sortTable(\'' + MESUI.escapeHtml(f.k) + '\')">'
-            + MESUI.escapeHtml(f.l) + '</th>';
+        ths += MESUI.sortHeaderHtml
+            ? MESUI.sortHeaderHtml(f.k, f.l, {field: sortField, order: sortOrder})
+            : '<th class="sortable" data-sort-field="' + MESUI.escapeHtml(f.k) + '">' + MESUI.escapeHtml(f.l) + '</th>';
     });
     ths += '<th>创建时间</th>';
     if(hasRowActions) ths += '<th>操作</th>';
@@ -78,7 +78,12 @@ function renderCrud(el, path, cfg) {
     var importBtn = document.getElementById('importBtn');
     if(addBtn) addBtn.onclick = function() { crudAdd(); };
     document.getElementById('searchBtn').onclick = function() { crudLoad(1); };
-    document.getElementById('resetBtn').onclick = function() { document.getElementById('kw').value = ''; sortField = ''; crudLoad(1); };
+    document.getElementById('resetBtn').onclick = function() {
+        document.getElementById('kw').value = '';
+        sortField = '';
+        sortOrder = 'DESC';
+        crudLoad(1);
+    };
     document.getElementById('kw').onkeydown = function(e) { if(e.key === 'Enter') crudLoad(1); };
     if(exportBtn) exportBtn.onclick = function() { doExport(); };
     if(importBtn) importBtn.onclick = function() { doImport(); };
