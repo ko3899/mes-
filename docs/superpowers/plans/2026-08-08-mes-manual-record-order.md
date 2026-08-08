@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 MES 全部记录型业务列表增加可持久化的上移、下移和移动到全局指定位置功能。
+**Goal:** 让 MES 全部记录型业务列表的第一列 ID 成为可持久化排列 ID，支持相邻交换和移动到指定 ID，同时隐藏且保护数据库真实主键。
 
-**Architecture:** 新增独立 `sys_table_order` 表和白名单驱动的统一排序服务，不修改各业务表结构。前端在已有统一表格增强器中识别记录 ID、加载位置映射、增加顺序列与操作按钮；通用 CRUD 和自定义业务表共享同一套交互。
+**Architecture:** 新增独立 `sys_table_order` 表和白名单驱动的统一排序服务，不修改各业务表主键。前端在已有统一表格增强器中通过隐藏 `data-record-id` 保存真实主键，用位置映射替换第一列 ID 的显示值，并在操作区增加移动按钮；通用 CRUD 和自定义业务表共享同一套交互。
 
 **Tech Stack:** Flask、SQLite、原生 JavaScript、Node `node:test`、Python `unittest`、in-app browser。
 
@@ -14,6 +14,7 @@
 - 只覆盖具有稳定整数主键的记录型业务列表；统计、图表、看板和摘要表排除。
 - `table_key` 必须经过服务端固定白名单映射，禁止客户端提供原始 SQL 表名。
 - 手工位置为模块全量位置，从 1 开始且连续。
+- 第一列 ID 显示排列 ID；数据库真实主键仅用于接口调用，绝不显示为排列编号或因移动而修改。
 - 字段升降序激活时禁止手工调整，恢复默认顺序后才能操作。
 - 不引入新的前端框架或运行时依赖。
 
@@ -137,7 +138,7 @@ git add backend/utils/helpers.py backend/blueprints/production.py backend/utils/
 git commit -m "feat: apply manual order to default list queries"
 ```
 
-### Task 4: 全部记录表的顺序列与操作
+### Task 4: 全部记录表的可变排列 ID 与操作
 
 **Files:**
 - Modify: `admin/static/js/ui_utils.js`
@@ -148,7 +149,7 @@ git commit -m "feat: apply manual order to default list queries"
 
 **Interfaces:**
 - `MESUI.manualOrderRegistry` maps current page key to service `table_key` and record-ID column index.
-- `MESUI.enableManualTableOrder(root, pageKey, options)` adds the position column and buttons.
+- `MESUI.enableManualTableOrder(root, pageKey, options)` rewrites the first visible ID cell from the position map and adds buttons to the operation cell.
 - Global `moveTableRecord(tableKey, recordId, targetPosition)` and `stepTableRecord(tableKey, recordId, direction)` call the API and reload the current page.
 
 - [ ] **Step 1: Write the failing test**
@@ -163,6 +164,10 @@ test('field sorting disables manual movement', () => {
   assert.equal(MESUI.canAdjustManualOrder({field: 'planned_qty', order: 'ASC'}), false);
   assert.equal(MESUI.canAdjustManualOrder({field: '', order: ''}), true);
 });
+
+test('display id swaps while the hidden record id remains stable', () => {
+  assert.equal(MESUI.displayPosition({'42': 7}, 42), 7);
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -172,7 +177,7 @@ Expected: FAIL because the registry and enhancer do not exist.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add a compact “顺序” cell showing `#6`, `↑`, `↓`, and “移到”. For generic CRUD rows use existing `row.id`; for custom tables add `data-record-id` by reading the configured ID cell. Fetch the position map once per rendered page. Clicking “移到” opens a numeric prompt labeled “全局位置”; successful move reloads the same page. Disable controls while `sortField` is non-empty and show the required explanation in `title` and alert.
+Use the first visible ID cell to show the mapped position (for example `7`) while retaining the true key only in `data-record-id="42"`. Add `↑`, `↓`, and “移到” to the existing operation cell, or create an operation cell only when a record table has none. Fetch the position map once per rendered page. Clicking “移到” opens a numeric prompt labeled “目标排列 ID”; successful move reloads the same page. Disable controls while `sortField` is non-empty and show the required explanation in `title` and alert.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -203,7 +208,7 @@ Expected: FAIL until documentation is updated.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Document the three controls, global position semantics, pagination, persistence and interaction with field sorting. In the browser, use existing retained workorder rows only: move one record to another position, refresh and verify persistence; do not delete or create records.
+Document the three controls, global排列 ID semantics, hidden database primary key, pagination, persistence and interaction with field sorting. In the browser, use existing retained workorder rows only: move displayed ID 8 to ID 7 (or the equivalent adjacent IDs available in the current data), verify the two displayed IDs swap, refresh, and verify the business order numbers and hidden real record IDs remain unchanged; do not delete or create records.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -219,7 +224,7 @@ git commit -m "docs: explain manual record ordering"
 
 ## Self-review checklist
 
-- [x] The ninth-to-sixth example is covered by a pure unit test and browser acceptance.
+- [x] The ninth-to-sixth and ID 8-to-ID 7 examples are covered by unit tests and browser acceptance.
 - [x] Persistence, global pagination position, whitelist security and field-sort conflict are covered.
 - [x] No task deletes or cleans existing data.
 - [x] Function names and JSON fields are consistent across backend and frontend tasks.
