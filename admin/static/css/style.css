@@ -282,3 +282,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .table-sort-button:hover,.table-sort-button:focus-visible{background:#e8f1ff;color:#1557b0;outline:none}
 .table-sort-button.is-active{color:#1557b0}
 .table-sort-arrow{display:inline-block;min-width:1.2em;color:#7b8aa0;font-weight:800}
+.display-id-cell{color:#1557b0;font-weight:800}
+.manual-order-action-heading{min-width:150px;text-align:center}
+.manual-order-action-cell{white-space:nowrap;text-align:center}
+.manual-order-actions{display:inline-flex;align-items:center;gap:4px;margin-right:6px;vertical-align:middle}
+.manual-order-step,.manual-order-move{border:1px solid #c9d7eb;background:#fff;color:#31516f;border-radius:6px;min-width:28px;height:28px;margin-left:4px;cursor:pointer;font-weight:700}
+.manual-order-move{padding:0 8px}
+.manual-order-step:hover,.manual-order-move:hover{border-color:#2563eb;color:#1557b0;background:#edf5ff}
+.manual-order-step:disabled,.manual-order-move:disabled{opacity:.4;cursor:not-allowed;background:#f3f6fa}

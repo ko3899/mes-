@@ -82,6 +82,212 @@
             '</span></button></th>';
     }
 
+    var manualOrderRegistry = {
+        'prod/workorder': {tableKey: 'prod/workorder'},
+        'prod/task': {tableKey: 'prod/task'},
+        'prod/report': {tableKey: 'prod/report'},
+        'prod/sales': {tableKey: 'prod/sales'},
+        'prod/plan': {tableKey: 'prod/plan'},
+        'base/workshop': {tableKey: 'base/workshop'},
+        'base/process': {tableKey: 'base/process'},
+        'base/product': {tableKey: 'base/product'},
+        'base/bom': {tableKey: 'base/bom'},
+        'base/defect': {tableKey: 'base/defect'},
+        'base/unit': {tableKey: 'base/unit'},
+        'base/route': {tableKey: 'base/route'},
+        'base/supplier': {tableKey: 'base/supplier'},
+        'base/customer': {tableKey: 'base/customer'},
+        'inv/inbound': {tableKey: 'inv/inbound'},
+        'inv/outbound': {tableKey: 'inv/outbound'},
+        'inv/balance': {tableKey: 'inv/balance'},
+        'qm/incoming': {tableKey: 'qm/incoming'},
+        'qm/process': {tableKey: 'qm/process'},
+        'qm/outgoing': {tableKey: 'qm/outgoing'},
+        'eqp/ledger': {tableKey: 'eqp/ledger'},
+        'eqp/repair': {tableKey: 'eqp/repair'},
+        'eqp/maintenance': {tableKey: 'eqp/maintenance'},
+        'eqp/check': {tableKey: 'eqp/check'},
+        'tool/ledger': {tableKey: 'tool/ledger'},
+        'tool/borrow': {tableKey: 'tool/borrow'},
+        'sched/team': {tableKey: 'sched/team'},
+        'sched/plan': {tableKey: 'sched/plan'},
+        'sys/user': {tableKey: 'sys/user'},
+        'sys/role': {tableKey: 'sys/role'},
+        'sys/dept': {tableKey: 'sys/dept'},
+        'sys/dict': {tableKey: 'sys/dict'},
+        'doc/list': {tableKey: 'doc/list'},
+        'notifications': {tableKey: 'notifications'}
+    };
+    Object.assign(manualOrderRegistry, {
+        'warehouse/list': {tableKey: 'warehouse/list'},
+        'warehouse/area': {tableKey: 'warehouse/area'},
+        'warehouse/location': {tableKey: 'warehouse/location'},
+        'warehouse/arrival': {tableKey: 'warehouse/arrival'},
+        'warehouse/transaction': {tableKey: 'warehouse/transaction'},
+        'qm/template': {tableKey: 'qm/template'},
+        'eqp/check-project': {tableKey: 'eqp/check-project'},
+        'sched/calendar': {tableKey: 'sched/calendar'},
+        'process/station-config': {tableKey: 'process/station-config'},
+        'process/flow': {tableKey: 'process/flow'},
+        'process/record': {tableKey: 'process/record'},
+        'process/material': {tableKey: 'process/material'},
+        'process/box': {tableKey: 'process/box'},
+        'process/lock': {tableKey: 'process/lock'},
+        'process/defect': {tableKey: 'process/defect'},
+        'process/exception': {tableKey: 'process/exception'},
+        'stage/code': {tableKey: 'stage/code'},
+        'stage/record': {tableKey: 'stage/record'},
+        'prod/transfer': {tableKey: 'prod/transfer'},
+        'prod/material': {tableKey: 'prod/material'},
+        'prod/outsource': {tableKey: 'prod/outsource'},
+        'prod/serial': {tableKey: 'prod/serial'},
+        'prod/labor': {tableKey: 'prod/labor'},
+        'prod/packing': {tableKey: 'prod/packing'},
+        'site/workstation': {tableKey: 'site/workstation'},
+        'site/andon': {tableKey: 'site/andon'},
+        'site/rework': {tableKey: 'site/rework'},
+        'qm/first': {tableKey: 'qm/first'},
+        'qm/defect': {tableKey: 'qm/defect'},
+        'qm/8d': {tableKey: 'qm/8d'},
+        'qm/supplier-eval': {tableKey: 'qm/supplier-eval'},
+        'qm/capa': {tableKey: 'qm/capa'},
+        'qm/control-plan': {tableKey: 'qm/control-plan'},
+        'qm/eco': {tableKey: 'qm/eco'},
+        'eqp/mold': {tableKey: 'eqp/mold'},
+        'eqp/fixture': {tableKey: 'eqp/fixture'},
+        'util/energy': {tableKey: 'util/energy'},
+        'util/environment': {tableKey: 'util/environment'},
+        'hr/training': {tableKey: 'hr/training'},
+        'hr/skill-matrix': {tableKey: 'hr/skill-matrix'},
+        '5s/audit': {tableKey: '5s/audit'},
+        'svc/complaint': {tableKey: 'svc/complaint'},
+        'svc/return': {tableKey: 'svc/return'},
+        'trace/batch': {tableKey: 'trace/batch'},
+        'flow/def': {tableKey: 'flow/def'},
+        'flow/instance': {tableKey: 'flow/instance'},
+        'flow/pending': {tableKey: 'flow/pending'},
+        'sys/log': {tableKey: 'sys/log'},
+        'sys/login-log': {tableKey: 'sys/login-log'},
+        'sys/config': {tableKey: 'sys/config'},
+        'sys/announcement': {tableKey: 'sys/announcement'},
+        'sys/ip-whitelist': {tableKey: 'sys/ip-whitelist'},
+        'sys/print-template': {tableKey: 'sys/print-template'},
+        'sys/notify-channel': {tableKey: 'sys/notify-channel'}
+    });
+
+    function canAdjustManualOrder(state) {
+        return !(state && state.field && state.order);
+    }
+
+    function displayPosition(positions, recordId) {
+        var value = positions && positions[String(recordId)];
+        return value == null ? null : Number(value);
+    }
+
+    function orderRecordsByPosition(records, positions) {
+        return (records || []).slice().sort(function(left, right) {
+            var leftPosition = displayPosition(positions, left.id);
+            var rightPosition = displayPosition(positions, right.id);
+            if(leftPosition == null || rightPosition == null) {
+                if(leftPosition == null && rightPosition == null) return 0;
+                return leftPosition == null ? 1 : -1;
+            }
+            return leftPosition - rightPosition;
+        });
+    }
+
+    function recordIdFromRow(row) {
+        var stored = row.getAttribute('data-record-id');
+        if(stored && /^\d+$/.test(stored)) return Number(stored);
+        var cells = row.children || [];
+        for(var index = 0; index < Math.min(cells.length, 2); index += 1) {
+            var value = String(cells[index].textContent || '').trim();
+            if(/^\d+$/.test(value)) return Number(value);
+        }
+        return null;
+    }
+
+    function displayIdCell(row) {
+        var cells = row.children || [];
+        if(!cells.length) return null;
+        if(cells[0].querySelector && cells[0].querySelector('input[type="checkbox"]')) return cells[1] || null;
+        return cells[0];
+    }
+
+    function actionCellFor(row, hasActionColumn) {
+        if(hasActionColumn) return row.lastElementChild;
+        var cell = document.createElement('td');
+        cell.className = 'manual-order-action-cell';
+        row.appendChild(cell);
+        return cell;
+    }
+
+    function enableManualTableOrder(root, pageKey, state) {
+        var config = manualOrderRegistry[pageKey];
+        if(!config || !root || !root.querySelectorAll || typeof api !== 'function') return;
+        root.querySelectorAll('table').forEach(function(table) {
+            if(table.getAttribute('data-manual-order-state')) return;
+            var header = table.querySelector('thead tr');
+            var body = table.querySelector('tbody');
+            if(!header || !body) return;
+            var rows = Array.prototype.slice.call(body.querySelectorAll(':scope > tr'));
+            var records = rows.map(function(row) {
+                return {row: row, id: recordIdFromRow(row)};
+            }).filter(function(item) { return item.id != null; });
+            if(!records.length) return;
+            var hasActionColumn = !!(header.lastElementChild && /操作/.test(header.lastElementChild.textContent || ''));
+            table.setAttribute('data-manual-order-state', 'loading');
+            api('/api/table-order/' + config.tableKey).then(function(response) {
+                if(!response || response.code !== 0 || !response.data) {
+                    table.removeAttribute('data-manual-order-state');
+                    return;
+                }
+                var positions = response.data.positions || {};
+                var total = Number(response.data.total || records.length);
+                if(canAdjustManualOrder(state) && table.dataset.fieldSortActive !== 'true') {
+                    records = orderRecordsByPosition(records, positions);
+                    records.forEach(function(item) { body.appendChild(item.row); });
+                }
+                if(!hasActionColumn) {
+                    var actionHeading = document.createElement('th');
+                    actionHeading.className = 'manual-order-action-heading';
+                    actionHeading.textContent = '调整';
+                    header.appendChild(actionHeading);
+                }
+                records.forEach(function(item) {
+                    item.row.setAttribute('data-record-id', String(item.id));
+                    var position = displayPosition(positions, item.id);
+                    var idCell = displayIdCell(item.row);
+                    if(idCell && position != null) {
+                        idCell.classList.add('display-id-cell');
+                        idCell.textContent = String(position);
+                        idCell.title = '排列 ID；真实数据库 ID 已隐藏且不会改变';
+                    }
+                    var actionCell = actionCellFor(item.row, hasActionColumn);
+                    var controls = document.createElement('span');
+                    controls.className = 'manual-order-actions';
+                    var disabled = !canAdjustManualOrder(state) || table.dataset.fieldSortActive === 'true';
+                    controls.innerHTML = '<button type="button" class="manual-order-step" data-direction="up" title="上移一位"' +
+                        (disabled || position <= 1 ? ' disabled' : '') + '>↑</button>' +
+                        '<button type="button" class="manual-order-step" data-direction="down" title="下移一位"' +
+                        (disabled || position >= total ? ' disabled' : '') + '>↓</button>' +
+                        '<button type="button" class="manual-order-move" title="移动到目标排列 ID"' +
+                        (disabled ? ' disabled' : '') + '>移到</button>';
+                    controls.querySelectorAll('.manual-order-step').forEach(function(button) {
+                        button.addEventListener('click', function() {
+                            stepTableRecord(config.tableKey, item.id, button.getAttribute('data-direction'));
+                        });
+                    });
+                    controls.querySelector('.manual-order-move').addEventListener('click', function() {
+                        moveTableRecord(config.tableKey, item.id, position, total);
+                    });
+                    actionCell.insertBefore(controls, actionCell.firstChild);
+                });
+                table.setAttribute('data-manual-order-state', 'ready');
+            });
+        });
+    }
+
     function enableTableSorting(root) {
         if(!root || !root.querySelectorAll) return;
         root.querySelectorAll('table').forEach(function(table) {
@@ -91,7 +297,7 @@
             if(!head || !body || !head.children.length || !body.children.length) return;
             var state = {index: -1, order: ''};
             Array.prototype.forEach.call(head.children, function(th, index) {
-                if(th.querySelector('input') || /操作|选择/i.test(th.textContent || '')) return;
+                if(th.querySelector('input') || /操作|选择|顺序/i.test(th.textContent || '')) return;
                 if(th.querySelector('[data-sort-field]')) return;
                 var label = (th.textContent || '').trim();
                 if(!label) return;
@@ -106,6 +312,11 @@
                     state.order = state.index === index && state.order === 'ASC' ? 'DESC' :
                         (state.index === index && state.order === 'DESC' ? '' : 'ASC');
                     state.index = state.order ? index : -1;
+                    table.dataset.fieldSortActive = state.order ? 'true' : 'false';
+                    table.querySelectorAll('.manual-order-step,.manual-order-move').forEach(function(control) {
+                        control.disabled = !!state.order;
+                        control.title = state.order ? '请先恢复默认顺序再调整' : control.title;
+                    });
                     Array.prototype.forEach.call(head.children, function(other) {
                         other.removeAttribute('aria-sort');
                         var b = other.querySelector('.table-sort-button');
@@ -142,6 +353,11 @@
         sortRows: sortRows,
         nextSortState: nextSortState,
         sortHeaderHtml: sortHeaderHtml,
-        enableTableSorting: enableTableSorting
+        enableTableSorting: enableTableSorting,
+        manualOrderRegistry: manualOrderRegistry,
+        canAdjustManualOrder: canAdjustManualOrder,
+        displayPosition: displayPosition,
+        orderRecordsByPosition: orderRecordsByPosition,
+        enableManualTableOrder: enableManualTableOrder
     };
 });

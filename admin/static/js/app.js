@@ -163,6 +163,36 @@ function sortTable(key) {
     crudLoad(1);
 }
 
+function refreshCurrentRecordPage() {
+    if(curPage) renderPage(curPage);
+}
+
+function stepTableRecord(tableKey, recordId, direction) {
+    api('/api/table-order/step', {
+        method: 'POST',
+        body: {table_key: tableKey, record_id: recordId, direction: direction}
+    }).then(function(response) {
+        if(response && response.code === 0) refreshCurrentRecordPage();
+        else alert(response ? response.message : '顺序调整失败');
+    });
+}
+
+function moveTableRecord(tableKey, recordId, currentPosition, total) {
+    var target = prompt('目标排列 ID（1-' + total + '）', String(currentPosition || 1));
+    if(target == null) return;
+    if(!/^\d+$/.test(String(target).trim()) || Number(target) < 1) {
+        alert('请输入有效的排列 ID');
+        return;
+    }
+    api('/api/table-order/move', {
+        method: 'POST',
+        body: {table_key: tableKey, record_id: recordId, target_position: Number(target)}
+    }).then(function(response) {
+        if(response && response.code === 0) refreshCurrentRecordPage();
+        else alert(response ? response.message : '顺序调整失败');
+    });
+}
+
 // 数据校验
 function validateField(el, rules) {
     var val = el.value.trim();
@@ -213,10 +243,19 @@ document.addEventListener('DOMContentLoaded', function() {
     updateThemeIcon();
     var pageContent = document.getElementById('pageContent');
     if(pageContent && typeof MutationObserver !== 'undefined') {
-        var tableObserver = new MutationObserver(function() { MESUI.enableTableSorting(pageContent); });
+        var tableObserver = new MutationObserver(function() {
+            MESUI.enableTableSorting(pageContent);
+            MESUI.enableManualTableOrder(pageContent, curPage, {
+                field: typeof sortField === 'undefined' ? '' : sortField,
+                order: typeof sortOrder === 'undefined' ? '' : sortOrder
+            });
+        });
         tableObserver.observe(pageContent, {childList: true, subtree: true});
     }
-    if(pageContent) MESUI.enableTableSorting(pageContent);
+    if(pageContent) {
+        MESUI.enableTableSorting(pageContent);
+        MESUI.enableManualTableOrder(pageContent, curPage, {field: '', order: ''});
+    }
 
     document.getElementById('loginBtn').onclick = doLogin;
     document.getElementById('lu').onkeydown = function(e) { if(e.key === 'Enter') document.getElementById('lp').focus(); };
@@ -444,12 +483,12 @@ function renderPage(key) {
 
     if(special[key]) {
         special[key](el);
-        if(MESUI.enableTableSorting) MESUI.enableTableSorting(el);
+        if(typeof MESUI !== 'undefined' && MESUI.enableTableSorting) MESUI.enableTableSorting(el);
         return;
     }
     if(configs[key]) {
         renderCrud(el, key, configs[key]);
-        if(MESUI.enableTableSorting) MESUI.enableTableSorting(el);
+        if(typeof MESUI !== 'undefined' && MESUI.enableTableSorting) MESUI.enableTableSorting(el);
         return;
     }
     el.innerHTML = '<div class="card"><div class="card-title">页面建设中...</div></div>';

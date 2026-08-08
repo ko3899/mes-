@@ -31,6 +31,18 @@ def _safe_sort(args, fields, default):
     return f'{column} {direction}'
 
 
+def _manual_or_field_sort(args, fields, alias, table_key):
+    if args.get('sort'):
+        return _safe_sort(args, fields, f'{alias}.id')
+    return f'''CASE WHEN (
+        SELECT position FROM sys_table_order
+        WHERE table_key='{table_key}' AND record_id={alias}.id
+    ) IS NULL THEN 1 ELSE 0 END,
+    (SELECT position FROM sys_table_order
+     WHERE table_key='{table_key}' AND record_id={alias}.id) ASC,
+    {alias}.id DESC'''
+
+
 @production_bp.route('/api/prod/sales/list')
 @login_required
 def prod_sales_list():
@@ -113,7 +125,9 @@ def prod_workorder_list():
         'planned_qty': 'w.planned_qty', 'completed_qty': 'w.completed_qty',
         'status': 'w.status', 'priority': 'w.priority', 'created_at': 'w.created_at',
     }
-    order_by = _safe_sort(request.args, workorder_sort_fields, 'w.id')
+    order_by = _manual_or_field_sort(
+        request.args, workorder_sort_fields, 'w', 'prod/workorder'
+    )
     rows = db.execute(f'''SELECT w.*, p.product_name, p.code as product_code,
         ws.workshop_name
         FROM prod_workorder w
@@ -181,7 +195,9 @@ def prod_task_list():
         'completed_qty': 't.completed_qty', 'status': 't.status',
         'priority': 't.priority', 'created_at': 't.created_at',
     }
-    order_by = _safe_sort(request.args, task_sort_fields, 't.id')
+    order_by = _manual_or_field_sort(
+        request.args, task_sort_fields, 't', 'prod/task'
+    )
     rows = db.execute(f'''SELECT t.*, w.order_no as workorder_no, pr.process_name,
         u.real_name as assigned_name
         FROM prod_task t
@@ -241,7 +257,9 @@ def prod_report_list():
         'report_qty': 'r.report_qty', 'qualified_qty': 'r.qualified_qty',
         'defect_qty': 'r.defect_qty', 'created_at': 'r.created_at',
     }
-    order_by = _safe_sort(request.args, report_sort_fields, 'r.id')
+    order_by = _manual_or_field_sort(
+        request.args, report_sort_fields, 'r', 'prod/report'
+    )
     rows = db.execute(f'''SELECT r.*, t.task_no, w.order_no as workorder_no,
         pr.process_name, u.real_name
         FROM prod_report r

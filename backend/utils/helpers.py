@@ -189,7 +189,8 @@ def crud_list(table, params):
 
     total = db.execute(f"SELECT COUNT(*) as cnt FROM {table}{where}", args).fetchone()['cnt']
 
-    sort = params.get('sort', 'id')
+    requested_sort = params.get('sort')
+    sort = requested_sort or 'id'
     order = str(params.get('order', 'DESC')).upper()
     # 验证排序列名
     if not _validate_column_name(sort) or sort not in valid_columns:
@@ -197,8 +198,29 @@ def crud_list(table, params):
     if order not in ('ASC', 'DESC'):
         order = 'DESC'
 
-    rows = db.execute(f"SELECT * FROM {table}{where} ORDER BY {sort} {order} LIMIT ? OFFSET ?",
-                      args + [size, offset]).fetchall()
+    if not requested_sort:
+        from utils.table_order import ORDERABLE_TABLES
+        table_key = next((key for key, value in ORDERABLE_TABLES.items() if value == table), None)
+    else:
+        table_key = None
+
+    if table_key:
+        rows = db.execute(
+            f'''SELECT * FROM {table}{where}
+                ORDER BY CASE WHEN (
+                    SELECT position FROM sys_table_order
+                    WHERE table_key=? AND record_id={table}.id
+                ) IS NULL THEN 1 ELSE 0 END,
+                (SELECT position FROM sys_table_order
+                 WHERE table_key=? AND record_id={table}.id) ASC,
+                id DESC LIMIT ? OFFSET ?''',
+            args + [table_key, table_key, size, offset],
+        ).fetchall()
+    else:
+        rows = db.execute(
+            f"SELECT * FROM {table}{where} ORDER BY {sort} {order} LIMIT ? OFFSET ?",
+            args + [size, offset],
+        ).fetchall()
 
     return {'code': 0, 'data': {'list': [dict(r) for r in rows], 'total': total, 'page': page, 'size': size}}
 

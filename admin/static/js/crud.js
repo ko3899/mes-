@@ -129,7 +129,7 @@ function crudLoad(page, sort, order) {
             var rowIdArg = MESUI.escapeHtml(JSON.stringify(row.id));
             var isSelected = selectedRows.has(rowKey);
             currentRowsById[rowKey] = row;
-            h += '<tr><td><input type="checkbox" data-id="' + MESUI.escapeHtml(rowKey) + '" '
+            h += '<tr data-record-id="' + MESUI.escapeHtml(rowKey) + '"><td><input type="checkbox" data-id="' + MESUI.escapeHtml(rowKey) + '" '
                 + (isSelected ? 'checked' : '') + ' onchange="toggleSelectRow(' + rowIdArg
                 + ',this.checked)"></td><td>' + MESUI.escapeHtml(row.id) + '</td>';
             loadFields.forEach(function(f) {

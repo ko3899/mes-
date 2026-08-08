@@ -1074,6 +1074,16 @@ def _init_extra_tables():
            ON prod_report(user_id, client_operation_id)
            WHERE client_operation_id IS NOT NULL"""
     )
+    db.execute('''CREATE TABLE IF NOT EXISTS sys_table_order (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        table_key TEXT NOT NULL,
+        record_id INTEGER NOT NULL,
+        position INTEGER NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(table_key, record_id)
+    )''')
+    db.execute('''CREATE INDEX IF NOT EXISTS idx_sys_table_order_position
+                  ON sys_table_order(table_key, position)''')
     db.commit()
     db.close()
 
