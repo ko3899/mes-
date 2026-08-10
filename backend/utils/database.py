@@ -1184,6 +1184,24 @@ def _init_extra_tables():
         operator INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_transfer (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        transfer_no TEXT NOT NULL UNIQUE,
+        workorder_id INTEGER NOT NULL,
+        from_process_id INTEGER NOT NULL,
+        to_process_id INTEGER NOT NULL,
+        from_route_step_id INTEGER,
+        to_route_step_id INTEGER,
+        quantity REAL NOT NULL,
+        status INTEGER DEFAULT 1,
+        operator INTEGER,
+        remark TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workorder_id) REFERENCES prod_workorder(id)
+    )''')
+    _add_column_if_missing(db, 'prod_transfer', 'from_route_step_id', 'INTEGER')
+    _add_column_if_missing(db, 'prod_transfer', 'to_route_step_id', 'INTEGER')
+    _add_column_if_missing(db, 'prod_transfer', 'remark', 'TEXT')
     material_columns = {
         'production_batch_id': 'INTEGER',
         'bom_snapshot_id': 'INTEGER',

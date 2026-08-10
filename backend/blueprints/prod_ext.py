@@ -3,7 +3,8 @@ from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
 from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
 from services.production_flow import (
-    BusinessError, issue_material, receive_material, request_material, return_material,
+    BusinessError, create_transfer, issue_material, receive_material,
+    request_material, return_material,
 )
 
 prod_ext_bp = Blueprint('prod_ext', __name__)
@@ -31,10 +32,11 @@ def transfer_list():
 @prod_ext_bp.route('/api/prod/transfer/add', methods=['POST'])
 @login_required
 def transfer_add():
-    data = request.json
-    data['transfer_no'] = gen_no('TR')
-    data['operator'] = session.get('user_id')
-    return jsonify(crud_add('prod_transfer', data))
+    try:
+        result = create_transfer(get_db(), request.get_json(silent=True) or {}, session.get('user_id'))
+        return jsonify({'code': 0, 'data': result, 'message': '工序转移成功'})
+    except BusinessError as exc:
+        return jsonify({'code': exc.status, 'message': str(exc), 'data': exc.details}), exc.status
 
 
 # ==================== 生产领料 ====================

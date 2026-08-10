@@ -24,6 +24,8 @@ from services.production_flow import (
     release_workorder,
     generate_tasks,
     generate_material_requirements,
+    post_report,
+    task_availability,
     transition_status,
 )
 
@@ -810,6 +812,16 @@ def _create_report(data, user_id):
             db.rollback()
             return {'code': 400, 'message': '任务与工序不匹配'}
 
+        controlled = data.get('controlled') is True
+        if controlled:
+            availability = task_availability(db, task_id)
+            requested_total = float(qualified + defect)
+            if requested_total > availability['available_qty']:
+                db.rollback()
+                available = availability['available_qty']
+                return {'code': 409, 'message': f'当前任务可执行数量为 {available:g}',
+                        'data': availability}
+
         report_no = gen_no_in_transaction(db, 'BR')
         cursor = db.execute(
             """INSERT INTO prod_report
@@ -828,12 +840,13 @@ def _create_report(data, user_id):
                 client_operation_id,
             ),
         )
-        _recalculate_task_and_workorder(db, task_id, workorder_id)
+        if not controlled:
+            _recalculate_task_and_workorder(db, task_id, workorder_id)
         db.commit()
         return {
             'code': 0,
             'data': {'id': cursor.lastrowid, 'duplicate': False},
-            'message': '报工成功',
+            'message': '报工已提交，等待审核' if controlled else '报工成功',
         }
     except sqlite3.IntegrityError:
         db.rollback()
@@ -893,3 +906,43 @@ def prod_report_delete():
     result = _delete_report(data.get('id'))
     status = result['code'] if result.get('code', 0) >= 400 else 200
     return jsonify(result), status
+
+
+@production_bp.route('/api/prod/report/<int:report_id>/approve', methods=['POST'])
+@login_required
+def prod_report_approve(report_id):
+    try:
+        result = transition_status(get_db(), 'report', report_id, 1, session.get('user_id'), '报工审核通过')
+        return jsonify({'code': 0, 'data': result})
+    except BusinessError as exc:
+        return jsonify({'code': exc.status, 'message': str(exc), 'data': exc.details}), exc.status
+
+
+@production_bp.route('/api/prod/report/<int:report_id>/post', methods=['POST'])
+@login_required
+def prod_report_post(report_id):
+    try:
+        result = post_report(get_db(), report_id, session.get('user_id'), '报工记账')
+        return jsonify({'code': 0, 'data': result})
+    except BusinessError as exc:
+        return jsonify({'code': exc.status, 'message': str(exc), 'data': exc.details}), exc.status
+
+
+@production_bp.route('/api/prod/report/<int:report_id>/reject', methods=['POST'])
+@login_required
+def prod_report_reject(report_id):
+    try:
+        result = transition_status(get_db(), 'report', report_id, 3, session.get('user_id'),
+                                   (request.get_json(silent=True) or {}).get('remark') or '报工驳回')
+        return jsonify({'code': 0, 'data': result})
+    except BusinessError as exc:
+        return jsonify({'code': exc.status, 'message': str(exc), 'data': exc.details}), exc.status
+
+
+@production_bp.route('/api/prod/task/<int:task_id>/availability')
+@login_required
+def prod_task_availability(task_id):
+    try:
+        return jsonify({'code': 0, 'data': task_availability(get_db(), task_id)})
+    except BusinessError as exc:
+        return jsonify({'code': exc.status, 'message': str(exc), 'data': exc.details}), exc.status

@@ -415,11 +415,82 @@ function renderTask(el) {
 }
 
 function renderReport2(el) {
-    chainPage(el, '报工管理', ['ID', '报工单号', '任务', '工单', '工序', '报工人', '合格数', '不良数', '报工时间', '备注'],
-        '/api/prod/report/list?size=1000', function(row) {
+    el.innerHTML = '<div class="card"><div class="card-title"><span>报工管理</span><button class="btn btn-blue" id="reportAddBtn">+ 提交报工</button></div>'
+        + '<div class="table-wrap"><table><thead><tr><th>ID</th><th>报工单号</th><th>任务</th><th>工单</th><th>工序</th><th>报工人</th><th>合格数</th><th>不良数</th><th>状态</th><th>报工时间</th><th>备注</th><th>操作</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="12" class="empty">加载中...</td></tr></tbody></table></div></div>';
+    document.getElementById('reportAddBtn').onclick = reportOpenEditor;
+    reportLoad();
+}
+
+function reportLoad() {
+    api('/api/prod/report/list?size=1000').then(function(response) {
+        var rows = chainList(response), tb = document.getElementById('tb');
+        var labels = {0:'已提交',1:'已审核',2:'已记账',3:'已驳回'};
+        if(!tb) return;
+        tb.innerHTML = rows.length ? rows.map(function(row) {
+            var actions = '';
+            if(Number(row.approval_status) === 0) actions = '<button class="btn btn-green btn-sm" onclick="reportApprove('+row.id+')">审核</button> '
+                + '<button class="btn btn-red btn-sm" onclick="reportReject('+row.id+')">驳回</button>';
+            if(Number(row.approval_status) === 1) actions = '<button class="btn btn-blue btn-sm" onclick="reportPost('+row.id+')">记账</button>';
             return chainRow([chainEscape(row.id), chainEscape(row.report_no), chainEscape(row.task_no),
-                chainEscape(row.workorder_no || row.order_no), chainEscape(row.process_name),
-                chainEscape(row.real_name || row.reporter_name), chainEscape(row.qualified_qty || 0),
-                chainEscape(row.defect_qty || 0), chainEscape(row.report_time || row.created_at), chainEscape(row.remark)]);
-        });
+                chainEscape(row.workorder_no), chainEscape(row.process_name), chainEscape(row.real_name),
+                chainEscape(row.qualified_qty || 0), chainEscape(row.defect_qty || 0),
+                chainStatus(row.approval_status, labels), chainEscape(row.report_time), chainEscape(row.remark), actions]);
+        }).join('') : '<tr><td colspan="12" class="empty">暂无数据</td></tr>';
+    });
+}
+
+function reportOpenEditor() {
+    api('/api/prod/task/list?size=1000').then(function(response) {
+        var tasks = chainList(response).filter(function(task) { return Number(task.status) < 3; });
+        document.getElementById('mTitle').textContent = '提交生产报工';
+        document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>生产任务 *</label><select id="reportTask">'
+            + routeOptions(tasks.map(function(task) { return {id:task.id,label:task.task_no+' / '+task.workorder_no+' / '+task.process_name}; }), 'id', 'label', '')
+            + '</select></div><div class="form-item"><label>当前可执行数量</label><input id="reportAvailable" readonly value="请先选择任务"></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>合格数量 *</label><input id="reportQualified" type="number" min="0"></div><div class="form-item"><label>不良数量</label><input id="reportDefect" type="number" min="0" value="0"></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>备注</label><input id="reportRemark" value="生产业务链测试"></div></div>';
+        var selectedTask = null, availability = null;
+        document.getElementById('reportTask').onchange = function() {
+            selectedTask = tasks.find(function(task) { return String(task.id) === String(document.getElementById('reportTask').value); });
+            if(!selectedTask) return;
+            api('/api/prod/task/' + selectedTask.id + '/availability').then(function(result) {
+                availability = result && result.data;
+                document.getElementById('reportAvailable').value = availability ? availability.available_qty : '读取失败';
+            });
+        };
+        modalSaveHandler = function() {
+            var qualified = Number(document.getElementById('reportQualified').value || 0);
+            var defect = Number(document.getElementById('reportDefect').value || 0);
+            if(!selectedTask || !availability || qualified <= 0 || qualified + defect > Number(availability.available_qty)) {
+                alert('请选择任务，并确保报工总数不超过可执行数量'); return;
+            }
+            api('/api/prod/report/add', {method:'POST', body:{task_id:selectedTask.id,
+                workorder_id:selectedTask.workorder_id, process_id:selectedTask.process_id,
+                qualified_qty:qualified, defect_qty:defect, controlled:true,
+                remark:document.getElementById('reportRemark').value}}).then(function(result) {
+                if(result && result.code === 0) { closeModal(); reportLoad(); }
+                else alert(result ? result.message : '提交失败');
+            });
+        };
+        document.getElementById('modal').classList.add('show');
+    });
+}
+
+function reportApprove(id) {
+    api('/api/prod/report/' + id + '/approve', {method:'POST',body:{}}).then(function(result) {
+        if(result && result.code === 0) reportLoad(); else alert(result ? result.message : '审核失败');
+    });
+}
+function reportPost(id) {
+    if(!confirm('记账后将累计任务和工单数量，确认继续？')) return;
+    api('/api/prod/report/' + id + '/post', {method:'POST',body:{}}).then(function(result) {
+        if(result && result.code === 0) reportLoad(); else alert(result ? result.message : '记账失败');
+    });
+}
+function reportReject(id) {
+    var remark = prompt('请输入驳回原因', '数据需核对');
+    if(remark == null) return;
+    api('/api/prod/report/' + id + '/reject', {method:'POST',body:{remark:remark}}).then(function(result) {
+        if(result && result.code === 0) reportLoad(); else alert(result ? result.message : '驳回失败');
+    });
 }

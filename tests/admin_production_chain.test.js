@@ -80,3 +80,13 @@ test('material UI uses frozen BOM and controlled inventory actions', () => {
   assert.match(material, /returned_qty/);
   assert.match(material, /materialAction/);
 });
+
+test('report and transfer UIs expose controlled quantity actions', () => {
+  const production = read('admin/static/js/pages/production_chain.js');
+  const extension = read('admin/static/js/pages/prod_ext.js');
+  assert.match(production, /controlled:true/);
+  assert.match(production, /\/availability/);
+  assert.match(production, /reportApprove/);
+  assert.match(production, /reportPost/);
+  assert.match(extension, /executable-steps/);
+});

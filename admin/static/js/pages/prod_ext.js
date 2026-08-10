@@ -24,21 +24,31 @@ function transferLoad() {
     });
 }
 function transferAdd() {
-    Promise.all([api('/api/prod/workorder/list?size=500'), api('/api/base/process/list?size=500')]).then(function(r) {
+    api('/api/prod/workorder/list?size=500').then(function(response) {
+        var r = [response];
         var woList = r[0] && r[0].data ? (r[0].data.list||r[0].data) : [];
-        var procList = r[1] && r[1].data ? (r[1].data.list||r[1].data) : [];
         var woOpts = '<option value="">请选择工单</option>';
         woList.forEach(function(w) { woOpts += '<option value="'+w.id+'">'+w.order_no+'</option>'; });
-        var procOpts = '<option value="">请选择工序</option>';
-        procList.forEach(function(p) { procOpts += '<option value="'+p.id+'">'+p.process_name+'</option>'; });
         document.getElementById('mTitle').textContent = '新增工序转移';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>工单<span style="color:red">*</span></label><select id="f_wo">'+woOpts+'</select></div></div>'
-            + '<div class="form-row"><div class="form-item"><label>从工序<span style="color:red">*</span></label><select id="f_from">'+procOpts+'</select></div>'
-            + '<div class="form-item"><label>到工序<span style="color:red">*</span></label><select id="f_to">'+procOpts+'</select></div></div>'
-            + '<div class="form-row"><div class="form-item"><label>数量<span style="color:red">*</span></label><input id="f_qty" type="number"></div></div>';
+            + '<div class="form-row"><div class="form-item"><label>从工序<span style="color:red">*</span></label><select id="f_from"><option value="">先选工单</option></select></div>'
+            + '<div class="form-item"><label>到工序<span style="color:red">*</span></label><select id="f_to"><option value="">先选工单</option></select></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>数量<span style="color:red">*</span></label><input id="f_qty" type="number"></div><div class="form-item"><label>备注</label><input id="f_transfer_remark" value="生产业务链测试"></div></div>';
+        document.getElementById('f_wo').onchange = function() {
+            var workorderId = this.value;
+            if(!workorderId) return;
+            api('/api/prod/workorder/' + workorderId + '/executable-steps').then(function(result) {
+                var steps = result && result.data ? result.data : [];
+                var options = '<option value="">请选择冻结路线工序</option>';
+                steps.forEach(function(step) { options += '<option value="'+step.process_id+'">'+MESUI.escapeHtml(step.step_no+' / '+step.process_name)+'</option>'; });
+                document.getElementById('f_from').innerHTML = options;
+                document.getElementById('f_to').innerHTML = options;
+            });
+        };
         modalSaveHandler = function() {
             var d = {workorder_id:document.getElementById('f_wo').value, from_process_id:document.getElementById('f_from').value,
-                to_process_id:document.getElementById('f_to').value, quantity:document.getElementById('f_qty').value};
+                to_process_id:document.getElementById('f_to').value, quantity:document.getElementById('f_qty').value,
+                remark:document.getElementById('f_transfer_remark').value};
             if(!d.workorder_id||!d.from_process_id||!d.to_process_id||!d.quantity) { alert('请填写必填项'); return; }
             api('/api/prod/transfer/add',{method:'POST',body:d}).then(function(r2) {
                 if(r2&&r2.code===0) { closeModal(); transferLoad(); } else alert(r2?r2.message:'保存失败');

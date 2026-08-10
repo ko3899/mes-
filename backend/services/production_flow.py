@@ -476,6 +476,76 @@ def post_report(db, report_id, user_id, remark=''):
     return _dict(db.execute('SELECT * FROM prod_report WHERE id=?', (report_id,)).fetchone())
 
 
+def task_availability(db, task_id):
+    task = db.execute(
+        '''SELECT t.*,s.step_no,s.id AS snapshot_step_id,h.workorder_id AS snapshot_workorder_id
+           FROM prod_task t
+           JOIN prod_workorder_route_step s ON s.id=t.route_step_id
+           JOIN prod_workorder_route_snapshot h ON h.id=s.snapshot_id
+           WHERE t.id=?''', (task_id,)
+    ).fetchone()
+    if not task:
+        raise BusinessError('任务不存在或未关联冻结路线', 404)
+    if task['step_no'] == 1:
+        upstream = float(task['planned_qty'])
+    else:
+        upstream = float(db.execute(
+            '''SELECT COALESCE(SUM(quantity),0) FROM prod_transfer
+               WHERE workorder_id=? AND to_route_step_id=? AND status=1''',
+            (task['workorder_id'], task['snapshot_step_id']),
+        ).fetchone()[0])
+    posted = float(task['completed_qty'] or 0) + float(task['defect_qty'] or 0)
+    return {
+        'task_id': task_id, 'planned_qty': float(task['planned_qty']),
+        'upstream_qty': upstream, 'posted_qty': posted,
+        'available_qty': max(0, upstream - posted),
+    }
+
+
+def create_transfer(db, payload, user_id):
+    quantity = _positive(payload.get('quantity'), '转移数量必须大于0')
+    workorder_id = payload.get('workorder_id')
+    with _atomic(db):
+        steps = db.execute(
+            '''SELECT s.* FROM prod_workorder_route_step s
+               JOIN prod_workorder_route_snapshot h ON h.id=s.snapshot_id
+               WHERE h.workorder_id=? AND s.process_id IN (?,?) ORDER BY s.step_no''',
+            (workorder_id, payload.get('from_process_id'), payload.get('to_process_id')),
+        ).fetchall()
+        by_process = {row['process_id']: row for row in steps}
+        source = by_process.get(int(payload.get('from_process_id') or 0))
+        target = by_process.get(int(payload.get('to_process_id') or 0))
+        if not source or not target:
+            raise BusinessError('来源或目标工序不属于工单冻结路线')
+        if target['step_no'] != source['step_no'] + 1:
+            raise BusinessError('工序转移只允许相邻路线步骤')
+        qualified = float(db.execute(
+            '''SELECT COALESCE(SUM(r.qualified_qty),0) FROM prod_report r
+               JOIN prod_task t ON t.id=r.task_id
+               WHERE r.workorder_id=? AND t.route_step_id=? AND r.approval_status=2''',
+            (workorder_id, source['id']),
+        ).fetchone()[0])
+        transferred = float(db.execute(
+            '''SELECT COALESCE(SUM(quantity),0) FROM prod_transfer
+               WHERE workorder_id=? AND from_route_step_id=? AND status=1''',
+            (workorder_id, source['id']),
+        ).fetchone()[0])
+        available = max(0, qualified - transferred)
+        if quantity > available:
+            raise BusinessError(f'可转移数量为 {available:g}', 409,
+                                {'available_qty': available})
+        transfer_no = _number('TR')
+        transfer_id = db.execute(
+            '''INSERT INTO prod_transfer
+               (transfer_no,workorder_id,from_process_id,to_process_id,from_route_step_id,
+                to_route_step_id,quantity,status,operator,remark)
+               VALUES(?,?,?,?,?,?,?,1,?,?)''',
+            (transfer_no, workorder_id, source['process_id'], target['process_id'],
+             source['id'], target['id'], quantity, user_id, payload.get('remark')),
+        ).lastrowid
+    return {'id': transfer_id, 'transfer_no': transfer_no, 'quantity': quantity}
+
+
 _TRANSITIONS = {
     'sales': ({0: {1, 4}, 1: {2, 4}, 2: {3}}, 'prod_sales_order'),
     'plan': ({0: {1, 4}, 1: {2, 4}, 2: {3}}, 'prod_plan'),
