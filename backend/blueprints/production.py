@@ -20,6 +20,9 @@ from services.production_flow import (
     save_batch,
     save_plan,
     save_sales_order,
+    save_workorder,
+    release_workorder,
+    generate_tasks,
     transition_status,
 )
 
@@ -277,15 +280,109 @@ def prod_workorder_list():
         request.args, workorder_sort_fields, 'w', 'prod/workorder'
     )
     rows = db.execute(f'''SELECT w.*, p.product_name, p.code as product_code,
-        ws.workshop_name
+        ws.workshop_name,pl.plan_no,s.order_no AS sales_order_no,
+        b.batch_no,r.route_name
         FROM prod_workorder w
         LEFT JOIN base_product p ON w.product_id=p.id
         LEFT JOIN base_workshop ws ON w.workshop_id=ws.id
+        LEFT JOIN prod_plan pl ON w.plan_id=pl.id
+        LEFT JOIN prod_sales_order s ON w.sales_order_id=s.id
+        LEFT JOIN prod_batch b ON w.production_batch_id=b.id
+        LEFT JOIN base_process_route r ON w.route_id=r.id
         {where}
         ORDER BY {order_by} LIMIT ? OFFSET ?''',
         params + [size, offset],
     ).fetchall()
     return jsonify({'code': 0, 'data': {'list': [dict(r) for r in rows], 'total': total}})
+
+
+@production_bp.route('/api/prod/workorder/options')
+@login_required
+def prod_workorder_options():
+    db = get_db()
+    plan_item_id = request.args.get('plan_item_id')
+    batch_id = request.args.get('batch_id')
+    if batch_id:
+        source = db.execute(
+            '''SELECT b.plan_item_id,b.plan_id,b.sales_order_id,b.product_id,b.workshop_id,
+                      b.planned_qty AS remaining_qty,b.id AS production_batch_id,b.batch_no
+               FROM prod_batch b WHERE b.id=? AND b.status<>4''', (batch_id,)
+        ).fetchone()
+    else:
+        source = db.execute(
+            '''SELECT i.id AS plan_item_id,i.plan_id,p.sales_order_id,i.product_id,i.workshop_id,
+                      MAX(0,i.planned_qty-COALESCE((SELECT SUM(b.planned_qty) FROM prod_batch b
+                        WHERE b.plan_item_id=i.id AND b.status<>4),0)) AS remaining_qty,
+                      NULL AS production_batch_id,NULL AS batch_no
+               FROM prod_plan_item i JOIN prod_plan p ON p.id=i.plan_id WHERE i.id=?''',
+            (plan_item_id,),
+        ).fetchone()
+    if not source:
+        return jsonify({'code': 404, 'message': '生产计划明细或批次不存在'}), 404
+    routes = db.execute(
+        '''SELECT id,route_name,version,workshop_id FROM base_process_route
+           WHERE product_id=? AND workshop_id=? AND status=1 ORDER BY version DESC,id DESC''',
+        (source['product_id'], source['workshop_id']),
+    ).fetchall()
+    result = dict(source)
+    result['routes'] = [dict(route) for route in routes]
+    return jsonify({'code': 0, 'data': result})
+
+
+@production_bp.route('/api/prod/workorder/save', methods=['POST'])
+@login_required
+def prod_workorder_save():
+    try:
+        result = save_workorder(get_db(), request.get_json(silent=True) or {}, session.get('user_id'))
+        return jsonify({'code': 0, 'data': result, 'message': '保存成功'})
+    except BusinessError as exc:
+        return jsonify({'code': exc.status, 'message': str(exc), 'data': exc.details}), exc.status
+
+
+@production_bp.route('/api/prod/workorder/<int:workorder_id>/release', methods=['POST'])
+@login_required
+def prod_workorder_release(workorder_id):
+    data = request.get_json(silent=True) or {}
+    try:
+        result = release_workorder(get_db(), workorder_id, session.get('user_id'), data.get('remark') or '')
+        return jsonify({'code': 0, 'data': result, 'message': '工单已下达并冻结路线与BOM'})
+    except BusinessError as exc:
+        return jsonify({'code': exc.status, 'message': str(exc), 'data': exc.details}), exc.status
+
+
+@production_bp.route('/api/prod/workorder/<int:workorder_id>/generate-tasks', methods=['POST'])
+@login_required
+def prod_workorder_generate_tasks(workorder_id):
+    try:
+        result = generate_tasks(get_db(), workorder_id, session.get('user_id'))
+        return jsonify({'code': 0, 'data': result, 'message': '任务已按冻结路线生成'})
+    except BusinessError as exc:
+        return jsonify({'code': exc.status, 'message': str(exc), 'data': exc.details}), exc.status
+
+
+@production_bp.route('/api/prod/workorder/<int:workorder_id>/executable-steps')
+@login_required
+def prod_workorder_executable_steps(workorder_id):
+    db = get_db()
+    workorder = db.execute('SELECT planned_qty FROM prod_workorder WHERE id=?', (workorder_id,)).fetchone()
+    if not workorder:
+        return jsonify({'code': 404, 'message': '工单不存在'}), 404
+    rows = db.execute(
+        '''SELECT s.*,t.id AS task_id,COALESCE(t.completed_qty,0) AS reported_qty,
+                  COALESCE(t.defect_qty,0) AS defect_qty
+           FROM prod_workorder_route_step s
+           JOIN prod_workorder_route_snapshot h ON h.id=s.snapshot_id
+           LEFT JOIN prod_task t ON t.route_step_id=s.id
+           WHERE h.workorder_id=? ORDER BY s.step_no''', (workorder_id,)
+    ).fetchall()
+    result, previous = [], float(workorder['planned_qty'])
+    for row in rows:
+        item = dict(row)
+        item['upstream_qty'] = previous
+        item['available_qty'] = max(0, previous - float(row['reported_qty']) - float(row['defect_qty']))
+        previous = float(row['reported_qty'])
+        result.append(item)
+    return jsonify({'code': 0, 'data': result})
 
 
 @production_bp.route('/api/prod/workorder/add', methods=['POST'])

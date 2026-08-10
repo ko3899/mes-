@@ -61,3 +61,12 @@ test('sales plans and production batches expose line-based save flows', () => {
   assert.match(menu, /prod\/batch/);
   assert.match(app, /renderProductionBatch/);
 });
+
+test('workorder UI releases snapshots and generates tasks', () => {
+  const source = read('admin/static/js/pages/business.js');
+  assert.match(source, /\/api\/prod\/workorder\/save/);
+  assert.match(source, /\/release/);
+  assert.match(source, /\/generate-tasks/);
+  assert.match(source, /production_batch_id/);
+  assert.match(source, /route_version/);
+});
