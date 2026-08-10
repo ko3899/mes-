@@ -359,7 +359,12 @@ function doLogout() {
 function renderPage(key) {
     if(typeof crudRenderToken !== 'undefined') crudRenderToken += 1;
     var el = document.getElementById('pageContent');
-    if(key === 'home') { renderHome(el); return; }
+    el.replaceChildren();
+    if(key === 'home') {
+        try { renderHome(el); }
+        catch(error) { renderModuleError(el, key, error); }
+        return;
+    }
 
     var configs = {
         'base/workshop': {t:'车间设置', f:[{k:'workshop_name',l:'车间名称',r:1},{k:'code',l:'编码',r:1},{k:'description',l:'描述'},{k:'status',l:'状态',s:[{v:1,t:'启用'},{v:0,t:'禁用'}]}]},
@@ -481,15 +486,28 @@ function renderPage(key) {
         'sched/calendar': function(e){renderScheduleCalendarPage(e)}
     };
 
-    if(special[key]) {
-        special[key](el);
-        if(typeof MESUI !== 'undefined' && MESUI.enableTableSorting) MESUI.enableTableSorting(el);
-        return;
+    try {
+        if(special[key]) {
+            special[key](el);
+            if(typeof MESUI !== 'undefined' && MESUI.enableTableSorting) MESUI.enableTableSorting(el);
+            return;
+        }
+        if(configs[key]) {
+            renderCrud(el, key, configs[key]);
+            if(typeof MESUI !== 'undefined' && MESUI.enableTableSorting) MESUI.enableTableSorting(el);
+            return;
+        }
+        el.innerHTML = '<div class="card"><div class="card-title">页面建设中...</div></div>';
+    } catch(error) {
+        renderModuleError(el, key, error);
     }
-    if(configs[key]) {
-        renderCrud(el, key, configs[key]);
-        if(typeof MESUI !== 'undefined' && MESUI.enableTableSorting) MESUI.enableTableSorting(el);
-        return;
-    }
-    el.innerHTML = '<div class="card"><div class="card-title">页面建设中...</div></div>';
+}
+
+function renderModuleError(el, title, error) {
+    var safeTitle = MESUI.escapeHtml(title || '当前模块');
+    var message = error && error.message ? error.message : '模块加载失败';
+    el.innerHTML = '<div class="card"><div class="card-title">' + safeTitle + '</div>'
+        + '<div class="empty">页面加载失败：' + MESUI.escapeHtml(message)
+        + '<br><button class="btn btn-blue" onclick="renderPage(curPage)">重新加载</button></div></div>';
+    if(window.console && console.error) console.error('模块加载失败:', title, error);
 }
