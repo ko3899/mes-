@@ -359,7 +359,8 @@ function doLogout() {
 function renderPage(key) {
     if(typeof crudRenderToken !== 'undefined') crudRenderToken += 1;
     var el = document.getElementById('pageContent');
-    el.replaceChildren();
+    if(typeof el.replaceChildren === 'function') el.replaceChildren();
+    else el.innerHTML = '';
     if(key === 'home') {
         try { renderHome(el); }
         catch(error) { renderModuleError(el, key, error); }
