@@ -4,13 +4,34 @@
 function renderProcess(el) {
     el.innerHTML = '<div class="card"><div class="card-title"><span>工序管理</span>'
         + '<button class="btn btn-blue" id="processAddBtn">+ 新增</button></div>'
+        + '<div class="toolbar"><select id="processWorkshopFilter"><option value="">全部车间</option></select>'
+        + '<input id="processKeywordFilter" placeholder="搜索工序名称或编码"><select id="processStatusFilter">'
+        + '<option value="">全部状态</option><option value="1">启用</option><option value="0">停用</option></select>'
+        + '<button class="btn btn-blue" id="processSearchBtn">查询</button></div>'
         + '<table><thead><tr><th>排序</th><th>ID</th><th>工序名称</th><th>编码</th><th>车间</th><th>标准工时</th><th>状态</th><th>操作</th></tr></thead>'
         + '<tbody id="tb"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody></table></div>';
     document.getElementById('processAddBtn').onclick = processAdd;
-    processLoad();
+    document.getElementById('processSearchBtn').onclick = processLoad;
+    api('/api/base/workshop/list?size=1000').then(function(response) {
+        var list = response && response.data ? (response.data.list || response.data) : [];
+        var select = document.getElementById('processWorkshopFilter');
+        list.forEach(function(workshop) {
+            var option = document.createElement('option');
+            option.value = workshop.id;
+            option.textContent = workshop.workshop_name;
+            select.appendChild(option);
+        });
+        processLoad();
+    });
 }
 function processLoad() {
-    api('/api/base/process/list?size=500').then(function(r) {
+    var workshop = document.getElementById('processWorkshopFilter');
+    var keyword = document.getElementById('processKeywordFilter');
+    var status = document.getElementById('processStatusFilter');
+    var query = '?size=500&workshop_id=' + encodeURIComponent(workshop ? workshop.value : '')
+        + '&keyword=' + encodeURIComponent(keyword ? keyword.value : '')
+        + '&status=' + encodeURIComponent(status ? status.value : '');
+    api('/api/base/process/list' + query).then(function(r) {
         if(!r||!r.data) return;
         var list = Array.isArray(r.data) ? r.data : (r.data.list || []);
         var tb = document.getElementById('tb');
@@ -34,14 +55,14 @@ function processAdd() {
         document.getElementById('mTitle').textContent = '新增工序';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>工序名称<span style="color:red">*</span></label><input id="f_name"></div>'
             + '<div class="form-item"><label>编码<span style="color:red">*</span></label><input id="f_code"></div></div>'
-            + '<div class="form-row"><div class="form-item"><label>车间</label><select id="f_ws">'+opts+'</select></div>'
+            + '<div class="form-row"><div class="form-item"><label>所属车间<span style="color:red">* 必填</span></label><select id="f_ws">'+opts+'</select></div>'
             + '<div class="form-item"><label>标准工时(分钟)</label><input id="f_time" type="number" step="0.1"></div></div>'
             + '<div class="form-row"><div class="form-item" style="flex:1"><label>描述</label><textarea id="f_desc"></textarea></div></div>';
         modalSaveHandler = function() {
             var d = {process_name:document.getElementById('f_name').value, code:document.getElementById('f_code').value,
                 workshop_id:document.getElementById('f_ws').value||null, standard_time:document.getElementById('f_time').value||null,
                 description:document.getElementById('f_desc').value};
-            if(!d.process_name||!d.code) { alert('请填写必填项'); return; }
+            if(!d.process_name||!d.code||!d.workshop_id) { alert('工序名称、编码和所属车间均为必填项'); return; }
             api('/api/base/process/add',{method:'POST',body:d}).then(function(r2) {
                 if(r2&&r2.code===0) { closeModal(); processLoad(); } else alert(r2?r2.message:'保存失败');
             });
@@ -56,14 +77,14 @@ function processEdit(row) {
         document.getElementById('mTitle').textContent = '编辑工序';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>工序名称<span style="color:red">*</span></label><input id="f_name" value="'+row.process_name+'"></div>'
             + '<div class="form-item"><label>编码<span style="color:red">*</span></label><input id="f_code" value="'+row.code+'"></div></div>'
-            + '<div class="form-row"><div class="form-item"><label>车间</label><select id="f_ws">'+opts+'</select></div>'
+            + '<div class="form-row"><div class="form-item"><label>所属车间<span style="color:red">* 必填</span></label><select id="f_ws">'+opts+'</select></div>'
             + '<div class="form-item"><label>标准工时(分钟)</label><input id="f_time" type="number" step="0.1" value="'+(row.standard_time||'')+'"></div></div>'
             + '<div class="form-row"><div class="form-item" style="flex:1"><label>描述</label><textarea id="f_desc">'+(row.description||'')+'</textarea></div></div>';
         modalSaveHandler = function() {
             var d = {id:row.id, process_name:document.getElementById('f_name').value, code:document.getElementById('f_code').value,
                 workshop_id:document.getElementById('f_ws').value||null, standard_time:document.getElementById('f_time').value||null,
                 description:document.getElementById('f_desc').value};
-            if(!d.process_name||!d.code) { alert('请填写必填项'); return; }
+            if(!d.process_name||!d.code||!d.workshop_id) { alert('工序名称、编码和所属车间均为必填项'); return; }
             api('/api/base/process/update',{method:'POST',body:d}).then(function(r2) {
                 if(r2&&r2.code===0) { closeModal(); processLoad(); } else alert(r2?r2.message:'保存失败');
             });

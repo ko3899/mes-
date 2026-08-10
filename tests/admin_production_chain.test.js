@@ -38,3 +38,13 @@ test('missing production pages expose their own business titles', () => {
   ['销售订单', '生产计划', '工艺路线', '任务管理', '报工管理']
     .forEach((title) => assert.match(source, new RegExp(title)));
 });
+
+test('process and route editors enforce workshop-scoped choices', () => {
+  const processSource = read('admin/static/js/pages/extensions.js');
+  const routeSource = read('admin/static/js/pages/production_chain.js');
+  assert.match(processSource, /所属车间.*必填/);
+  assert.match(processSource, /processWorkshopFilter/);
+  assert.match(routeSource, /\/api\/base\/route\/save/);
+  assert.match(routeSource, /routeStepRows/);
+  assert.match(routeSource, /is_inspection_point/);
+});

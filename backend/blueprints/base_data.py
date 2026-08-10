@@ -34,15 +34,35 @@ def base_workshop_delete():
 @login_required
 def base_process_list():
     db = get_db()
-    rows = db.execute("SELECT p.*, ws.workshop_name FROM base_process p LEFT JOIN base_workshop ws ON p.workshop_id=ws.id ORDER BY p.sort_order ASC, p.id ASC").fetchall()
+    where, params = [], []
+    if request.args.get('workshop_id'):
+        where.append('p.workshop_id=?')
+        params.append(request.args.get('workshop_id'))
+    if request.args.get('status') not in (None, ''):
+        where.append('p.status=?')
+        params.append(request.args.get('status'))
+    keyword = (request.args.get('keyword') or '').strip()
+    if keyword:
+        where.append('(p.process_name LIKE ? OR p.code LIKE ?)')
+        params.extend([f'%{keyword}%', f'%{keyword}%'])
+    clause = (' WHERE ' + ' AND '.join(where)) if where else ''
+    rows = db.execute(
+        '''SELECT p.*, ws.workshop_name FROM base_process p
+           LEFT JOIN base_workshop ws ON p.workshop_id=ws.id'''
+        + clause + ' ORDER BY p.sort_order ASC, p.id ASC', params
+    ).fetchall()
     return jsonify({'code': 0, 'data': [dict(r) for r in rows]})
 
 
 @base_data_bp.route('/api/base/process/add', methods=['POST'])
 @login_required
 def base_process_add():
-    d = request.json
+    d = dict(request.json or {})
     db = get_db()
+    if not d.get('workshop_id'):
+        return jsonify({'code': 400, 'message': '所属车间必填'}), 400
+    if not db.execute('SELECT 1 FROM base_workshop WHERE id=? AND status=1', (d['workshop_id'],)).fetchone():
+        return jsonify({'code': 400, 'message': '所属车间不存在或未启用'}), 400
     # 自动排序：获取当前最大排序号
     max_order = db.execute("SELECT COALESCE(MAX(sort_order), 0) as max_order FROM base_process").fetchone()['max_order']
     d['sort_order'] = max_order + 1
@@ -62,13 +82,25 @@ def base_process_add():
 @base_data_bp.route('/api/base/process/update', methods=['POST'])
 @login_required
 def base_process_update():
-    return jsonify(crud_update('base_process', request.json))
+    data = dict(request.json or {})
+    if not data.get('workshop_id'):
+        return jsonify({'code': 400, 'message': '所属车间必填'}), 400
+    if not get_db().execute(
+        'SELECT 1 FROM base_workshop WHERE id=? AND status=1', (data['workshop_id'],)
+    ).fetchone():
+        return jsonify({'code': 400, 'message': '所属车间不存在或未启用'}), 400
+    return jsonify(crud_update('base_process', data))
 
 
 @base_data_bp.route('/api/base/process/delete', methods=['POST'])
 @login_required
 def base_process_delete():
-    return jsonify(crud_delete('base_process', request.json.get('id')))
+    process_id = (request.json or {}).get('id')
+    if get_db().execute(
+        'SELECT 1 FROM base_process_route_detail WHERE process_id=? LIMIT 1', (process_id,)
+    ).fetchone():
+        return jsonify({'code': 409, 'message': '工序已被工艺路线引用，只能停用'}), 409
+    return jsonify(crud_delete('base_process', process_id))
 
 
 @base_data_bp.route('/api/base/process/reorder', methods=['POST'])
@@ -224,11 +256,107 @@ def base_unit_delete():
 @login_required
 def base_route_list():
     db = get_db()
-    rows = db.execute('''SELECT r.*, p.product_name, p.code as product_code
+    where, params = [], []
+    if request.args.get('product_id'):
+        where.append('r.product_id=?')
+        params.append(request.args.get('product_id'))
+    if request.args.get('workshop_id'):
+        where.append('r.workshop_id=?')
+        params.append(request.args.get('workshop_id'))
+    if request.args.get('status') not in (None, ''):
+        where.append('r.status=?')
+        params.append(request.args.get('status'))
+    clause = (' WHERE ' + ' AND '.join(where)) if where else ''
+    rows = db.execute('''SELECT r.*, p.product_name, p.code as product_code,
+                               ws.workshop_name
         FROM base_process_route r
         LEFT JOIN base_product p ON r.product_id=p.id
-        ORDER BY r.id DESC''').fetchall()
-    return jsonify({'code': 0, 'data': [dict(r) for r in rows]})
+        LEFT JOIN base_workshop ws ON r.workshop_id=ws.id
+        ''' + clause + ' ORDER BY r.id DESC', params).fetchall()
+    result = []
+    for row in rows:
+        item = dict(row)
+        steps = db.execute(
+            '''SELECT d.*,p.process_name,p.code AS process_code,
+                      ws.workshop_name
+               FROM base_process_route_detail d
+               JOIN base_process p ON p.id=d.process_id
+               LEFT JOIN base_workshop ws ON ws.id=d.workshop_id
+               WHERE d.route_id=? ORDER BY d.step_no''', (row['id'],)
+        ).fetchall()
+        item['steps'] = [dict(step) for step in steps]
+        result.append(item)
+    return jsonify({'code': 0, 'data': result})
+
+
+@base_data_bp.route('/api/base/route/save', methods=['POST'])
+@login_required
+def base_route_save():
+    data = dict(request.json or {})
+    required = [('route_name', '路线名称必填'), ('product_id', '适用产品必填'),
+                ('workshop_id', '默认车间必填')]
+    for field, message in required:
+        if not data.get(field):
+            return jsonify({'code': 400, 'message': message}), 400
+    steps = data.get('steps') or []
+    if not steps:
+        return jsonify({'code': 400, 'message': '工艺路线至少需要一道工序'}), 400
+    db = get_db()
+    if not db.execute('SELECT 1 FROM base_product WHERE id=? AND status=1', (data['product_id'],)).fetchone():
+        return jsonify({'code': 400, 'message': '适用产品不存在或未启用'}), 400
+    if not db.execute('SELECT 1 FROM base_workshop WHERE id=? AND status=1', (data['workshop_id'],)).fetchone():
+        return jsonify({'code': 400, 'message': '默认车间不存在或未启用'}), 400
+    seen = set()
+    validated = []
+    for index, step in enumerate(steps, 1):
+        process_id = step.get('process_id')
+        step_workshop = step.get('workshop_id') or data['workshop_id']
+        process = db.execute(
+            'SELECT id,workshop_id,status FROM base_process WHERE id=?', (process_id,)
+        ).fetchone()
+        if not process or process['status'] != 1:
+            return jsonify({'code': 400, 'message': f'第{index}道工序不存在或未启用'}), 400
+        if process['workshop_id'] != int(step_workshop):
+            return jsonify({'code': 400, 'message': f'第{index}道工序不属于路线车间（步骤车间）'}), 400
+        if process_id in seen:
+            return jsonify({'code': 400, 'message': '同一路线不能重复添加相同工序'}), 400
+        seen.add(process_id)
+        validated.append((process_id, step_workshop, step.get('standard_time'),
+                          1 if step.get('is_inspection_point') else 0, step.get('description')))
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        route_id = data.get('id')
+        if route_id:
+            route = db.execute('SELECT id FROM base_process_route WHERE id=?', (route_id,)).fetchone()
+            if not route:
+                raise ValueError('工艺路线不存在')
+            db.execute(
+                '''UPDATE base_process_route SET route_name=?,product_id=?,workshop_id=?,
+                   version=?,status=?,description=? WHERE id=?''',
+                (data['route_name'], data['product_id'], data['workshop_id'],
+                 int(data.get('version') or 1), int(data.get('status', 1)),
+                 data.get('description'), route_id),
+            )
+            db.execute('DELETE FROM base_process_route_detail WHERE route_id=?', (route_id,))
+        else:
+            route_id = db.execute(
+                '''INSERT INTO base_process_route
+                   (route_name,product_id,workshop_id,version,status,description)
+                   VALUES(?,?,?,?,?,?)''',
+                (data['route_name'], data['product_id'], data['workshop_id'],
+                 int(data.get('version') or 1), int(data.get('status', 1)), data.get('description')),
+            ).lastrowid
+        for step_no, step in enumerate(validated, 1):
+            db.execute(
+                '''INSERT INTO base_process_route_detail
+                   (route_id,process_id,step_no,workshop_id,standard_time,is_inspection_point,description)
+                   VALUES(?,?,?,?,?,?,?)''', (route_id, step[0], step_no, *step[1:])
+            )
+        db.commit()
+        return jsonify({'code': 0, 'data': {'id': route_id}, 'message': '保存成功'})
+    except Exception as exc:
+        db.rollback()
+        return jsonify({'code': 400, 'message': str(exc)}), 400
 
 
 @base_data_bp.route('/api/base/route/add', methods=['POST'])
