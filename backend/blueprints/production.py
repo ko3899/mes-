@@ -15,6 +15,13 @@ from utils.helpers import (
     gen_no,
     gen_no_in_transaction,
 )
+from services.production_flow import (
+    BusinessError,
+    save_batch,
+    save_plan,
+    save_sales_order,
+    transition_status,
+)
 
 production_bp = Blueprint('production', __name__)
 
@@ -46,7 +53,48 @@ def _manual_or_field_sort(args, fields, alias, table_key):
 @production_bp.route('/api/prod/sales/list')
 @login_required
 def prod_sales_list():
-    return jsonify(crud_list('prod_sales_order', request.args))
+    db = get_db()
+    page, size = int(request.args.get('page', 1)), int(request.args.get('size', 20))
+    offset = (page - 1) * size
+    total = db.execute('SELECT COUNT(*) FROM prod_sales_order').fetchone()[0]
+    rows = db.execute(
+        '''SELECT s.*,COALESCE(c.customer_name,s.customer) AS customer_name,
+                  COUNT(i.id) AS line_count
+           FROM prod_sales_order s
+           LEFT JOIN base_customer c ON c.id=s.customer_id
+           LEFT JOIN prod_sales_order_item i ON i.order_id=s.id
+           GROUP BY s.id ORDER BY s.id DESC LIMIT ? OFFSET ?''', (size, offset)
+    ).fetchall()
+    return jsonify({'code': 0, 'data': {'list': [dict(row) for row in rows], 'total': total}})
+
+
+@production_bp.route('/api/prod/sales/<int:order_id>')
+@login_required
+def prod_sales_detail(order_id):
+    db = get_db()
+    header = db.execute(
+        '''SELECT s.*,COALESCE(c.customer_name,s.customer) AS customer_name
+           FROM prod_sales_order s LEFT JOIN base_customer c ON c.id=s.customer_id
+           WHERE s.id=?''', (order_id,)
+    ).fetchone()
+    if not header:
+        return jsonify({'code': 404, 'message': '销售订单不存在'}), 404
+    items = db.execute(
+        '''SELECT i.*,p.product_name,p.code AS product_code,p.unit
+           FROM prod_sales_order_item i JOIN base_product p ON p.id=i.product_id
+           WHERE i.order_id=? ORDER BY i.id''', (order_id,)
+    ).fetchall()
+    return jsonify({'code': 0, 'data': {'header': dict(header), 'items': [dict(row) for row in items]}})
+
+
+@production_bp.route('/api/prod/sales/save', methods=['POST'])
+@login_required
+def prod_sales_save():
+    try:
+        result = save_sales_order(get_db(), request.get_json(silent=True) or {}, session.get('user_id'))
+        return jsonify({'code': 0, 'data': result, 'message': '保存成功'})
+    except BusinessError as exc:
+        return jsonify({'code': exc.status, 'message': str(exc), 'data': exc.details}), exc.status
 
 
 @production_bp.route('/api/prod/sales/add', methods=['POST'])
@@ -73,7 +121,107 @@ def prod_sales_delete():
 @production_bp.route('/api/prod/plan/list')
 @login_required
 def prod_plan_list():
-    return jsonify(crud_list('prod_plan', request.args))
+    db = get_db()
+    page, size = int(request.args.get('page', 1)), int(request.args.get('size', 20))
+    offset = (page - 1) * size
+    total = db.execute('SELECT COUNT(*) FROM prod_plan').fetchone()[0]
+    rows = db.execute(
+        '''SELECT p.*,s.order_no AS sales_order_no,COUNT(i.id) AS line_count
+           FROM prod_plan p LEFT JOIN prod_sales_order s ON s.id=p.sales_order_id
+           LEFT JOIN prod_plan_item i ON i.plan_id=p.id
+           GROUP BY p.id ORDER BY p.id DESC LIMIT ? OFFSET ?''', (size, offset)
+    ).fetchall()
+    return jsonify({'code': 0, 'data': {'list': [dict(row) for row in rows], 'total': total}})
+
+
+@production_bp.route('/api/prod/plan/<int:plan_id>')
+@login_required
+def prod_plan_detail(plan_id):
+    db = get_db()
+    header = db.execute(
+        '''SELECT p.*,s.order_no AS sales_order_no FROM prod_plan p
+           LEFT JOIN prod_sales_order s ON s.id=p.sales_order_id WHERE p.id=?''', (plan_id,)
+    ).fetchone()
+    if not header:
+        return jsonify({'code': 404, 'message': '生产计划不存在'}), 404
+    items = db.execute(
+        '''SELECT i.*,p.product_name,p.code AS product_code,w.workshop_name
+           FROM prod_plan_item i JOIN base_product p ON p.id=i.product_id
+           LEFT JOIN base_workshop w ON w.id=i.workshop_id
+           WHERE i.plan_id=? ORDER BY i.id''', (plan_id,)
+    ).fetchall()
+    return jsonify({'code': 0, 'data': {'header': dict(header), 'items': [dict(row) for row in items]}})
+
+
+@production_bp.route('/api/prod/plan/source/<int:sales_order_id>')
+@login_required
+def prod_plan_source(sales_order_id):
+    db = get_db()
+    header = db.execute('SELECT * FROM prod_sales_order WHERE id=?', (sales_order_id,)).fetchone()
+    if not header:
+        return jsonify({'code': 404, 'message': '销售订单不存在'}), 404
+    items = db.execute(
+        '''SELECT i.*,p.product_name,p.code AS product_code,p.unit,
+                  MAX(0,i.quantity-i.delivered_qty-COALESCE((
+                    SELECT SUM(pi.planned_qty) FROM prod_plan_item pi
+                    JOIN prod_plan pp ON pp.id=pi.plan_id
+                    WHERE pi.sales_order_item_id=i.id AND pp.status<>4
+                  ),0)) AS remaining_qty
+           FROM prod_sales_order_item i JOIN base_product p ON p.id=i.product_id
+           WHERE i.order_id=? ORDER BY i.id''', (sales_order_id,)
+    ).fetchall()
+    return jsonify({'code': 0, 'data': {'header': dict(header),
+        'items': [dict(row) for row in items if row['remaining_qty'] > 0]}})
+
+
+@production_bp.route('/api/prod/plan/save', methods=['POST'])
+@login_required
+def prod_plan_save():
+    try:
+        result = save_plan(get_db(), request.get_json(silent=True) or {}, session.get('user_id'))
+        return jsonify({'code': 0, 'data': result, 'message': '保存成功'})
+    except BusinessError as exc:
+        return jsonify({'code': exc.status, 'message': str(exc), 'data': exc.details}), exc.status
+
+
+@production_bp.route('/api/prod/batch/list')
+@login_required
+def prod_batch_list():
+    db = get_db()
+    page, size = int(request.args.get('page', 1)), int(request.args.get('size', 20))
+    offset = (page - 1) * size
+    total = db.execute('SELECT COUNT(*) FROM prod_batch').fetchone()[0]
+    rows = db.execute(
+        '''SELECT b.*,pl.plan_no,p.product_name,w.workshop_name,s.order_no AS sales_order_no
+           FROM prod_batch b LEFT JOIN prod_plan pl ON pl.id=b.plan_id
+           LEFT JOIN base_product p ON p.id=b.product_id
+           LEFT JOIN base_workshop w ON w.id=b.workshop_id
+           LEFT JOIN prod_sales_order s ON s.id=b.sales_order_id
+           ORDER BY b.id DESC LIMIT ? OFFSET ?''', (size, offset)
+    ).fetchall()
+    return jsonify({'code': 0, 'data': {'list': [dict(row) for row in rows], 'total': total}})
+
+
+@production_bp.route('/api/prod/batch/save', methods=['POST'])
+@login_required
+def prod_batch_save():
+    try:
+        result = save_batch(get_db(), request.get_json(silent=True) or {}, session.get('user_id'))
+        return jsonify({'code': 0, 'data': result, 'message': '保存成功'})
+    except BusinessError as exc:
+        return jsonify({'code': exc.status, 'message': str(exc), 'data': exc.details}), exc.status
+
+
+@production_bp.route('/api/prod/batch/status', methods=['POST'])
+@login_required
+def prod_batch_status():
+    data = request.get_json(silent=True) or {}
+    try:
+        result = transition_status(get_db(), 'batch', data.get('id'), data.get('status'),
+                                   session.get('user_id'), data.get('remark') or '')
+        return jsonify({'code': 0, 'data': result})
+    except BusinessError as exc:
+        return jsonify({'code': exc.status, 'message': str(exc), 'data': exc.details}), exc.status
 
 
 @production_bp.route('/api/prod/plan/add', methods=['POST'])

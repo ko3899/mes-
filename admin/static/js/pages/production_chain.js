@@ -45,23 +45,222 @@ function chainRow(values) {
     return '<tr>' + values.map(function(value) { return '<td>' + value + '</td>'; }).join('') + '</tr>';
 }
 
+var salesLineItems = [];
+var salesProducts = [];
+
 function renderSales(el) {
-    chainPage(el, '销售订单', ['ID', '订单号', '客户', '联系人', '电话', '金额', '交期', '状态', '备注'],
-        '/api/prod/sales/list?size=1000', function(row) {
-            return chainRow([chainEscape(row.id), chainEscape(row.order_no), chainEscape(row.customer_name || row.customer),
-                chainEscape(row.contact), chainEscape(row.phone), chainEscape(row.total_amount || 0),
-                chainEscape(row.delivery_date), chainStatus(row.status, {0:'草稿',1:'已确认',2:'执行中',3:'已完成',4:'已取消'}),
-                chainEscape(row.remark)]);
-        });
+    el.innerHTML = '<div class="card"><div class="card-title"><span>销售订单</span><button class="btn btn-blue" id="salesAddBtn">+ 新增订单</button></div>'
+        + '<div class="table-wrap"><table><thead><tr><th>ID</th><th>订单号</th><th>客户</th><th>明细数</th><th>金额</th><th>交期</th><th>状态</th><th>备注</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody></table></div></div>';
+    document.getElementById('salesAddBtn').onclick = salesOpenEditor;
+    salesLoad();
 }
 
+function salesLoad() {
+    api('/api/prod/sales/list?size=1000').then(function(response) {
+        var rows = chainList(response), tb = document.getElementById('tb');
+        if(!tb) return;
+        tb.innerHTML = rows.length ? rows.map(function(row) {
+            return chainRow([chainEscape(row.id), chainEscape(row.order_no), chainEscape(row.customer_name || row.customer),
+                chainEscape(row.line_count || 0), chainEscape(row.total_amount || 0), chainEscape(row.delivery_date),
+                chainStatus(row.status, {0:'草稿',1:'已确认',2:'生产中',3:'已完成',4:'已取消'}), chainEscape(row.remark)]);
+        }).join('') : '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
+    });
+}
+
+function salesOpenEditor() {
+    Promise.all([api('/api/base/customer/all'), api('/api/base/product/all')]).then(function(responses) {
+        var customers = chainList(responses[0]);
+        salesProducts = chainList(responses[1]);
+        salesLineItems = [{product_id:'', quantity:1, unit_price:0, remark:''}];
+        document.getElementById('mTitle').textContent = '新增销售订单（订单头 + 产品明细）';
+        document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>客户 *</label><select id="salesCustomer">'
+            + routeOptions(customers, 'id', 'customer_name', '') + '</select></div><div class="form-item"><label>交货日期 *</label><input id="salesDelivery" type="date"></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>联系人</label><input id="salesContact"></div><div class="form-item"><label>电话</label><input id="salesPhone"></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>备注</label><input id="salesRemark" value="生产业务链测试"></div></div>'
+            + '<div class="card-title"><span>产品明细</span><button type="button" class="btn btn-blue btn-sm" id="salesLineAdd">+ 添加产品</button></div>'
+            + '<div class="table-wrap"><table><thead><tr><th>产品 *</th><th>数量 *</th><th>单价</th><th>金额</th><th>备注</th><th>操作</th></tr></thead><tbody id="salesLineBody"></tbody><tfoot><tr><td colspan="3">合计</td><td id="salesTotal">0.00</td><td colspan="2"></td></tr></tfoot></table></div>';
+        document.getElementById('salesLineAdd').onclick = function() {
+            salesLineItems.push({product_id:'', quantity:1, unit_price:0, remark:''});
+            salesRenderLines();
+        };
+        salesRenderLines();
+        modalSaveHandler = salesSave;
+        document.getElementById('modal').classList.add('show');
+    });
+}
+
+function salesRenderLines() {
+    var body = document.getElementById('salesLineBody');
+    body.innerHTML = salesLineItems.map(function(item, index) {
+        var amount = Number(item.quantity || 0) * Number(item.unit_price || 0);
+        return '<tr><td><select data-sales-index="' + index + '" data-sales-field="product_id">'
+            + routeOptions(salesProducts, 'id', 'product_name', item.product_id) + '</select></td>'
+            + '<td><input type="number" min="0.000001" data-sales-index="' + index + '" data-sales-field="quantity" value="' + chainEscape(item.quantity) + '"></td>'
+            + '<td><input type="number" min="0" step="0.01" data-sales-index="' + index + '" data-sales-field="unit_price" value="' + chainEscape(item.unit_price) + '"></td>'
+            + '<td>' + amount.toFixed(2) + '</td><td><input data-sales-index="' + index + '" data-sales-field="remark" value="' + chainEscape(item.remark) + '"></td>'
+            + '<td><button type="button" class="btn btn-red btn-sm" data-sales-remove="' + index + '">删除</button></td></tr>';
+    }).join('');
+    body.querySelectorAll('[data-sales-field]').forEach(function(input) {
+        input.onchange = function() {
+            var index = Number(input.getAttribute('data-sales-index'));
+            salesLineItems[index][input.getAttribute('data-sales-field')] = input.value;
+            salesRenderLines();
+        };
+    });
+    body.querySelectorAll('[data-sales-remove]').forEach(function(button) {
+        button.onclick = function() { salesLineItems.splice(Number(button.getAttribute('data-sales-remove')), 1); salesRenderLines(); };
+    });
+    document.getElementById('salesTotal').textContent = salesLineItems.reduce(function(total, item) {
+        return total + Number(item.quantity || 0) * Number(item.unit_price || 0);
+    }, 0).toFixed(2);
+}
+
+function salesSave() {
+    var payload = {customer_id:document.getElementById('salesCustomer').value,
+        delivery_date:document.getElementById('salesDelivery').value,
+        contact:document.getElementById('salesContact').value, phone:document.getElementById('salesPhone').value,
+        remark:document.getElementById('salesRemark').value, items:salesLineItems};
+    if(!payload.customer_id || !payload.delivery_date || !payload.items.length
+        || payload.items.some(function(item) { return !item.product_id || Number(item.quantity) <= 0; })) {
+        alert('请补全客户、交期和有效的产品明细'); return;
+    }
+    api('/api/prod/sales/save', {method:'POST', body:payload}).then(function(response) {
+        if(response && response.code === 0) { closeModal(); salesLoad(); }
+        else alert(response ? response.message : '保存失败');
+    });
+}
+
+var planLineItems = [];
+var planWorkshops = [];
+
 function renderPlan(el) {
-    chainPage(el, '生产计划', ['ID', '计划号', '销售订单', '计划类型', '开始日期', '结束日期', '状态', '备注'],
-        '/api/prod/plan/list?size=1000', function(row) {
-            return chainRow([chainEscape(row.id), chainEscape(row.plan_no), chainEscape(row.order_no || row.sales_order_id),
-                chainEscape(row.plan_type), chainEscape(row.start_date), chainEscape(row.end_date),
-                chainStatus(row.status, {0:'草稿',1:'已发布',2:'执行中',3:'已完成',4:'已取消'}), chainEscape(row.remark)]);
+    el.innerHTML = '<div class="card"><div class="card-title"><span>生产计划</span><button class="btn btn-blue" id="planAddBtn">+ 新增计划</button></div>'
+        + '<div class="table-wrap"><table><thead><tr><th>ID</th><th>计划号</th><th>销售订单</th><th>类型</th><th>明细数</th><th>日期范围</th><th>状态</th><th>备注</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody></table></div></div>';
+    document.getElementById('planAddBtn').onclick = planOpenEditor;
+    planLoad();
+}
+
+function planLoad() {
+    api('/api/prod/plan/list?size=1000').then(function(response) {
+        var rows = chainList(response), tb = document.getElementById('tb');
+        if(!tb) return;
+        tb.innerHTML = rows.length ? rows.map(function(row) {
+            return chainRow([chainEscape(row.id), chainEscape(row.plan_no), chainEscape(row.sales_order_no),
+                chainEscape(row.plan_type), chainEscape(row.line_count || 0),
+                chainEscape((row.start_date || '-') + ' 至 ' + (row.end_date || '-')),
+                chainStatus(row.status, {0:'草稿',1:'已发布',2:'生产中',3:'已完成',4:'已取消'}), chainEscape(row.remark)]);
+        }).join('') : '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
+    });
+}
+
+function planOpenEditor() {
+    Promise.all([api('/api/prod/sales/list?size=1000'), api('/api/base/workshop/list?size=1000')]).then(function(responses) {
+        var sales = chainList(responses[0]);
+        planWorkshops = chainList(responses[1]);
+        planLineItems = [];
+        document.getElementById('mTitle').textContent = '新增生产计划（从销售订单带入明细）';
+        document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>销售订单 *</label><select id="planSales">'
+            + routeOptions(sales, 'id', 'order_no', '') + '</select></div><div class="form-item"><label>计划类型</label><select id="planType"><option>订单生产</option><option>备货生产</option></select></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>开始日期 *</label><input id="planStart" type="date"></div><div class="form-item"><label>结束日期 *</label><input id="planEnd" type="date"></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>备注</label><input id="planRemark" value="生产业务链测试"></div></div>'
+            + '<div class="table-wrap"><table><thead><tr><th>产品</th><th>可计划数</th><th>本次计划数 *</th><th>生产车间 *</th><th>备注</th></tr></thead><tbody id="planLineBody"><tr><td colspan="5" class="empty">请先选择销售订单</td></tr></tbody></table></div>';
+        document.getElementById('planSales').onchange = planLoadSource;
+        modalSaveHandler = planSave;
+        document.getElementById('modal').classList.add('show');
+    });
+}
+
+function planLoadSource() {
+    var salesId = document.getElementById('planSales').value;
+    if(!salesId) { planLineItems = []; planRenderLines(); return; }
+    api('/api/prod/plan/source/' + encodeURIComponent(salesId)).then(function(response) {
+        planLineItems = ((response && response.data && response.data.items) || []).map(function(item) {
+            return {sales_order_item_id:item.id, product_id:item.product_id, product_name:item.product_name,
+                remaining_qty:item.remaining_qty, planned_qty:item.remaining_qty, workshop_id:'', remark:''};
         });
+        planRenderLines();
+    });
+}
+
+function planRenderLines() {
+    var body = document.getElementById('planLineBody');
+    if(!planLineItems.length) { body.innerHTML = '<tr><td colspan="5" class="empty">没有可计划的订单明细</td></tr>'; return; }
+    body.innerHTML = planLineItems.map(function(item, index) {
+        return '<tr><td>' + chainEscape(item.product_name) + '</td><td>' + chainEscape(item.remaining_qty) + '</td>'
+            + '<td><input type="number" min="0.000001" max="' + chainEscape(item.remaining_qty) + '" data-plan-index="' + index + '" data-plan-field="planned_qty" value="' + chainEscape(item.planned_qty) + '"></td>'
+            + '<td><select data-plan-index="' + index + '" data-plan-field="workshop_id">' + routeOptions(planWorkshops, 'id', 'workshop_name', item.workshop_id) + '</select></td>'
+            + '<td><input data-plan-index="' + index + '" data-plan-field="remark" value="' + chainEscape(item.remark) + '"></td></tr>';
+    }).join('');
+    body.querySelectorAll('[data-plan-field]').forEach(function(input) {
+        input.onchange = function() { planLineItems[Number(input.getAttribute('data-plan-index'))][input.getAttribute('data-plan-field')] = input.value; };
+    });
+}
+
+function planSave() {
+    var payload = {sales_order_id:document.getElementById('planSales').value,
+        plan_type:document.getElementById('planType').value, start_date:document.getElementById('planStart').value,
+        end_date:document.getElementById('planEnd').value, remark:document.getElementById('planRemark').value,
+        items:planLineItems};
+    if(!payload.sales_order_id || !payload.start_date || !payload.end_date || !payload.items.length
+        || payload.items.some(function(item) { return !item.workshop_id || Number(item.planned_qty) <= 0 || Number(item.planned_qty) > Number(item.remaining_qty); })) {
+        alert('请补全销售订单、日期、计划数量和生产车间'); return;
+    }
+    api('/api/prod/plan/save', {method:'POST', body:payload}).then(function(response) {
+        if(response && response.code === 0) { closeModal(); planLoad(); }
+        else alert(response ? response.message : '保存失败');
+    });
+}
+
+function renderProductionBatch(el) {
+    el.innerHTML = '<div class="card"><div class="card-title"><span>生产批次</span><button class="btn btn-blue" id="batchAddBtn">+ 拆分批次</button></div>'
+        + '<div class="table-wrap"><table><thead><tr><th>ID</th><th>批次号</th><th>计划</th><th>销售订单</th><th>产品</th><th>车间</th><th>计划数</th><th>完成数</th><th>状态</th><th>备注</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="10" class="empty">加载中...</td></tr></tbody></table></div></div>';
+    document.getElementById('batchAddBtn').onclick = batchOpenEditor;
+    batchLoad();
+}
+
+function batchLoad() {
+    api('/api/prod/batch/list?size=1000').then(function(response) {
+        var rows = chainList(response), tb = document.getElementById('tb');
+        if(!tb) return;
+        tb.innerHTML = rows.length ? rows.map(function(row) {
+            return chainRow([chainEscape(row.id), chainEscape(row.batch_no), chainEscape(row.plan_no), chainEscape(row.sales_order_no),
+                chainEscape(row.product_name), chainEscape(row.workshop_name), chainEscape(row.planned_qty), chainEscape(row.completed_qty || 0),
+                chainStatus(row.status, {0:'草稿',1:'已排产',2:'生产中',3:'已完成',4:'已取消'}), chainEscape(row.remark)]);
+        }).join('') : '<tr><td colspan="10" class="empty">暂无数据</td></tr>';
+    });
+}
+
+function batchOpenEditor() {
+    api('/api/prod/plan/list?size=1000').then(function(response) {
+        var plans = chainList(response);
+        document.getElementById('mTitle').textContent = '拆分生产批次';
+        document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>生产计划 *</label><select id="batchPlan">'
+            + routeOptions(plans, 'id', 'plan_no', '') + '</select></div><div class="form-item"><label>计划明细 *</label><select id="batchPlanItem"><option value="">先选计划</option></select></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>批次数量 *</label><input id="batchQty" type="number" min="0.000001"></div><div class="form-item"><label>备注</label><input id="batchRemark" value="生产业务链测试"></div></div>';
+        document.getElementById('batchPlan').onchange = function() {
+            var id = this.value;
+            if(!id) return;
+            api('/api/prod/plan/' + encodeURIComponent(id)).then(function(detail) {
+                var items = detail && detail.data ? detail.data.items || [] : [];
+                document.getElementById('batchPlanItem').innerHTML = routeOptions(items.map(function(item) {
+                    return {id:item.id, label:(item.product_name || item.product_id) + ' / 计划 ' + item.planned_qty};
+                }), 'id', 'label', '');
+            });
+        };
+        modalSaveHandler = function() {
+            var payload = {plan_item_id:document.getElementById('batchPlanItem').value,
+                planned_qty:document.getElementById('batchQty').value, remark:document.getElementById('batchRemark').value};
+            if(!payload.plan_item_id || Number(payload.planned_qty) <= 0) { alert('请选择计划明细并填写批次数量'); return; }
+            api('/api/prod/batch/save', {method:'POST', body:payload}).then(function(result) {
+                if(result && result.code === 0) { closeModal(); batchLoad(); }
+                else alert(result ? result.message : '保存失败');
+            });
+        };
+        document.getElementById('modal').classList.add('show');
+    });
 }
 
 var routeStepRows = [];

@@ -48,3 +48,16 @@ test('process and route editors enforce workshop-scoped choices', () => {
   assert.match(routeSource, /routeStepRows/);
   assert.match(routeSource, /is_inspection_point/);
 });
+
+test('sales plans and production batches expose line-based save flows', () => {
+  const source = read('admin/static/js/pages/production_chain.js');
+  const menu = read('admin/static/js/menu.js');
+  const app = read('admin/static/js/app.js');
+  assert.match(source, /\/api\/prod\/sales\/save/);
+  assert.match(source, /\/api\/prod\/plan\/save/);
+  assert.match(source, /\/api\/prod\/batch\/save/);
+  assert.match(source, /salesLineItems/);
+  assert.match(source, /planLineItems/);
+  assert.match(menu, /prod\/batch/);
+  assert.match(app, /renderProductionBatch/);
+});

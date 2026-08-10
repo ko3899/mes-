@@ -395,6 +395,7 @@ function renderPage(key) {
         'inv/balance': function(e){renderBalance(e)},
         'prod/sales': function(e){renderSales(e)},
         'prod/plan': function(e){renderPlan(e)},
+        'prod/batch': function(e){renderProductionBatch(e)},
         'prod/workorder': function(e){renderWO(e)},
         'prod/task': function(e){renderTask(e)},
         'prod/report': function(e){renderReport2(e)},
