@@ -7,6 +7,7 @@ ORDERABLE_TABLES = {
     'prod/report': 'prod_report',
     'prod/sales': 'prod_sales_order',
     'prod/plan': 'prod_plan',
+    'prod/batch': 'prod_batch',
     'base/workshop': 'base_workshop',
     'base/process': 'base_process',
     'base/product': 'base_product',

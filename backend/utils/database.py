@@ -1048,14 +1048,23 @@ def init_db():
     db.close()
 
 
+def _add_column_if_missing(db, table, column, definition):
+    """Add a column without rebuilding a legacy SQLite table."""
+    exists = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone()
+    if not exists:
+        return
+    columns = {row[1] for row in db.execute(f'PRAGMA table_info("{table}")')}
+    if column not in columns:
+        db.execute(f'ALTER TABLE "{table}" ADD COLUMN "{column}" {definition}')
+
+
 def _init_extra_tables():
     """初始化新增功能的表"""
     db = sqlite3.connect(DB_PATH)
     db.execute("PRAGMA foreign_keys = ON")
-    try:
-        db.execute("ALTER TABLE base_process ADD COLUMN sort_order INTEGER DEFAULT 0")
-    except:
-        pass
+    _add_column_if_missing(db, 'base_process', 'sort_order', 'INTEGER DEFAULT 0')
     for col in ['required_sn', 'required_material', 'check_sequence', 'prev_station']:
         try:
             db.execute(f"ALTER TABLE base_station_config ADD COLUMN {col} INTEGER DEFAULT 0")
@@ -1065,10 +1074,135 @@ def _init_extra_tables():
         db.execute("ALTER TABLE base_station_config ADD COLUMN required_process TEXT")
     except:
         pass
-    try:
-        db.execute("ALTER TABLE prod_report ADD COLUMN client_operation_id TEXT")
-    except:
-        pass
+    _add_column_if_missing(db, 'prod_report', 'client_operation_id', 'TEXT')
+
+    # 生产主数据版本与车间归属。旧记录允许为空，新业务由服务层强制校验。
+    _add_column_if_missing(db, 'base_process_route', 'workshop_id', 'INTEGER')
+    _add_column_if_missing(db, 'base_process_route', 'version', 'INTEGER DEFAULT 1')
+    _add_column_if_missing(db, 'base_process_route_detail', 'workshop_id', 'INTEGER')
+    _add_column_if_missing(
+        db, 'base_process_route_detail', 'is_inspection_point', 'INTEGER DEFAULT 0'
+    )
+    _add_column_if_missing(db, 'prod_sales_order', 'customer_id', 'INTEGER')
+    _add_column_if_missing(db, 'prod_plan_item', 'sales_order_item_id', 'INTEGER')
+    _add_column_if_missing(db, 'prod_workorder', 'plan_item_id', 'INTEGER')
+    _add_column_if_missing(db, 'prod_workorder', 'production_batch_id', 'INTEGER')
+    _add_column_if_missing(db, 'prod_workorder', 'route_version', 'INTEGER')
+    _add_column_if_missing(db, 'prod_workorder', 'bom_version', 'TEXT')
+    _add_column_if_missing(db, 'prod_task', 'route_step_id', 'INTEGER')
+    _add_column_if_missing(db, 'prod_report', 'production_batch_id', 'INTEGER')
+    _add_column_if_missing(db, 'prod_report', 'approval_status', 'INTEGER DEFAULT 0')
+    _add_column_if_missing(db, 'prod_report', 'defect_id', 'INTEGER')
+    _add_column_if_missing(db, 'prod_report', 'posted_at', 'TIMESTAMP')
+
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_batch (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        batch_no TEXT NOT NULL,
+        plan_id INTEGER,
+        plan_item_id INTEGER NOT NULL,
+        sales_order_id INTEGER,
+        product_id INTEGER NOT NULL,
+        workshop_id INTEGER NOT NULL,
+        planned_qty REAL NOT NULL,
+        completed_qty REAL DEFAULT 0,
+        defect_qty REAL DEFAULT 0,
+        start_date TEXT,
+        end_date TEXT,
+        status INTEGER DEFAULT 0,
+        remark TEXT,
+        created_by INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(plan_item_id, batch_no),
+        FOREIGN KEY (plan_item_id) REFERENCES prod_plan_item(id),
+        FOREIGN KEY (product_id) REFERENCES base_product(id),
+        FOREIGN KEY (workshop_id) REFERENCES base_workshop(id)
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_workorder_route_snapshot (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workorder_id INTEGER NOT NULL UNIQUE,
+        source_route_id INTEGER,
+        route_name TEXT NOT NULL,
+        route_version INTEGER DEFAULT 1,
+        product_id INTEGER NOT NULL,
+        workshop_id INTEGER NOT NULL,
+        description TEXT,
+        frozen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workorder_id) REFERENCES prod_workorder(id)
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_workorder_route_step (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        snapshot_id INTEGER NOT NULL,
+        source_detail_id INTEGER,
+        process_id INTEGER NOT NULL,
+        process_code TEXT,
+        process_name TEXT NOT NULL,
+        workshop_id INTEGER NOT NULL,
+        step_no INTEGER NOT NULL,
+        standard_time REAL,
+        is_inspection_point INTEGER DEFAULT 0,
+        description TEXT,
+        UNIQUE(snapshot_id, step_no),
+        FOREIGN KEY (snapshot_id) REFERENCES prod_workorder_route_snapshot(id),
+        FOREIGN KEY (process_id) REFERENCES base_process(id)
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_workorder_bom_snapshot (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workorder_id INTEGER NOT NULL,
+        source_bom_id INTEGER,
+        material_id INTEGER NOT NULL,
+        material_code TEXT,
+        material_name TEXT NOT NULL,
+        quantity_per_unit REAL NOT NULL,
+        required_qty REAL NOT NULL,
+        unit TEXT,
+        bom_version TEXT,
+        frozen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(workorder_id, material_id),
+        FOREIGN KEY (workorder_id) REFERENCES prod_workorder(id),
+        FOREIGN KEY (material_id) REFERENCES base_product(id)
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS sys_business_status_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL,
+        entity_id INTEGER NOT NULL,
+        from_status INTEGER,
+        to_status INTEGER NOT NULL,
+        action TEXT,
+        operator_id INTEGER,
+        remark TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_material_req (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        req_no TEXT NOT NULL UNIQUE,
+        workorder_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        quantity REAL NOT NULL DEFAULT 0,
+        req_type TEXT DEFAULT '领料',
+        status INTEGER DEFAULT 0,
+        operator INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    material_columns = {
+        'production_batch_id': 'INTEGER',
+        'bom_snapshot_id': 'INTEGER',
+        'required_qty': 'REAL DEFAULT 0',
+        'requested_qty': 'REAL DEFAULT 0',
+        'issued_qty': 'REAL DEFAULT 0',
+        'received_qty': 'REAL DEFAULT 0',
+        'returned_qty': 'REAL DEFAULT 0',
+        'warehouse_id': 'INTEGER',
+        'location_id': 'INTEGER',
+        'material_batch_no': 'TEXT',
+        'remark': 'TEXT',
+        'issued_by': 'INTEGER',
+        'received_by': 'INTEGER',
+        'issued_at': 'TIMESTAMP',
+        'received_at': 'TIMESTAMP',
+    }
+    for column, definition in material_columns.items():
+        _add_column_if_missing(db, 'prod_material_req', column, definition)
     db.execute(
         """CREATE UNIQUE INDEX IF NOT EXISTS idx_prod_report_user_operation
            ON prod_report(user_id, client_operation_id)
@@ -1084,6 +1218,24 @@ def _init_extra_tables():
     )''')
     db.execute('''CREATE INDEX IF NOT EXISTS idx_sys_table_order_position
                   ON sys_table_order(table_key, position)''')
+    indexes = [
+        'CREATE INDEX IF NOT EXISTS idx_prod_batch_plan_item ON prod_batch(plan_item_id)',
+        'CREATE INDEX IF NOT EXISTS idx_prod_batch_product ON prod_batch(product_id)',
+        'CREATE INDEX IF NOT EXISTS idx_prod_route_step_snapshot ON prod_workorder_route_step(snapshot_id)',
+        'CREATE INDEX IF NOT EXISTS idx_prod_route_step_process ON prod_workorder_route_step(process_id)',
+        'CREATE INDEX IF NOT EXISTS idx_prod_bom_snapshot_workorder ON prod_workorder_bom_snapshot(workorder_id)',
+        'CREATE INDEX IF NOT EXISTS idx_prod_material_workorder ON prod_material_req(workorder_id)',
+        'CREATE INDEX IF NOT EXISTS idx_prod_material_snapshot ON prod_material_req(bom_snapshot_id)',
+        'CREATE INDEX IF NOT EXISTS idx_business_status_entity ON sys_business_status_log(entity_type, entity_id)',
+        'CREATE INDEX IF NOT EXISTS idx_route_detail_route ON base_process_route_detail(route_id)',
+        'CREATE INDEX IF NOT EXISTS idx_sales_item_order ON prod_sales_order_item(order_id)',
+        'CREATE INDEX IF NOT EXISTS idx_plan_item_plan ON prod_plan_item(plan_id)',
+    ]
+    for sql in indexes:
+        try:
+            db.execute(sql)
+        except sqlite3.OperationalError:
+            pass
     db.commit()
     db.close()
 
