@@ -153,7 +153,8 @@ function woLoad() {
             h += '<td><span class="tag ' + (r2.status >= 3 && r2.status !== 4 ? 'tag-ok' : r2.status ? 'tag-wait' : 'tag-draft') + '">' + (status[r2.status]||r2.status) + '</span></td><td class="actions">';
             if(Number(r2.status) === 0) h += '<button class="btn btn-blue btn-sm" onclick="woRelease(' + r2.id + ')">下达并冻结</button> '
                 + '<button class="btn btn-red btn-sm" onclick="woDel(' + r2.id + ')">删除</button>';
-            if(Number(r2.status) >= 1 && Number(r2.status) < 5) h += '<button class="btn btn-green btn-sm" onclick="woGenerateTasks(' + r2.id + ')">生成任务</button>';
+            if(Number(r2.status) >= 1 && Number(r2.status) < 5) h += '<button class="btn btn-green btn-sm" onclick="woGenerateTasks(' + r2.id + ')">生成任务</button> '
+                + '<button class="btn btn-blue btn-sm" onclick="woGenerateMaterials(' + r2.id + ')">生成领料需求</button>';
             h += '</td></tr>';
         });
         tb.innerHTML = h;
@@ -215,6 +216,12 @@ function woGenerateTasks(id) {
     api('/api/prod/workorder/' + id + '/generate-tasks', {method:'POST', body:{}}).then(function(response) {
         if(response && response.code === 0) { alert('已按冻结路线生成 ' + response.data.length + ' 个任务'); woLoad(); }
         else alert(response ? response.message : '任务生成失败');
+    });
+}
+function woGenerateMaterials(id) {
+    api('/api/prod/workorder/' + id + '/generate-materials', {method:'POST', body:{}}).then(function(response) {
+        if(response && response.code === 0) { alert('已按冻结BOM生成 ' + response.data.length + ' 条领料需求'); woLoad(); }
+        else alert(response ? response.message : '领料需求生成失败');
     });
 }
 

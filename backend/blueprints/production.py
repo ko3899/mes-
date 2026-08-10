@@ -23,6 +23,7 @@ from services.production_flow import (
     save_workorder,
     release_workorder,
     generate_tasks,
+    generate_material_requirements,
     transition_status,
 )
 
@@ -356,6 +357,16 @@ def prod_workorder_generate_tasks(workorder_id):
     try:
         result = generate_tasks(get_db(), workorder_id, session.get('user_id'))
         return jsonify({'code': 0, 'data': result, 'message': '任务已按冻结路线生成'})
+    except BusinessError as exc:
+        return jsonify({'code': exc.status, 'message': str(exc), 'data': exc.details}), exc.status
+
+
+@production_bp.route('/api/prod/workorder/<int:workorder_id>/generate-materials', methods=['POST'])
+@login_required
+def prod_workorder_generate_materials(workorder_id):
+    try:
+        result = generate_material_requirements(get_db(), workorder_id, session.get('user_id'))
+        return jsonify({'code': 0, 'data': result, 'message': '领料需求已按冻结BOM生成'})
     except BusinessError as exc:
         return jsonify({'code': exc.status, 'message': str(exc), 'data': exc.details}), exc.status
 

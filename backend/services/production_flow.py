@@ -357,19 +357,38 @@ def generate_material_requirements(db, workorder_id, user_id):
     ).fetchall()]
 
 
+def request_material(db, request_id, quantity, user_id):
+    quantity = _positive(quantity, '申请数量必须大于0')
+    with _atomic(db):
+        row = db.execute('SELECT * FROM prod_material_req WHERE id=?', (request_id,)).fetchone()
+        if not row:
+            raise BusinessError('领料需求不存在', 404)
+        remaining = float(row['required_qty']) - float(row['requested_qty'] or 0)
+        if quantity > remaining:
+            raise BusinessError('申请数量超过剩余需求数量')
+        db.execute(
+            '''UPDATE prod_material_req SET requested_qty=requested_qty+?,status=1,operator=?
+               WHERE id=?''', (quantity, user_id, request_id)
+        )
+    return _dict(db.execute('SELECT * FROM prod_material_req WHERE id=?', (request_id,)).fetchone())
+
+
 def issue_material(db, request_id, quantity, warehouse_id, location_id, batch_no, user_id):
     quantity = _positive(quantity, '发料数量必须大于0')
-    request_row = db.execute('SELECT * FROM prod_material_req WHERE id=?', (request_id,)).fetchone()
-    if not request_row:
-        raise BusinessError('领料需求不存在', 404)
-    remaining = float(request_row['requested_qty'] or request_row['required_qty']) - float(request_row['issued_qty'] or 0)
-    if quantity > remaining:
-        raise BusinessError('发料数量超过待发数量')
-    balance = db.execute('SELECT * FROM inv_balance WHERE product_id=?', (request_row['product_id'],)).fetchone()
-    available = float(balance['quantity']) if balance else 0
-    if quantity > available:
-        raise BusinessError('库存不足', details={'required': quantity, 'available': available})
     with _atomic(db):
+        request_row = db.execute('SELECT * FROM prod_material_req WHERE id=?', (request_id,)).fetchone()
+        if not request_row:
+            raise BusinessError('领料需求不存在', 404)
+        remaining = float(request_row['requested_qty'] or request_row['required_qty']) - float(request_row['issued_qty'] or 0)
+        if quantity > remaining:
+            raise BusinessError('发料数量超过待发数量')
+        balance = db.execute('SELECT * FROM inv_balance WHERE product_id=?', (request_row['product_id'],)).fetchone()
+        available = float(balance['quantity']) if balance else 0
+        if quantity > available:
+            raise BusinessError('库存不足', 409, {
+                'required_qty': quantity, 'available_qty': available,
+                'shortage_qty': quantity - available,
+            })
         new_balance = available - quantity
         db.execute('UPDATE inv_balance SET quantity=?,updated_at=CURRENT_TIMESTAMP WHERE product_id=?',
                    (new_balance, request_row['product_id']))
@@ -384,6 +403,49 @@ def issue_material(db, request_id, quantity, warehouse_id, location_id, batch_no
                VALUES(?,?,?,?,?,?)''',
             (request_row['product_id'], '生产发料', -quantity, new_balance,
              request_row['req_no'], request_row['remark']),
+        )
+    return _dict(db.execute('SELECT * FROM prod_material_req WHERE id=?', (request_id,)).fetchone())
+
+
+def receive_material(db, request_id, quantity, user_id):
+    quantity = _positive(quantity, '收料数量必须大于0')
+    with _atomic(db):
+        row = db.execute('SELECT * FROM prod_material_req WHERE id=?', (request_id,)).fetchone()
+        if not row:
+            raise BusinessError('领料需求不存在', 404)
+        remaining = float(row['issued_qty'] or 0) - float(row['received_qty'] or 0)
+        if quantity > remaining:
+            raise BusinessError('收料数量超过待收数量')
+        db.execute(
+            '''UPDATE prod_material_req SET received_qty=received_qty+?,received_by=?,
+               received_at=CURRENT_TIMESTAMP,status=3 WHERE id=?''',
+            (quantity, user_id, request_id),
+        )
+    return _dict(db.execute('SELECT * FROM prod_material_req WHERE id=?', (request_id,)).fetchone())
+
+
+def return_material(db, request_id, quantity, user_id):
+    quantity = _positive(quantity, '退料数量必须大于0')
+    with _atomic(db):
+        row = db.execute('SELECT * FROM prod_material_req WHERE id=?', (request_id,)).fetchone()
+        if not row:
+            raise BusinessError('领料需求不存在', 404)
+        returnable = float(row['received_qty'] or 0) - float(row['returned_qty'] or 0)
+        if quantity > returnable:
+            raise BusinessError('退料数量超过可退数量')
+        balance = db.execute('SELECT * FROM inv_balance WHERE product_id=?', (row['product_id'],)).fetchone()
+        current = float(balance['quantity']) if balance else 0
+        new_balance = current + quantity
+        if balance:
+            db.execute('UPDATE inv_balance SET quantity=?,updated_at=CURRENT_TIMESTAMP WHERE product_id=?',
+                       (new_balance, row['product_id']))
+        else:
+            db.execute('INSERT INTO inv_balance(product_id,quantity) VALUES(?,?)', (row['product_id'], new_balance))
+        db.execute('UPDATE prod_material_req SET returned_qty=returned_qty+? WHERE id=?', (quantity, request_id))
+        db.execute(
+            '''INSERT INTO inv_transaction(product_id,trans_type,quantity,balance,ref_no,remark)
+               VALUES(?,?,?,?,?,?)''',
+            (row['product_id'], '生产退料', quantity, new_balance, row['req_no'], row['remark']),
         )
     return _dict(db.execute('SELECT * FROM prod_material_req WHERE id=?', (request_id,)).fetchone())
 

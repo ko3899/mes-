@@ -2,6 +2,9 @@
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
 from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
+from services.production_flow import (
+    BusinessError, issue_material, receive_material, request_material, return_material,
+)
 
 prod_ext_bp = Blueprint('prod_ext', __name__)
 
@@ -64,6 +67,50 @@ def material_add():
 @login_required
 def material_update():
     return jsonify(crud_update('prod_material_req', request.json))
+
+
+def _material_action_result(action):
+    try:
+        return jsonify({'code': 0, 'data': action(), 'message': '操作成功'})
+    except BusinessError as exc:
+        return jsonify({'code': exc.status, 'message': str(exc), 'data': exc.details}), exc.status
+
+
+@prod_ext_bp.route('/api/prod/material/<int:request_id>/request', methods=['POST'])
+@login_required
+def material_request_action(request_id):
+    data = request.get_json(silent=True) or {}
+    return _material_action_result(lambda: request_material(
+        get_db(), request_id, data.get('quantity'), session.get('user_id')
+    ))
+
+
+@prod_ext_bp.route('/api/prod/material/<int:request_id>/issue', methods=['POST'])
+@login_required
+def material_issue_action(request_id):
+    data = request.get_json(silent=True) or {}
+    return _material_action_result(lambda: issue_material(
+        get_db(), request_id, data.get('quantity'), data.get('warehouse_id'),
+        data.get('location_id'), data.get('batch_no'), session.get('user_id')
+    ))
+
+
+@prod_ext_bp.route('/api/prod/material/<int:request_id>/receive', methods=['POST'])
+@login_required
+def material_receive_action(request_id):
+    data = request.get_json(silent=True) or {}
+    return _material_action_result(lambda: receive_material(
+        get_db(), request_id, data.get('quantity'), session.get('user_id')
+    ))
+
+
+@prod_ext_bp.route('/api/prod/material/<int:request_id>/return', methods=['POST'])
+@login_required
+def material_return_action(request_id):
+    data = request.get_json(silent=True) or {}
+    return _material_action_result(lambda: return_material(
+        get_db(), request_id, data.get('quantity'), session.get('user_id')
+    ))
 
 
 # ==================== 委外加工 ====================

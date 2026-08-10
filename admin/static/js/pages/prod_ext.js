@@ -51,10 +51,9 @@ function transferAdd() {
 // 生产领料
 function renderMaterialReq(el) {
     el.innerHTML = '<div class="card"><div class="card-title"><span>生产领料</span>'
-        + '<button class="btn btn-blue" id="matReqAddBtn">+ 新增</button></div></div>'
-        + '<div class="card"><table><thead><tr><th>ID</th><th>领料单号</th><th>工单</th><th>物料</th><th>数量</th><th>类型</th><th>状态</th><th>时间</th></tr></thead>'
-        + '<tbody id="tb"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody></table></div>';
-    document.getElementById('matReqAddBtn').onclick = matReqAdd;
+        + '<span class="muted">领料需求必须从已下达工单的冻结 BOM 生成</span></div>'
+        + '<div class="table-wrap"><table><thead><tr><th>ID</th><th>领料单号</th><th>工单</th><th>物料</th><th>需求数</th><th>申请数</th><th>实发数</th><th>收料数</th><th>退料数</th><th>欠料数</th><th>物料批次</th><th>状态</th><th>操作</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="13" class="empty">加载中...</td></tr></tbody></table></div></div>';
     matReqLoad();
 }
 function matReqLoad() {
@@ -62,13 +61,41 @@ function matReqLoad() {
         if(!r) return;
         var list = r.data && r.data.list ? r.data.list : [];
         var tb = document.getElementById('tb');
-        if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>'; return; }
+        if(!list.length) { tb.innerHTML = '<tr><td colspan="13" class="empty">暂无数据，请先在工单管理中生成领料需求</td></tr>'; return; }
         tb.innerHTML = list.map(function(m) {
-            return '<tr><td>'+m.id+'</td><td>'+m.req_no+'</td><td>'+(m.workorder_no||'-')+'</td>'
-                +'<td>'+(m.product_name||'-')+'</td><td>'+m.quantity+'</td><td>'+m.req_type+'</td>'
-                +'<td><span class="tag '+(m.status?'tag-ok':'tag-wait')+'">'+(m.status?'已领':'待领')+'</span></td>'
-                +'<td>'+(m.created_at||'')+'</td></tr>';
+            var required = Number(m.required_qty || m.quantity || 0);
+            var requested = Number(m.requested_qty || 0), issued = Number(m.issued_qty || 0);
+            var received = Number(m.received_qty || 0), returned = Number(m.returned_qty || 0);
+            var shortage = Math.max(0, required - issued + returned);
+            var labels = {0:'待申请',1:'待发料',2:'已发料',3:'已收料'};
+            var actions = '';
+            if(requested < required) actions += '<button class="btn btn-blue btn-sm" onclick="materialAction('+m.id+',\'request\','+(required-requested)+')">申请</button> ';
+            if(issued < requested) actions += '<button class="btn btn-green btn-sm" onclick="materialAction('+m.id+',\'issue\','+(requested-issued)+')">发料</button> ';
+            if(received < issued) actions += '<button class="btn btn-blue btn-sm" onclick="materialAction('+m.id+',\'receive\','+(issued-received)+')">收料</button> ';
+            if(received > returned) actions += '<button class="btn btn-gray btn-sm" onclick="materialAction('+m.id+',\'return\','+(received-returned)+')">退料</button>';
+            return '<tr><td>'+MESUI.escapeHtml(m.id)+'</td><td>'+MESUI.escapeHtml(m.req_no)+'</td><td>'+MESUI.escapeHtml(m.workorder_no||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(m.product_name||'-')+'</td><td>'+required+'</td><td>'+requested+'</td><td>'+issued+'</td><td>'+received+'</td><td>'+returned+'</td><td>'+shortage+'</td>'
+                +'<td>'+MESUI.escapeHtml(m.material_batch_no||'-')+'</td><td><span class="tag '+(m.status>=2?'tag-ok':'tag-wait')+'">'+(labels[m.status]||m.status)+'</span></td>'
+                +'<td class="actions">'+actions+'</td></tr>';
         }).join('');
+    });
+}
+function materialAction(id, action, maximum) {
+    var labels = {request:'申请',issue:'发料',receive:'收料',return:'退料'};
+    var quantity = prompt(labels[action] + '数量（最大 ' + maximum + '）', String(maximum));
+    if(quantity == null) return;
+    quantity = Number(quantity);
+    if(!quantity || quantity <= 0 || quantity > maximum) { alert('请输入不超过最大值的有效数量'); return; }
+    var payload = {quantity:quantity};
+    if(action === 'issue') {
+        payload.warehouse_id = prompt('仓库 ID', '1');
+        payload.location_id = prompt('库位 ID（可留空）', '') || null;
+        payload.batch_no = prompt('物料批次号', '生产业务链测试');
+        if(!payload.warehouse_id) return;
+    }
+    api('/api/prod/material/' + id + '/' + action, {method:'POST', body:payload}).then(function(response) {
+        if(response && response.code === 0) matReqLoad();
+        else alert(response ? response.message : '操作失败');
     });
 }
 function matReqAdd() {

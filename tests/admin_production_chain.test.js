@@ -70,3 +70,13 @@ test('workorder UI releases snapshots and generates tasks', () => {
   assert.match(source, /production_batch_id/);
   assert.match(source, /route_version/);
 });
+
+test('material UI uses frozen BOM and controlled inventory actions', () => {
+  const workorder = read('admin/static/js/pages/business.js');
+  const material = read('admin/static/js/pages/prod_ext.js');
+  assert.match(workorder, /generate-materials/);
+  assert.match(material, /requested_qty/);
+  assert.match(material, /issued_qty/);
+  assert.match(material, /returned_qty/);
+  assert.match(material, /materialAction/);
+});
