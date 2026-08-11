@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MES工厂管家 · 使用手册</title>
+<style>
+  :root{
+    --bg:#f6f8fb; --panel:#ffffff; --ink:#1f2933; --sub:#5b6b7b;
+    --line:#e4e9f0; --brand:#2563eb; --brand-soft:#eef4ff;
+    --ok:#16a34a; --warn:#d97706; --danger:#dc2626; --code:#0b1f3a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink);line-height:1.7}
+  a{color:var(--brand);text-decoration:none}
+  .wrap{display:flex;min-height:100vh}
+  nav.toc{position:sticky;top:0;align-self:flex-start;width:264px;height:100vh;overflow-y:auto;background:var(--panel);border-right:1px solid var(--line);padding:22px 16px}
+  nav.toc .logo{display:flex;align-items:center;gap:10px;font-weight:700;margin-bottom:6px}
+  nav.toc .logo .mk{width:30px;height:30px;border-radius:8px;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:800}
+  nav.toc .tag{font-size:12px;color:var(--sub);margin-bottom:16px}
+  nav.toc ul{list-style:none;margin:0;padding:0}
+  nav.toc li{margin:2px 0}
+  nav.toc a{display:block;padding:7px 10px;border-radius:8px;color:var(--sub);font-size:14px}
+  nav.toc a:hover{background:var(--brand-soft);color:var(--brand)}
+  nav.toc a.sub{padding-left:24px;font-size:13px}
+  main{flex:1;max-width:920px;margin:0 auto;padding:48px 56px 120px}
+  h1{font-size:30px;margin:0 0 6px}
+  h2{font-size:23px;margin:46px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line)}
+  h3{font-size:18px;margin:28px 0 10px;color:var(--brand)}
+  h4{font-size:15px;margin:18px 0 6px}
+  p{margin:10px 0}
+  .lead{color:var(--sub);font-size:15px}
+  .meta{display:flex;gap:18px;flex-wrap:wrap;color:var(--sub);font-size:13px;margin:14px 0 0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .kv{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line);font-size:14px}
+  .kv:last-child{border-bottom:none}
+  .kv b{color:var(--ink)}
+  code{background:#eef1f6;color:var(--code);padding:1px 6px;border-radius:5px;font-size:13px;font-family:"SF Mono",Consolas,monospace}
+  pre{background:#0b1f3a;color:#e6edf6;padding:14px 16px;border-radius:10px;overflow:auto;font-size:13px;line-height:1.5}
+  pre code{background:transparent;color:inherit;padding:0}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--brand-soft);color:var(--brand);font-weight:600}
+  tr:nth-child(even) td{background:#fafbfd}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600}
+  .pill.g{background:#e7f7ec;color:var(--ok)}
+  .pill.b{background:var(--brand-soft);color:var(--brand)}
+  .pill.w{background:#fdf2e2;color:var(--warn)}
+  .pill.r{background:#fdeaea;color:var(--danger)}
+  .note{border-left:4px solid var(--brand);background:var(--brand-soft);padding:10px 14px;border-radius:0 10px 10px 0;margin:14px 0;font-size:14px}
+  .warn{border-left-color:var(--warn);background:#fdf6ec}
+  .danger{border-left-color:var(--danger);background:#fdeaea}
+  .steps{counter-reset:s;padding:0;margin:12px 0;list-style:none}
+  .steps li{counter-increment:s;position:relative;padding:8px 0 8px 38px;border-bottom:1px dashed var(--line)}
+  .steps li:before{content:counter(s);position:absolute;left:0;top:8px;width:24px;height:24px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:700}
+  .flow{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:14px 0}
+  .flow .node{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600}
+  .flow .arr{color:var(--sub)}
+  ul.tight li{margin:4px 0}
+  .footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:var(--sub);font-size:13px}
+  @media(max-width:860px){nav.toc{display:none}main{padding:24px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc">
+  <div class="logo"><span class="mk">M</span><span>MES工厂管家</span></div>
+  <div class="tag">使用手册 · v1.0</div>
+  <ul>
+    <li><a href="#c1">1. 系统概述</a></li>
+    <li><a href="#c2">2. 安装与启动</a></li>
+    <li><a href="#c3">3. 快速上手</a></li>
+    <li><a href="#c4">4. 管理后台功能详解</a></li>
+    <li><a class="sub" href="#c4-1">4.1 工作台/仪表盘</a></li>
+    <li><a class="sub" href="#c4-2">4.2 系统管理</a></li>
+    <li><a class="sub" href="#c4-3">4.3 基础数据</a></li>
+    <li><a class="sub" href="#c4-4">4.4 生产管理</a></li>
+    <li><a class="sub" href="#c4-5">4.5 质量管理</a></li>
+    <li><a class="sub" href="#c4-6">4.6 库存 / 设备 / 工具</a></li>
+    <li><a class="sub" href="#c4-7">4.7 排班 / 流程 / 报表</a></li>
+    <li><a class="sub" href="#c4-8">4.8 分析 / 追溯 / 通知</a></li>
+    <li><a href="#c5">5. 采集终端使用</a></li>
+    <li><a href="#c6">6. 核心业务流程</a></li>
+    <li><a href="#c7">7. 高级功能</a></li>
+    <li><a href="#c8">8. 运维与数据</a></li>
+    <li><a href="#c9">9. 常见问题 FAQ</a></li>
+    <li><a href="#c10">附录 · 术语与速查</a></li>
+  </ul>
+</nav>
+
+<main>
+  <h1>MES工厂管家 · 使用手册</h1>
+  <p class="lead">面向中小制造企业的轻量级制造执行系统（MES），覆盖「销售订单 → 生产计划 → 工单 → 报工 → 质量检验 → 入库追溯」全流程数字化。本文档帮助用户快速安装、上手并熟练使用系统的每一处功能。</p>
+  <div class="meta">
+    <span>版本：v1.0.0</span>
+    <span>适用对象：管理员 / 计划员 / 班组长 / 一线操作员</span>
+    <span>文档类型：终端用户手册</span>
+  </div>
+
+  <!-- 1 -->
+  <h2 id="c1">1. 系统概述</h2>
+  <p>MES工厂管家是一套<strong>零依赖部署、双端协同</strong>的制造执行系统。它把生产现场的计划、执行、质量、仓储与设备连接起来，让每一次操作都有实时数据支撑。</p>
+  <div class="grid2">
+    <div class="card">
+      <h4>核心优势</h4>
+      <ul class="tight">
+        <li><span class="pill g">零依赖</span> 默认 SQLite，无需额外数据库服务</li>
+        <li><span class="pill b">双端协同</span> PC 管理后台 + 移动采集终端</li>
+        <li><span class="pill b">开箱即用</span> 一键启动，5 分钟完成部署</li>
+        <li><span class="pill b">模块化</span> 40+ 功能模块，按需启用</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>技术架构</h4>
+      <div class="kv"><span>后端</span><b>Flask 2.x（RESTful API）</b></div>
+      <div class="kv"><span>数据层</span><b>SQLite / 可切 MySQL / PostgreSQL</b></div>
+      <div class="kv"><span>前端</span><b>原生 HTML/CSS/JS</b></div>
+      <div class="kv"><span>可视化</span><b>ECharts</b></div>
+      <div class="kv"><span>报表</span><b>openpyxl（Excel 导入导出）</b></div>
+    </div>
+  </div>
+  <div class="note">架构分层：<b>用户层</b>（采集终端 8080 / 管理后台 8081）→ <b>服务层</b>（Flask API：auth / system / production / quality / …）→ <b>数据层</b>（SQLite：<code>sys_*</code> <code>base_*</code> <code>prod_*</code> <code>inv_*</code> <code>eqp_*</code> …）。</div>
+
+  <!-- 2 -->
+  <h2 id="c2">2. 安装与启动</h2>
+  <h3>2.1 环境要求</h3>
+  <table>
+    <tr><th>依赖</th><th>版本</th><th>说明</th></tr>
+    <tr><td>Python</td><td>3.8+</td><td>推荐 3.10+</td></tr>
+    <tr><td>pip</td><td>20.0+</td><td>包管理</td></tr>
+    <tr><td>Flask</td><td>2.x</td><td>Web 框架</td></tr>
+    <tr><td>openpyxl</td><td>3.x</td><td>Excel 处理</td></tr>
+  </table>
+
+  <h3>2.2 Windows 一键启动</h3>
+  <p>双击项目根目录下的 <code>Start All.bat</code>，会自动拉起采集终端（8080）与管理后台（8081）。</p>
+
+  <h3>2.3 手动启动（推荐用于调试）</h3>
+  <pre><code># 安装依赖
+pip install flask openpyxl
+
+# 终端 1：采集终端（移动端）
+cd frontend &amp;&amp; python run.py        # → http://localhost:8080
+
+# 终端 2：管理后台（PC 端）
+cd admin &amp;&amp; python run.py           # → http://localhost:8081/admin</code></pre>
+
+  <h3>2.4 Docker 部署</h3>
+  <pre><code>docker build -t mes-factory .
+docker run -p 8080:8080 -p 8081:8081 mes-factory</code></pre>
+
+  <h3>2.5 访问地址与默认账号</h3>
+  <table>
+    <tr><th>系统</th><th>地址</th><th>用途</th></tr>
+    <tr><td>管理后台</td><td><code>http://localhost:8081/admin</code></td><td>PC 端管理操作</td></tr>
+    <tr><td>采集终端</td><td><code>http://localhost:8080</code></td><td>移动端数据采集</td></tr>
+  </table>
+  <div class="card" style="border-color:#f3c7c7">
+    <h4 style="color:var(--danger)">⚠ 默认账号（务必修改）</h4>
+    <div class="kv"><span>用户名</span><b>admin</b></div>
+    <div class="kv"><span>密码</span><b>admin123</b></div>
+    <p style="margin:8px 0 0">首次登录后请立即在「系统管理 → 修改密码」中更换。</p>
+  </div>
+
+  <!-- 3 -->
+  <h2 id="c3">3. 快速上手</h2>
+  <h3>3.1 首次登录</h3>
+  <ol class="steps">
+    <li>浏览器打开 <code>http://localhost:8081/admin</code>（管理后台）或 <code>http://localhost:8080</code>（采集终端）。</li>
+    <li>输入用户名 <code>admin</code> / 密码 <code>admin123</code>。</li>
+    <li>点击「登录系统」进入工作台。</li>
+    <li>进入后尽快修改默认密码（见 3.2）。</li>
+  </ol>
+
+  <h3>3.2 修改密码</h3>
+  <p>管理后台右上角用户头像 → 修改密码，或调用接口：</p>
+  <pre><code>POST /api/sys/user/change-password
+{ "old_password":"admin123", "new_password":"你的新密码" }</code></pre>
+
+  <h3>3.3 界面布局</h3>
+  <div class="grid2">
+    <div class="card">
+      <h4>管理后台（PC）</h4>
+      <ul class="tight">
+        <li><b>左侧栏</b>：主导航菜单（按模块分组）</li>
+        <li><b>顶栏</b>：全局搜索、通知铃铛、主题切换（深/浅色）、退出</li>
+        <li><b>内容区</b>：列表 / 表单 / 图表；多数列表支持分页、关键字搜索、批量操作</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>采集终端（移动）</h4>
+      <ul class="tight">
+        <li><b>底栏导航</b>：首页 / 扫码 / 任务 / 报工 / 质检 / 库存</li>
+        <li><b>顶部</b>：网络与同步状态、用户退出</li>
+        <li><b>离线模式</b>：弱网时数据暂存本机，恢复后一键同步</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 4 -->
+  <h2 id="c4">4. 管理后台功能详解</h2>
+  <p>管理后台是系统的「指挥中枢」，按模块组织。以下按模块说明常用操作。</p>
+
+  <h3 id="c4-1">4.1 工作台 / 仪表盘</h3>
+  <p>登录后默认进入仪表盘，集中展示生产进度、良率、设备状态、待办等关键指标。图表数据来自 <code>/api/dashboard</code> 与 <code>/api/dashboard/charts</code>，支持大屏看板（<code>/api/kanban/production</code>、<code>/api/kanban/realtime</code>）。</p>
+
+  <h3 id="c4-2">4.2 系统管理</h3>
+  <table>
+    <tr><th>功能</th><th>路径 / 位置</th><th>说明</th></tr>
+    <tr><td>用户管理</td><td><code>/api/sys/user/*</code></td><td>新增/停用账号、分配角色</td></tr>
+    <tr><td>角色与权限</td><td><code>/api/sys/role/*</code></td><td>按角色控制菜单与操作权限</td></tr>
+    <tr><td>部门组织</td><td><code>/api/sys/dept/*</code></td><td>维护组织架构树</td></tr>
+    <tr><td>菜单 / 字典</td><td><code>/api/sys/menu/*</code> <code>/api/sys/dict/*</code></td><td>导航菜单与下拉数据字典</td></tr>
+    <tr><td>操作日志</td><td><code>/api/sys/log/*</code></td><td>审计关键操作</td></tr>
+    <tr><td>系统监控</td><td><code>/api/sys/monitor</code></td><td>CPU / 内存 / 磁盘占用</td></tr>
+    <tr><td>在线用户</td><td><code>/api/sys/online/list</code></td><td>查看当前在线会话</td></tr>
+    <tr><td>数据备份</td><td><code>/api/backup/*</code></td><td>手动创建 / 恢复 / 下载备份</td></tr>
+  </table>
+
+  <h3 id="c4-3">4.3 基础数据</h3>
+  <p>使用前请先维护基础数据——这是所有业务流转的「主数据」。</p>
+  <table>
+    <tr><th>模块</th><th>说明</th><th>接口示例</th></tr>
+    <tr><td>车间</td><td>生产线物理单元</td><td><code>/api/base/workshop/add</code></td></tr>
+    <tr><td>工序</td><td>可按排序号拖拽调序</td><td><code>/api/base/process/reorder</code></td></tr>
+    <tr><td>产品 / BOM</td><td>产品档案与物料清单</td><td><code>/api/base/product/all</code></td></tr>
+    <tr><td>工艺路线</td><td>产品经过的工序序列</td><td><code>/api/base/route/list</code></td></tr>
+    <tr><td>缺陷 / 单位</td><td>不良原因库、计量单位</td><td><code>/api/base/defect/list</code></td></tr>
+    <tr><td>供应商 / 客户</td><td>往来单位档案</td><td><code>/api/base/supplier/all</code></td></tr>
+  </table>
+
+  <h3 id="c4-4">4.4 生产管理</h3>
+  <div class="flow">
+    <span class="node">销售订单</span><span class="arr">→</span>
+    <span class="node">生产计划</span><span class="arr">→</span>
+    <span class="node">工单</span><span class="arr">→</span>
+    <span class="node">任务</span><span class="arr">→</span>
+    <span class="node">报工</span>
+  </div>
+  <ul class="tight">
+    <li><b>销售订单</b>：录入客户订单（<code>/api/prod/sales/list</code>）。</li>
+    <li><b>生产计划</b>：将订单拆解为生产计划（<code>/api/prod/plan/list</code>）。</li>
+    <li><b>工单</b>：下发工单，系统自动生成工单号（<code>/api/prod/workorder/add</code>）。</li>
+    <li><b>任务</b>：工单拆分为可执行任务，分配给班组/人员（<code>/api/prod/task/list</code>）。</li>
+    <li><b>报工</b>：一线在采集终端或后台提交报工（<code>/api/prod/report/add</code>，含合格数/不良数）。</li>
+  </ul>
+
+  <h3 id="c4-5">4.5 质量管理</h3>
+  <table>
+    <tr><th>检验类型</th><th>说明</th><th>接口</th></tr>
+    <tr><td>IQC 来料检验</td><td>供应商到货检验</td><td><code>/api/qm/incoming/add</code></td></tr>
+    <tr><td>PQC 过程检验</td><td>产线过程抽检</td><td><code>/api/qm/process/list</code></td></tr>
+    <tr><td>OQC 出货检验</td><td>成品出货前检验</td><td><code>/api/qm/outgoing/list</code></td></tr>
+    <tr><td>SPC 统计过程控制</td><td>控制图 / CPK 分析</td><td><code>/api/spc/chart</code> <code>/api/spc/cpk</code></td></tr>
+    <tr><td>不良品分析</td><td>不良原因归集</td><td><code>/api/qm/*</code></td></tr>
+  </table>
+
+  <h3 id="c4-6">4.6 库存 / 设备 / 工具</h3>
+  <div class="grid2">
+    <div class="card">
+      <h4>库存管理</h4>
+      <ul class="tight">
+        <li>入库单 / 出库单（<code>/api/inv/inbound/*</code>）</li>
+        <li>库存余额查询（<code>/api/inv/balance/list</code>）</li>
+        <li>物料批次追溯</li>
+        <li>库存预警（低于阈值提醒）</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>设备管理</h4>
+      <ul class="tight">
+        <li>设备台账（<code>/api/eqp/ledger/*</code>）</li>
+        <li>维修工单（<code>/api/eqp/repair/*</code>）</li>
+        <li>保养计划与记录（<code>/api/eqp/maintenance/*</code>）</li>
+        <li>保养逾期提醒（<code>/api/eqp/maintenance/overdue</code>）</li>
+        <li>点检（<code>/api/eqp/check/*</code>）</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card">
+    <h4>工具管理</h4>
+    <ul class="tight">
+      <li>工具类型 / 台账（<code>/api/tool/type/*</code> <code>/api/tool/ledger/*</code>）</li>
+      <li>借用与归还（<code>/api/tool/borrow/*</code>）</li>
+    </ul>
+  </div>
+
+  <h3 id="c4-7">4.7 排班 / 流程 / 报表</h3>
+  <ul class="tight">
+    <li><b>排班管理</b>：班组（<code>/api/sched/team/*</code>）与排班计划（<code>/api/sched/plan/*</code>）。</li>
+    <li><b>流程（审批）管理</b>：流程定义（<code>/api/flow/definition/*</code>）、流程实例、待办（<code>/api/flow/pending/count</code>）。</li>
+    <li><b>报表统计</b>：生产报表（<code>/api/report/production</code>），支持导出 PDF / Excel（<code>/api/report/production/pdf</code>）。</li>
+  </ul>
+
+  <h3 id="c4-8">4.8 分析 / 追溯 / 通知</h3>
+  <ul class="tight">
+    <li><b>数据分析</b>：良率（<code>/api/analytics/yield</code>）、OEE（<code>/api/analytics/oee</code>）、交期预警（<code>/api/analytics/delivery-alert</code>）、库存周转（<code>/api/analytics/inventory-turnover</code>）、数据看板（<code>/api/analytics/data-dashboard</code>）。</li>
+    <li><b>追溯</b>：批次列表（<code>/api/trace/batch/list</code>）、按关键字查询（<code>/api/trace/query?keyword=</code>）、按 SN 查询过站记录。</li>
+    <li><b>全局搜索</b>：<code>/api/search/global?q=</code> 一键检索产品 / 工单 / 设备。</li>
+    <li><b>消息通知</b>：通知列表（<code>/api/notification/list</code>）、未读计数（<code>/api/notification/unread/count</code>）。</li>
+  </ul>
+
+  <!-- 5 -->
+  <h2 id="c5">5. 采集终端使用</h2>
+  <p>采集终端面向<strong>一线操作员</strong>，通过底部导航快速完成扫码、报工、质检等动作。建议用手机/平板浏览器或 PDA 访问 <code>http://localhost:8080</code>。</p>
+  <table>
+    <tr><th>底部导航</th><th>功能</th><th>操作要点</th></tr>
+    <tr><td>首页</td><td>当日任务概览、待办提醒</td><td>一眼掌握本班进度</td></tr>
+    <tr><td>扫码</td><td>扫描工单号 / 任务号条码</td><td>对接扫码枪或相机</td></tr>
+    <tr><td>任务</td><td>查看分配给我的任务</td><td>按状态筛选</td></tr>
+    <tr><td>报工</td><td>提交合格数 / 不良数</td><td>对应 <code>/api/prod/report/add</code></td></tr>
+    <tr><td>质检</td><td>IQC/PQC/OQC 快捷检验</td><td>一键录入检验结果</td></tr>
+    <tr><td>库存</td><td>物料查询 / 出入库操作</td><td>现场核对库存</td></tr>
+  </table>
+  <div class="note">离线友好：当网络中断，终端顶部显示「离线」并暂存报工数据至本机；恢复网络后点击「立即同步」即可补传（<code>offline_queue.js</code> 实现）。</div>
+
+  <h3>5.1 制程管控（过站防呆）</h3>
+  <p>对于需要工序流转的产品，可在采集终端或后台执行制程操作（接口前缀 <code>/api/process/*</code>）：</p>
+  <table>
+    <tr><th>操作</th><th>接口</th><th>说明</th></tr>
+    <tr><td>过站</td><td><code>/api/process/pass-station</code></td><td>含防呆校验，防止跳工序</td></tr>
+    <tr><td>跳站</td><td><code>/api/process/skip-station</code></td><td>需填写跳站原因</td></tr>
+    <tr><td>出站</td><td><code>/api/process/exit-station</code></td><td>完成当前站点</td></tr>
+    <tr><td>重工</td><td><code>/api/process/rework</code></td><td>退回目标站点返工</td></tr>
+    <tr><td>关箱 / 拆箱</td><td><code>/api/process/close-box</code> <code>/api/process/open-box</code></td><td>SN 装箱管理</td></tr>
+    <tr><td>锁料 / 解料</td><td><code>/api/process/lock-material</code></td><td>冻结异常物料</td></tr>
+    <tr><td>返线</td><td><code>/api/process/return-to-line</code></td><td>不良品退回产线</td></tr>
+  </table>
+  <p>防呆规则在「站点配置」（<code>/api/process/station-config/list</code>）中维护；制程统计见 <code>/api/process/statistics</code>。</p>
+
+  <!-- 6 -->
+  <h2 id="c6">6. 核心业务流程</h2>
+  <p>一个标准生产闭环如下：</p>
+  <div class="flow">
+    <span class="node">① 销售订单</span><span class="arr">→</span>
+    <span class="node">② 生产计划</span><span class="arr">→</span>
+    <span class="node">③ 工单下发</span><span class="arr">→</span>
+    <span class="node">④ 任务分配</span><span class="arr">→</span>
+    <span class="node">⑤ 一线报工</span><span class="arr">→</span>
+    <span class="node">⑥ 质量检验</span><span class="arr">→</span>
+    <span class="node">⑦ 入库追溯</span>
+  </div>
+  <ol class="steps">
+    <li><b>录入销售订单</b>：管理后台「生产管理 → 销售订单」新增客户订单。</li>
+    <li><b>制定生产计划</b>：将订单转为计划，指定产品、数量、交期。</li>
+    <li><b>下发工单</b>：系统自动生成工单号，关联工艺路线。</li>
+    <li><b>拆分任务</b>：把工单拆成任务并指派班组/个人。</li>
+    <li><b>一线报工</b>：操作员在采集终端扫码 → 报工（合格/不良数量）。</li>
+    <li><b>质量检验</b>：IQC/PQC/OQC 按节点录入，SPC 实时监控工序能力。</li>
+    <li><b>入库与追溯</b>：成品入库，批次/序列号全程可追溯。</li>
+  </ol>
+
+  <!-- 7 -->
+  <h2 id="c7">7. 高级功能</h2>
+  <ul class="tight">
+    <li><b>SPC 控制图</b>：采集质量数据后自动绘制 Xbar-R / 单值图，计算 CPK，识别异常点。</li>
+    <li><b>数据看板 / 大屏</b>：<code>/api/kanban/*</code> 提供实时产量、良率、设备 OEE 大屏展示。</li>
+    <li><b>审批流</b>：在「流程管理」自定义审批定义，工单/采购等可走审批。</li>
+    <li><b>高级排程（APS）</b>：<code>aps</code> 模块支持更智能的排产（扩展能力）。</li>
+    <li><b>多租户</b>：<code>tenant</code> 模块支持多工厂/多组织数据隔离。</li>
+    <li><b>集成扩展</b>：<code>erp_deep</code>（ERP 对接）、<code>iot</code>（设备联网）、<code>ai</code>（智能分析）为可选扩展模块。</li>
+  </ul>
+
+  <!-- 8 -->
+  <h2 id="c8">8. 运维与数据</h2>
+  <h3>8.1 数据库切换</h3>
+  <p>默认使用 SQLite（<code>database/mes.db</code>）。切换到 MySQL / PostgreSQL 时，设置环境变量即可，无需改代码：</p>
+  <pre><code>SET MES_DB_TYPE=mysql
+SET MES_DB_HOST=127.0.0.1
+SET MES_DB_PORT=3306
+SET MES_DB_NAME=mes
+SET MES_DB_USER=mes_user
+SET MES_DB_PASS=******</code></pre>
+  <div class="note">库表按模块加前缀（<code>sys_</code> 系统 / <code>base_</code> 基础 / <code>prod_</code> 生产 / <code>inv_</code> 库存 / <code>eqp_</code> 设备 / <code>qm_</code> 质量 …），初始化时自动建表并建索引。</div>
+  <h3>8.2 备份与恢复</h3>
+  <p>在「系统管理 → 备份」点击创建备份（<code>POST /api/backup/create</code>），异常时下载并恢复。建议定期备份 <code>database/mes.db</code>。</p>
+  <h3>8.3 日志与监控</h3>
+  <p>操作日志（<code>/api/sys/log/*</code>）记录关键动作；系统监控（<code>/api/sys/monitor</code>）实时显示服务器资源。</p>
+
+  <!-- 9 -->
+  <h2 id="c9">9. 常见问题 FAQ</h2>
+  <div class="card">
+    <h4>Q1：登录提示密码错误？</h4>
+    <p>确认默认账号 <code>admin / admin123</code>；若已改密，请用新密码。忘记密码可重置 <code>database/mes.db</code> 中用户表或恢复备份。</p>
+  </div>
+  <div class="card">
+    <h4>Q2：访问 8081 打不开？</h4>
+    <p>确认已运行 <code>admin/run.py</code>；检查防火墙是否放行端口；或查看控制台报错。</p>
+  </div>
+  <div class="card">
+    <h4>Q3：采集终端离线了怎么办？</h4>
+    <p>终端会自动暂存报工数据，顶部显示「离线」。恢复网络后点「立即同步」即可补传，数据不会丢失。</p>
+  </div>
+  <div class="card">
+    <h4>Q4：如何导出报表？</h4>
+    <p>管理后台「报表统计 → 生产报表」支持导出 PDF / Excel（<code>/api/report/production/pdf</code>）。</p>
+  </div>
+  <div class="card">
+    <h4>Q5：想换数据库（如 MySQL）？</h4>
+    <p>设置第 8.1 节的环境变量后重启服务即可，无需改动代码。</p>
+  </div>
+
+  <!-- 10 -->
+  <h2 id="c10">附录 · 术语与速查</h2>
+  <h3>术语表</h3>
+  <table>
+    <tr><th>术语</th><th>含义</th></tr>
+    <tr><td>MES</td><td>制造执行系统（Manufacturing Execution System）</td></tr>
+    <tr><td>工单 (Work Order)</td><td>指导生产的指令单，含产品/数量/交期</td></tr>
+    <tr><td>报工</td><td>操作员上报完成数量（合格/不良）</td></tr>
+    <tr><td>IQC / PQC / OQC</td><td>来料 / 过程 / 出货检验</td></tr>
+    <tr><td>SPC / CPK</td><td>统计过程控制 / 过程能力指数</td></tr>
+    <tr><td>OEE</td><td>设备综合效率（可用率×性能×良率）</td></tr>
+    <tr><td>BOM</td><td>物料清单（Bill of Materials）</td></tr>
+    <tr><td>过站 / 防呆</td><td>工序流转 / 防止跳工序的校验</td></tr>
+  </table>
+  <h3>接口速查（Base URL: <code>http://localhost:8080</code>）</h3>
+  <pre><code>POST /api/login                      登录
+POST /api/logout                     退出
+GET  /api/dashboard                  仪表盘统计
+GET  /api/prod/workorder/list        工单列表
+POST /api/prod/report/add            新增报工
+GET  /api/qm/incoming/list           来料检验
+GET  /api/inv/balance/list           库存余额
+GET  /api/spc/chart                  SPC 控制图
+GET  /api/kanban/realtime            实时看板
+GET  /api/trace/query?keyword=       追溯查询
+GET  /api/notification/unread/count  未读通知数</code></pre>
+  <div class="note">所有接口需在登录后携带 Session Cookie 访问；响应统一格式：<code>{"code":0,"data":{...},"message":"操作成功"}</code>（<code>code:0</code> 表示成功）。</div>
+
+  <div class="footer">
+    MES工厂管家 · 使用手册 v1.0 — 本文档依据项目 README、API 文档与实际代码结构整理。如功能与最新版本存在差异，请以系统实际界面为准。
+  </div>
+</main>
+</div>
+</body>
+</html>
