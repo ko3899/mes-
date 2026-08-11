@@ -79,6 +79,10 @@ def test_confirmed_sales_lines_can_be_carried_to_plan(client):
 def test_two_batches_may_split_but_not_exceed_plan_line(client):
     sales_id = create_sales(client, 100)
     ids = client.reference_ids
+    db = sqlite3.connect(database.DB_PATH)
+    db.execute('UPDATE prod_sales_order SET status=1 WHERE id=?', (sales_id,))
+    db.commit()
+    db.close()
     response = client.post('/api/prod/plan/save', json={
         'sales_order_id': sales_id, 'plan_type': '订单生产',
         'start_date': '2026-08-11', 'end_date': '2026-08-20',
@@ -102,3 +106,76 @@ def test_two_batches_may_split_but_not_exceed_plan_line(client):
     assert '剩余数量' in rejected.get_json()['message']
     batches = client.get('/api/prod/batch/list').get_json()['data']['list']
     assert [row['planned_qty'] for row in batches] == [60, 40]
+
+
+def test_sales_list_honors_persisted_manual_order(client):
+    first = create_sales(client, 10)
+    second = create_sales(client, 20)
+    moved = client.post('/api/table-order/move', json={
+        'table_key': 'prod/sales', 'record_id': first, 'target_position': 1,
+    })
+    assert moved.status_code == 200
+    rows = client.get('/api/prod/sales/list').get_json()['data']['list']
+    assert rows[0]['id'] == first
+    assert rows[1]['id'] == second
+
+
+def test_plan_requires_confirmed_sales_and_cannot_exceed_sales_line(client):
+    sales_id = create_sales(client, 10)
+    ids = client.reference_ids
+    payload = {
+        'sales_order_id': sales_id, 'plan_type': '订单生产',
+        'items': [{'sales_order_item_id': 1, 'product_id': ids['product'],
+                   'planned_qty': 11, 'workshop_id': ids['workshop']}],
+    }
+    rejected_draft = client.post('/api/prod/plan/save', json=payload)
+    assert rejected_draft.status_code == 400
+    db = sqlite3.connect(database.DB_PATH)
+    db.execute('UPDATE prod_sales_order SET status=1 WHERE id=?', (sales_id,))
+    db.commit()
+    db.close()
+    rejected_over = client.post('/api/prod/plan/save', json=payload)
+    assert rejected_over.status_code == 400
+    assert '超出' in rejected_over.get_json()['message']
+
+
+def test_workorders_cannot_exceed_batch_total(client):
+    sales_id = create_sales(client, 10)
+    ids = client.reference_ids
+    db = sqlite3.connect(database.DB_PATH)
+    db.execute('UPDATE prod_sales_order SET status=1 WHERE id=?', (sales_id,))
+    route = db.execute(
+        "INSERT INTO base_process_route(route_name,product_id,workshop_id,status) VALUES('R',?,?,1)",
+        (ids['product'], ids['workshop']),
+    ).lastrowid
+    process = db.execute(
+        "INSERT INTO base_process(process_name,code,workshop_id,status) VALUES('P','P',?,1)",
+        (ids['workshop'],),
+    ).lastrowid
+    db.execute('INSERT INTO base_process_route_detail(route_id,process_id,step_no) VALUES(?,?,1)', (route, process))
+    material = db.execute("INSERT INTO base_product(product_name,code) VALUES('M','M')").lastrowid
+    db.execute('INSERT INTO base_bom(product_id,material_id,quantity) VALUES(?,?,1)', (ids['product'], material))
+    db.commit()
+    db.close()
+    plan = client.post('/api/prod/plan/save', json={
+        'sales_order_id': sales_id, 'items': [{'sales_order_item_id': 1,
+        'product_id': ids['product'], 'planned_qty': 10, 'workshop_id': ids['workshop']}],
+    }).get_json()['data']['id']
+    item = client.get(f'/api/prod/plan/{plan}').get_json()['data']['items'][0]['id']
+    batch = client.post('/api/prod/batch/save', json={'plan_item_id': item, 'planned_qty': 10}).get_json()['data']['id']
+    for qty in (6, 5):
+        response = client.post('/api/prod/workorder/save', json={
+            'production_batch_id': batch, 'route_id': route, 'planned_qty': qty,
+        })
+        if qty == 5:
+            assert response.status_code == 400
+
+
+def test_confirmed_sales_cannot_be_changed_through_legacy_crud(client):
+    sales_id = create_sales(client, 10)
+    db = sqlite3.connect(database.DB_PATH)
+    db.execute('UPDATE prod_sales_order SET status=1 WHERE id=?', (sales_id,))
+    db.commit()
+    db.close()
+    response = client.post('/api/prod/sales/update', json={'id': sales_id, 'customer': 'changed'})
+    assert response.status_code == 400

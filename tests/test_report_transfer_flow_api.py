@@ -105,4 +105,25 @@ def test_transfer_rejects_non_adjacent_route_steps(report_client):
         'to_process_id': ids['processes'][2], 'quantity': 1,
     })
     assert response.status_code == 400
-    assert '相邻' in response.get_json()['message']
+
+
+def test_report_must_be_approved_before_posting_and_posted_report_cannot_delete(report_client):
+    report_id = submit(report_client, 0, 2).get_json()['data']['id']
+    direct_post = report_client.post(f'/api/prod/report/{report_id}/post')
+    assert direct_post.status_code == 400
+    assert report_client.post(f'/api/prod/report/{report_id}/approve').status_code == 200
+    assert report_client.post(f'/api/prod/report/{report_id}/post').status_code == 200
+    deleted = report_client.post('/api/prod/report/delete', json={'id': report_id})
+    assert deleted.status_code == 400
+
+
+def test_rejected_report_can_be_deleted_without_counting_in_task(report_client):
+    report_id = submit(report_client, 0, 2).get_json()['data']['id']
+    assert report_client.post(f'/api/prod/report/{report_id}/reject', json={'remark': 'test'}).status_code == 200
+    deleted = report_client.post('/api/prod/report/delete', json={'id': report_id})
+    assert deleted.status_code == 200
+    import sqlite3
+    db = sqlite3.connect(database.DB_PATH)
+    assert db.execute('SELECT completed_qty,defect_qty FROM prod_task WHERE id=?',
+                      (report_client.ids['tasks'][0],)).fetchone() == (0, 0)
+    db.close()

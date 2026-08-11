@@ -123,9 +123,16 @@ def save_plan(db, payload, user_id):
     if start_date and end_date and end_date < start_date:
         raise BusinessError('计划结束日期不得早于开始日期')
     sales_order_id = payload.get('sales_order_id')
-    if sales_order_id and not db.execute('SELECT 1 FROM prod_sales_order WHERE id=?', (sales_order_id,)).fetchone():
-        raise BusinessError('销售订单不存在')
     with _atomic(db):
+        sales_order = None
+        if sales_order_id:
+            sales_order = db.execute(
+                'SELECT * FROM prod_sales_order WHERE id=?', (sales_order_id,)
+            ).fetchone()
+            if not sales_order:
+                raise BusinessError('销售订单不存在')
+            if sales_order['status'] != SALES['confirmed']:
+                raise BusinessError('只有已确认的销售订单可编制生产计划')
         plan_no = payload.get('plan_no') or _number('PL')
         plan_id = db.execute(
             '''INSERT INTO prod_plan
@@ -140,11 +147,29 @@ def save_plan(db, payload, user_id):
                 raise BusinessError('计划明细产品不存在')
             if not db.execute('SELECT 1 FROM base_workshop WHERE id=? AND status=1', (item.get('workshop_id'),)).fetchone():
                 raise BusinessError('计划明细车间不存在或未启用')
+            sales_item_id = item.get('sales_order_item_id')
+            if sales_order_id:
+                sales_item = db.execute(
+                    '''SELECT * FROM prod_sales_order_item
+                       WHERE id=? AND order_id=? AND product_id=?''',
+                    (sales_item_id, sales_order_id, item.get('product_id')),
+                ).fetchone()
+                if not sales_item:
+                    raise BusinessError('计划明细必须匹配销售订单产品明细')
+                planned = db.execute(
+                    '''SELECT COALESCE(SUM(pi.planned_qty),0)
+                       FROM prod_plan_item pi JOIN prod_plan pp ON pp.id=pi.plan_id
+                       WHERE pi.sales_order_item_id=? AND pp.status<>?''',
+                    (sales_item_id, PLAN['cancelled']),
+                ).fetchone()[0]
+                remaining = float(sales_item['quantity']) - float(sales_item['delivered_qty'] or 0) - float(planned)
+                if quantity > remaining:
+                    raise BusinessError('计划数量超出销售明细的剩余数量')
             db.execute(
                 '''INSERT INTO prod_plan_item
                    (plan_id,sales_order_item_id,product_id,planned_qty,workshop_id,remark)
                    VALUES(?,?,?,?,?,?)''',
-                (plan_id, item.get('sales_order_item_id'), item['product_id'], quantity,
+                (plan_id, sales_item_id, item['product_id'], quantity,
                  item['workshop_id'], item.get('remark')),
             )
     return {'id': plan_id, 'plan_no': plan_no, 'items': len(items)}
@@ -153,12 +178,14 @@ def save_plan(db, payload, user_id):
 def save_batch(db, payload, user_id):
     quantity = _positive(payload.get('planned_qty'), '生产批次数量必须大于0')
     plan_item = db.execute(
-        '''SELECT i.*,p.sales_order_id FROM prod_plan_item i
+        '''SELECT i.*,p.sales_order_id,p.status AS plan_status FROM prod_plan_item i
            JOIN prod_plan p ON p.id=i.plan_id WHERE i.id=?''',
         (payload.get('plan_item_id'),),
     ).fetchone()
     if not plan_item:
         raise BusinessError('生产计划明细不存在')
+    if plan_item['plan_status'] in (PLAN['cancelled'], PLAN['completed']):
+        raise BusinessError('已取消或已完成的生产计划不能拆分批次')
     with _atomic(db):
         used = db.execute(
             'SELECT COALESCE(SUM(planned_qty),0) FROM prod_batch WHERE plan_item_id=? AND status<>4',
@@ -190,7 +217,12 @@ def save_workorder(db, payload, user_id):
             raise BusinessError('生产批次不存在或已取消')
         product_id, workshop_id = batch['product_id'], batch['workshop_id']
         plan_id, plan_item_id, sales_order_id = batch['plan_id'], batch['plan_item_id'], batch['sales_order_id']
-        if quantity > float(batch['planned_qty']):
+        used_qty = db.execute(
+            '''SELECT COALESCE(SUM(planned_qty),0) FROM prod_workorder
+               WHERE production_batch_id=? AND status<>?''',
+            (batch_id, WORKORDER['cancelled']),
+        ).fetchone()[0]
+        if float(used_qty) + quantity > float(batch['planned_qty']):
             raise BusinessError('工单数量超过生产批次数量')
     route = db.execute(
         '''SELECT * FROM base_process_route
@@ -451,16 +483,16 @@ def return_material(db, request_id, quantity, user_id):
 
 
 def post_report(db, report_id, user_id, remark=''):
-    report = db.execute('SELECT * FROM prod_report WHERE id=?', (report_id,)).fetchone()
-    if not report:
-        raise BusinessError('报工记录不存在', 404)
-    if report['approval_status'] not in (REPORT['submitted'], REPORT['approved']):
-        raise BusinessError('当前报工状态不能记账')
-    total = float(report['qualified_qty']) + float(report['defect_qty'] or 0)
-    task = db.execute('SELECT * FROM prod_task WHERE id=?', (report['task_id'],)).fetchone()
-    if not task or float(task['completed_qty'] or 0) + float(task['defect_qty'] or 0) + total > float(task['planned_qty']):
-        raise BusinessError('报工数量超过任务剩余数量')
     with _atomic(db):
+        report = db.execute('SELECT * FROM prod_report WHERE id=?', (report_id,)).fetchone()
+        if not report:
+            raise BusinessError('报工记录不存在', 404)
+        if report['approval_status'] != REPORT['approved']:
+            raise BusinessError('只有审核通过的报工才能记账')
+        total = float(report['qualified_qty']) + float(report['defect_qty'] or 0)
+        task = db.execute('SELECT * FROM prod_task WHERE id=?', (report['task_id'],)).fetchone()
+        if not task or float(task['completed_qty'] or 0) + float(task['defect_qty'] or 0) + total > float(task['planned_qty']):
+            raise BusinessError('报工数量超过任务剩余数量')
         db.execute(
             '''UPDATE prod_task SET completed_qty=completed_qty+?,defect_qty=defect_qty+?,
                status=CASE WHEN completed_qty+defect_qty+?>=planned_qty THEN 3 ELSE 1 END WHERE id=?''',

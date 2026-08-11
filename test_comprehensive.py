@@ -1828,7 +1828,7 @@ class TestProductionConsistency:
         assert payload['data']['list'] == []
         assert payload['data']['total'] == 0
 
-    def test_deleting_completed_report_recalculates_partial_progress(
+    def test_deleting_posted_report_is_rejected(
             self, auth_client):
         ids = create_production_chain(auth_client, planned_qty=10)
         first_report = self._add_report(
@@ -1845,23 +1845,15 @@ class TestProductionConsistency:
             '/api/prod/report/delete',
             json={'id': completed_report},
         )
-        assert response.status_code == 200
-        assert response.get_json()['code'] == 0
-        assert self._report_ids(auth_client, ids) == [first_report]
+        assert response.status_code == 400
+        assert response.get_json()['code'] == 400
+        assert set(self._report_ids(auth_client, ids)) == {completed_report, first_report}
         progress = self._progress_snapshot(auth_client, ids)
-        assert progress['task'] == {
-            'completed_qty': 6,
-            'defect_qty': 1,
-            'status': 1,
-            'end_time': None,
-        }
-        assert progress['workorder'] == {
-            'completed_qty': 6,
-            'defect_qty': 1,
-            'status': 1,
-        }
+        assert progress['task']['completed_qty'] == 10
+        assert progress['task']['defect_qty'] == 3
+        assert progress['task']['status'] == 3
 
-    def test_deleting_last_report_resets_progress(self, auth_client):
+    def test_deleting_last_posted_report_is_rejected(self, auth_client):
         ids = create_production_chain(auth_client, planned_qty=10)
         report_id = self._add_report(
             auth_client, ids, qualified_qty=10, defect_qty=2
@@ -1870,21 +1862,13 @@ class TestProductionConsistency:
             '/api/prod/report/delete',
             json={'id': report_id},
         )
-        assert response.status_code == 200
-        assert response.get_json()['code'] == 0
-        assert self._report_ids(auth_client, ids) == []
+        assert response.status_code == 400
+        assert response.get_json()['code'] == 400
+        assert self._report_ids(auth_client, ids) == [report_id]
         progress = self._progress_snapshot(auth_client, ids)
-        assert progress['task'] == {
-            'completed_qty': 0,
-            'defect_qty': 0,
-            'status': 0,
-            'end_time': None,
-        }
-        assert progress['workorder'] == {
-            'completed_qty': 0,
-            'defect_qty': 0,
-            'status': 0,
-        }
+        assert progress['task']['completed_qty'] == 10
+        assert progress['task']['defect_qty'] == 2
+        assert progress['task']['status'] == 3
 
     def test_deleting_missing_report_returns_404(self, auth_client):
         response = auth_client.post(
@@ -1894,7 +1878,7 @@ class TestProductionConsistency:
         assert response.status_code == 404
         assert response.get_json()['code'] == 404
 
-    def test_report_delete_rolls_back_when_recalculation_fails(
+    def test_report_delete_rejects_posted_before_recalculation(
             self, auth_client, monkeypatch):
         from blueprints import production as production_module
 
@@ -1912,11 +1896,11 @@ class TestProductionConsistency:
             '_recalculate_task_and_workorder',
             fail_recalculation,
         )
-        with pytest.raises(RuntimeError, match='forced aggregate failure'):
-            auth_client.post(
-                '/api/prod/report/delete',
-                json={'id': report_id},
-            )
+        response = auth_client.post(
+            '/api/prod/report/delete',
+            json={'id': report_id},
+        )
+        assert response.status_code == 400
 
         assert self._report_side_effect_snapshot(auth_client, ids) == before
 

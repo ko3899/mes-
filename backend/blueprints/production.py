@@ -34,6 +34,17 @@ production_bp = Blueprint('production', __name__)
 _QUANTITY_QUANTUM = Decimal('0.000001')
 
 
+def _guard_legacy_mutation(table, record_id, allowed_statuses, message):
+    row = get_db().execute(
+        f'SELECT status FROM {table} WHERE id=?', (record_id,)
+    ).fetchone()
+    if not row:
+        return jsonify({'code': 404, 'message': '记录不存在'}), 404
+    if row['status'] not in allowed_statuses:
+        return jsonify({'code': 400, 'message': message}), 400
+    return None
+
+
 def _safe_sort(args, fields, default):
     """Return a validated SQL ORDER BY fragment for paginated production lists."""
     requested = args.get('sort', '')
@@ -63,13 +74,19 @@ def prod_sales_list():
     page, size = int(request.args.get('page', 1)), int(request.args.get('size', 20))
     offset = (page - 1) * size
     total = db.execute('SELECT COUNT(*) FROM prod_sales_order').fetchone()[0]
+    sales_sort_fields = {
+        'id': 's.id', 'order_no': 's.order_no', 'customer_name': 'COALESCE(c.customer_name,s.customer)',
+        'total_amount': 's.total_amount', 'delivery_date': 's.delivery_date',
+        'status': 's.status', 'created_at': 's.created_at',
+    }
+    order_by = _manual_or_field_sort(request.args, sales_sort_fields, 's', 'prod/sales')
     rows = db.execute(
         '''SELECT s.*,COALESCE(c.customer_name,s.customer) AS customer_name,
                   COUNT(i.id) AS line_count
            FROM prod_sales_order s
            LEFT JOIN base_customer c ON c.id=s.customer_id
            LEFT JOIN prod_sales_order_item i ON i.order_id=s.id
-           GROUP BY s.id ORDER BY s.id DESC LIMIT ? OFFSET ?''', (size, offset)
+           GROUP BY s.id ORDER BY {order_by} LIMIT ? OFFSET ?'''.format(order_by=order_by), (size, offset)
     ).fetchall()
     return jsonify({'code': 0, 'data': {'list': [dict(row) for row in rows], 'total': total}})
 
@@ -115,13 +132,26 @@ def prod_sales_add():
 @production_bp.route('/api/prod/sales/update', methods=['POST'])
 @login_required
 def prod_sales_update():
-    return jsonify(crud_update('prod_sales_order', request.json))
+    data = request.get_json(silent=True) or {}
+    if 'status' in data:
+        try:
+            return jsonify({'code': 0, 'data': transition_status(get_db(), 'sales', data.get('id'), data.get('status'), session.get('user_id'))})
+        except BusinessError as exc:
+            return jsonify({'code': exc.status, 'message': str(exc)}), exc.status
+    blocked = _guard_legacy_mutation('prod_sales_order', data.get('id'), {0}, '已确认或已执行的销售订单不可修改')
+    if blocked:
+        return blocked
+    return jsonify(crud_update('prod_sales_order', data))
 
 
 @production_bp.route('/api/prod/sales/delete', methods=['POST'])
 @login_required
 def prod_sales_delete():
-    return jsonify(crud_delete('prod_sales_order', request.json.get('id')))
+    record_id = (request.get_json(silent=True) or {}).get('id')
+    blocked = _guard_legacy_mutation('prod_sales_order', record_id, {0}, '只有草稿销售订单可以删除')
+    if blocked:
+        return blocked
+    return jsonify(crud_delete('prod_sales_order', record_id))
 
 
 @production_bp.route('/api/prod/plan/list')
@@ -131,11 +161,16 @@ def prod_plan_list():
     page, size = int(request.args.get('page', 1)), int(request.args.get('size', 20))
     offset = (page - 1) * size
     total = db.execute('SELECT COUNT(*) FROM prod_plan').fetchone()[0]
+    plan_sort_fields = {
+        'id': 'p.id', 'plan_no': 'p.plan_no', 'sales_order_no': 's.order_no',
+        'plan_type': 'p.plan_type', 'status': 'p.status', 'created_at': 'p.created_at',
+    }
+    order_by = _manual_or_field_sort(request.args, plan_sort_fields, 'p', 'prod/plan')
     rows = db.execute(
         '''SELECT p.*,s.order_no AS sales_order_no,COUNT(i.id) AS line_count
            FROM prod_plan p LEFT JOIN prod_sales_order s ON s.id=p.sales_order_id
            LEFT JOIN prod_plan_item i ON i.plan_id=p.id
-           GROUP BY p.id ORDER BY p.id DESC LIMIT ? OFFSET ?''', (size, offset)
+           GROUP BY p.id ORDER BY {order_by} LIMIT ? OFFSET ?'''.format(order_by=order_by), (size, offset)
     ).fetchall()
     return jsonify({'code': 0, 'data': {'list': [dict(row) for row in rows], 'total': total}})
 
@@ -197,13 +232,19 @@ def prod_batch_list():
     page, size = int(request.args.get('page', 1)), int(request.args.get('size', 20))
     offset = (page - 1) * size
     total = db.execute('SELECT COUNT(*) FROM prod_batch').fetchone()[0]
+    batch_sort_fields = {
+        'id': 'b.id', 'batch_no': 'b.batch_no', 'plan_no': 'pl.plan_no',
+        'product_name': 'p.product_name', 'workshop_name': 'w.workshop_name',
+        'planned_qty': 'b.planned_qty', 'status': 'b.status', 'created_at': 'b.created_at',
+    }
+    order_by = _manual_or_field_sort(request.args, batch_sort_fields, 'b', 'prod/batch')
     rows = db.execute(
         '''SELECT b.*,pl.plan_no,p.product_name,w.workshop_name,s.order_no AS sales_order_no
            FROM prod_batch b LEFT JOIN prod_plan pl ON pl.id=b.plan_id
            LEFT JOIN base_product p ON p.id=b.product_id
            LEFT JOIN base_workshop w ON w.id=b.workshop_id
            LEFT JOIN prod_sales_order s ON s.id=b.sales_order_id
-           ORDER BY b.id DESC LIMIT ? OFFSET ?''', (size, offset)
+           ORDER BY {order_by} LIMIT ? OFFSET ?'''.format(order_by=order_by), (size, offset)
     ).fetchall()
     return jsonify({'code': 0, 'data': {'list': [dict(row) for row in rows], 'total': total}})
 
@@ -242,13 +283,26 @@ def prod_plan_add():
 @production_bp.route('/api/prod/plan/update', methods=['POST'])
 @login_required
 def prod_plan_update():
-    return jsonify(crud_update('prod_plan', request.json))
+    data = request.get_json(silent=True) or {}
+    if 'status' in data:
+        try:
+            return jsonify({'code': 0, 'data': transition_status(get_db(), 'plan', data.get('id'), data.get('status'), session.get('user_id'))})
+        except BusinessError as exc:
+            return jsonify({'code': exc.status, 'message': str(exc)}), exc.status
+    blocked = _guard_legacy_mutation('prod_plan', data.get('id'), {0}, '已发布或已执行的生产计划不可修改')
+    if blocked:
+        return blocked
+    return jsonify(crud_update('prod_plan', data))
 
 
 @production_bp.route('/api/prod/plan/delete', methods=['POST'])
 @login_required
 def prod_plan_delete():
-    return jsonify(crud_delete('prod_plan', request.json.get('id')))
+    record_id = (request.get_json(silent=True) or {}).get('id')
+    blocked = _guard_legacy_mutation('prod_plan', record_id, {0}, '只有草稿生产计划可以删除')
+    if blocked:
+        return blocked
+    return jsonify(crud_delete('prod_plan', record_id))
 
 
 @production_bp.route('/api/prod/workorder/list')
@@ -410,13 +464,26 @@ def prod_workorder_add():
 @production_bp.route('/api/prod/workorder/update', methods=['POST'])
 @login_required
 def prod_workorder_update():
-    return jsonify(crud_update('prod_workorder', request.json))
+    data = request.get_json(silent=True) or {}
+    if 'status' in data:
+        try:
+            return jsonify({'code': 0, 'data': transition_status(get_db(), 'workorder', data.get('id'), data.get('status'), session.get('user_id'))})
+        except BusinessError as exc:
+            return jsonify({'code': exc.status, 'message': str(exc)}), exc.status
+    blocked = _guard_legacy_mutation('prod_workorder', data.get('id'), {0}, '已下达工单不可修改，请新建工单')
+    if blocked:
+        return blocked
+    return jsonify(crud_update('prod_workorder', data))
 
 
 @production_bp.route('/api/prod/workorder/delete', methods=['POST'])
 @login_required
 def prod_workorder_delete():
-    return jsonify(crud_delete('prod_workorder', request.json.get('id')))
+    record_id = (request.get_json(silent=True) or {}).get('id')
+    blocked = _guard_legacy_mutation('prod_workorder', record_id, {0}, '只有草稿工单可以删除')
+    if blocked:
+        return blocked
+    return jsonify(crud_delete('prod_workorder', record_id))
 
 
 @production_bp.route('/api/prod/task/list')
@@ -480,13 +547,26 @@ def prod_task_add():
 @production_bp.route('/api/prod/task/update', methods=['POST'])
 @login_required
 def prod_task_update():
-    return jsonify(crud_update('prod_task', request.json))
+    data = request.get_json(silent=True) or {}
+    if 'status' in data:
+        try:
+            return jsonify({'code': 0, 'data': transition_status(get_db(), 'task', data.get('id'), data.get('status'), session.get('user_id'))})
+        except BusinessError as exc:
+            return jsonify({'code': exc.status, 'message': str(exc)}), exc.status
+    blocked = _guard_legacy_mutation('prod_task', data.get('id'), {0}, '已执行任务不可修改')
+    if blocked:
+        return blocked
+    return jsonify(crud_update('prod_task', data))
 
 
 @production_bp.route('/api/prod/task/delete', methods=['POST'])
 @login_required
 def prod_task_delete():
-    return jsonify(crud_delete('prod_task', request.json.get('id')))
+    record_id = (request.get_json(silent=True) or {}).get('id')
+    blocked = _guard_legacy_mutation('prod_task', record_id, {0}, '只有待执行任务可以删除')
+    if blocked:
+        return blocked
+    return jsonify(crud_delete('prod_task', record_id))
 
 
 @production_bp.route('/api/prod/report/list')
@@ -685,7 +765,7 @@ def _report_totals(db, column, row_id):
     row = db.execute(
         f"""SELECT COALESCE(SUM(qualified_qty), 0) AS completed,
                    COALESCE(SUM(defect_qty), 0) AS defect
-            FROM prod_report WHERE {column}=?""",
+            FROM prod_report WHERE {column}=? AND approval_status=2""",
         (row_id,),
     ).fetchone()
     return {
@@ -826,8 +906,8 @@ def _create_report(data, user_id):
         cursor = db.execute(
             """INSERT INTO prod_report
                (report_no, task_id, workorder_id, process_id, user_id,
-                qualified_qty, defect_qty, remark, client_operation_id)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
+                qualified_qty, defect_qty, approval_status, posted_at, remark, client_operation_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 report_no,
                 task_id,
@@ -836,6 +916,8 @@ def _create_report(data, user_id):
                 user_id,
                 float(qualified),
                 float(defect),
+                0 if controlled else 2,
+                None if controlled else datetime.datetime.now().isoformat(sep=' ', timespec='seconds'),
                 data.get('remark'),
                 client_operation_id,
             ),
@@ -878,13 +960,16 @@ def _delete_report(report_id):
     try:
         db.execute("BEGIN IMMEDIATE")
         report = db.execute(
-            """SELECT task_id, workorder_id
+            """SELECT task_id, workorder_id, approval_status
                FROM prod_report WHERE id=?""",
             (report_id,),
         ).fetchone()
         if not report:
             db.rollback()
             return {'code': 404, 'message': '报工记录不存在'}
+        if report['approval_status'] not in (0, 3):
+            db.rollback()
+            return {'code': 400, 'message': '只有待审核或已驳回的报工可以删除'}
 
         db.execute("DELETE FROM prod_report WHERE id=?", (report_id,))
         _recalculate_task_and_workorder(
