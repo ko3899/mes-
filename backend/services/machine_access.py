@@ -53,6 +53,14 @@ def _persist_decision(db, endpoint, request, decision, context, started):
         existing = db.execute(
             'SELECT * FROM iot_machine_request WHERE dedupe_key=?', (dedupe_key,)
         ).fetchone()
+        if not existing and decision.decision == 'L1' and context.get('route_step_id'):
+            existing = db.execute(
+                '''SELECT * FROM iot_machine_request
+                   WHERE endpoint_id=? AND sn=? AND route_step_id=?
+                     AND decision='L1' AND report_status='pending'
+                   ORDER BY id DESC LIMIT 1''',
+                (_value(endpoint, 'id'), request.sn, context['route_step_id']),
+            ).fetchone()
         if existing:
             return _decision_from_row(existing)
         raise
@@ -68,7 +76,6 @@ def evaluate_access(db, endpoint, request, now=None):
     ).fetchone()
     if existing:
         return _decision_from_row(existing)
-
     context = {}
 
     def reject(code, message):
@@ -135,11 +142,22 @@ def evaluate_access(db, endpoint, request, now=None):
     if not task:
         return reject('TASK_NOT_FOUND', '当前工序没有生产任务')
     context['task_id'] = task['id']
-    if int(_value(task, 'status', 0)) in (3, 4, 5, 6):
+    if int(_value(task, 'status', 0)) != 1:
         return reject('TASK_UNAVAILABLE', '当前任务不可生产')
 
     laser = str(_value(endpoint, 'laser_template', ''))
     inspection = str(_value(endpoint, 'inspection_template', ''))
+    if request.protocol_version == 2 and (not laser or not inspection):
+        return reject('TEMPLATE_MISSING', '机台加工或检测模板未配置')
+    outstanding = db.execute(
+        '''SELECT * FROM iot_machine_request
+           WHERE endpoint_id=? AND sn=? AND route_step_id=?
+             AND decision='L1' AND report_status='pending'
+           ORDER BY id DESC LIMIT 1''',
+        (_value(endpoint, 'id'), request.sn, current['id']),
+    ).fetchone()
+    if outstanding:
+        return _decision_from_row(outstanding)
     decision = AccessDecision.allow(laser, inspection, '允许加工')
     return _persist_decision(db, endpoint, request, decision, context, started)
 
@@ -215,11 +233,19 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
 
     date_path = datetime.strptime(inspected_at, '%Y-%m-%d %H:%M:%S')
     target_dir = Path(archive_root) / date_path.strftime('%Y') / date_path.strftime('%m') / date_path.strftime('%d')
+    db.execute('BEGIN IMMEDIATE')
+    concurrent = db.execute(
+        'SELECT * FROM iot_inspection_report WHERE endpoint_id=? AND file_hash=?',
+        (_value(endpoint, 'id'), file_hash),
+    ).fetchone()
+    if concurrent:
+        db.commit()
+        return dict(concurrent)
     target_dir.mkdir(parents=True, exist_ok=True)
     safe_name = ''.join(char for char in os.path.basename(filename) if char not in '\\/:*?"<>|')
     safe_name = safe_name or f'{sn}.csv'
     target = target_dir / f'{file_hash[:12]}_{safe_name}'
-    temporary = target.with_suffix(target.suffix + '.tmp')
+    temporary = target.with_suffix(target.suffix + f'.{uuid.uuid4().hex}.tmp')
     temporary.write_bytes(csv_bytes)
     os.replace(temporary, target)
 
@@ -255,34 +281,34 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
             'UPDATE iot_inspection_report SET prod_report_id=? WHERE id=?',
             (prod_report_id, report_id),
         )
-        if result == 'OK':
-            flow = db.execute(
-                'SELECT * FROM prod_station_flow WHERE sn=? ORDER BY id DESC LIMIT 1', (sn,)
-            ).fetchone()
-            if not flow:
-                flow_id = db.execute(
-                    '''INSERT INTO prod_station_flow
-                       (flow_no,sn,product_id,workorder_id,current_station,current_process,status)
-                       VALUES(?,?,?,?,?,?,0)''',
-                    (f'SF{uuid.uuid4().hex[:16]}', sn,
-                     db.execute('SELECT product_id FROM prod_workorder WHERE id=?', (request_row['workorder_id'],)).fetchone()[0],
-                     request_row['workorder_id'], request_row['station_code'],
-                     db.execute('SELECT process_name FROM prod_workorder_route_step WHERE id=?', (request_row['route_step_id'],)).fetchone()[0]),
-                ).lastrowid
-            else:
-                flow_id = flow['id']
-            process_name = db.execute(
-                'SELECT process_name FROM prod_workorder_route_step WHERE id=?',
-                (request_row['route_step_id'],),
-            ).fetchone()[0]
-            db.execute(
-                '''INSERT INTO prod_station_record
-                   (flow_id,sn,station,process_name,action,operator,result,remark,
-                    route_step_id,machine_request_id)
-                   VALUES(?,?,?,?,?,?,?,?,?,?)''',
-                (flow_id, sn, request_row['station_code'], process_name, '过站', 1,
-                 'PASS', f'AIM报告#{report_id}', request_row['route_step_id'], request_row['id']),
-            )
+        flow = db.execute(
+            'SELECT * FROM prod_station_flow WHERE sn=? ORDER BY id DESC LIMIT 1', (sn,)
+        ).fetchone()
+        process_name = db.execute(
+            'SELECT process_name FROM prod_workorder_route_step WHERE id=?',
+            (request_row['route_step_id'],),
+        ).fetchone()[0]
+        if not flow:
+            flow_id = db.execute(
+                '''INSERT INTO prod_station_flow
+                   (flow_no,sn,product_id,workorder_id,current_station,current_process,status)
+                   VALUES(?,?,?,?,?,?,0)''',
+                (f'SF{uuid.uuid4().hex[:16]}', sn,
+                 db.execute('SELECT product_id FROM prod_workorder WHERE id=?', (request_row['workorder_id'],)).fetchone()[0],
+                 request_row['workorder_id'], request_row['station_code'], process_name),
+            ).lastrowid
+        else:
+            flow_id = flow['id']
+        db.execute(
+            '''INSERT INTO prod_station_record
+               (flow_id,sn,station,process_name,action,operator,result,remark,
+                route_step_id,machine_request_id)
+               VALUES(?,?,?,?,?,?,?,?,?,?)''',
+            (flow_id, sn, request_row['station_code'], process_name,
+             '过站' if result == 'OK' else '检测不良', 1,
+             'PASS' if result == 'OK' else 'FAIL', f'AIM报告#{report_id}',
+             request_row['route_step_id'], request_row['id']),
+        )
         db.execute(
             "UPDATE iot_machine_request SET report_status='received' WHERE id=?",
             (request_row['id'],),
@@ -290,10 +316,11 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
         db.commit()
     except Exception:
         db.rollback()
-        try:
-            target.unlink()
-        except OSError:
-            pass
+        if 'report_id' not in locals():
+            try:
+                target.unlink()
+            except OSError:
+                pass
         raise
     row = dict(db.execute('SELECT * FROM iot_inspection_report WHERE id=?', (report_id,)).fetchone())
     row['archive_path'] = str(target)

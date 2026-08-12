@@ -49,9 +49,11 @@ def client(tmp_path, monkeypatch):
 def save_endpoint(client, **overrides):
     body = {'equipment_id': client.ids['equipment'], 'protocol_version': 2,
             'bind_ip': '127.0.0.1', 'listen_port': 2004, 'station_code': 'ST01',
+            'allowed_remote_ip': '127.0.0.1',
             'process_id': client.ids['process'], 'cavity_code': 'C1',
             'encoding': 'utf-8', 'timeout_ms': 1000, 'heartbeat_seconds': 30,
-            'enabled': 1}
+            'enabled': 1, 'shared_secret': 'test-secret',
+            'laser_template': 'LASER-T1', 'inspection_template': 'CCD-T1'}
     body.update(overrides)
     return client.post('/api/iot/machine/endpoints/save', json=body)
 
@@ -66,6 +68,7 @@ def test_endpoint_crud_enriches_equipment_and_process_and_validates_port(client)
     assert listing[0]['equipment_name'] == 'AIM测试机'
     assert listing[0]['device_code'] == 'AIM001'
     assert listing[0]['process_name'] == '扫码检测'
+    assert listing[0]['allowed_remote_ip'] == '127.0.0.1'
     assert 'shared_secret' not in listing[0]
     duplicate = save_endpoint(client)
     assert duplicate.status_code == 409
@@ -73,6 +76,11 @@ def test_endpoint_crud_enriches_equipment_and_process_and_validates_port(client)
     assert address_conflict.status_code == 409
     toggled = client.post(f'/api/iot/machine/endpoints/{endpoint_id}/toggle', json={'enabled': 0})
     assert toggled.get_json()['data']['enabled'] == 0
+
+
+def test_v1_requires_remote_ip_and_v2_requires_shared_secret(client):
+    assert save_endpoint(client, protocol_version=1, allowed_remote_ip='').status_code == 400
+    assert save_endpoint(client, protocol_version=2, shared_secret='').status_code == 400
 
 
 def test_request_report_lists_health_and_multipart_upload(client):

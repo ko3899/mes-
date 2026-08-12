@@ -28,6 +28,12 @@ ENDPOINT = {
 }
 
 
+def v2_frame(device='AIM001', station='LASER01', cavity='CAVITY1', request_no='1', sn='SN001'):
+    unsigned = f'REQ|2|{device}|{station}|{cavity}|{request_no}|{sn}'
+    signature = hmac.new(b'secret-key', unsigned.encode(), hashlib.sha256).hexdigest()
+    return (unsigned + '|' + signature + '\r\n').encode()
+
+
 def test_v1_uses_endpoint_identity_and_returns_exact_legacy_response():
     request = parse_request(b'E*612201000816FB10054692B\r\n', ENDPOINT)
     assert request.protocol_version == 1
@@ -48,10 +54,8 @@ def test_noread_is_a_valid_v1_scan_failure_request():
 
 
 def test_v2_parses_identity_and_formats_enhanced_response():
-    endpoint = dict(ENDPOINT, protocol_version=2)
-    request = parse_request(
-        b'REQ|2|AIM001|LASER01|CAVITY1|000123|SN001\r\n', endpoint
-    )
+    endpoint = dict(ENDPOINT, protocol_version=2, shared_secret='secret-key')
+    request = parse_request(v2_frame(request_no='000123'), endpoint)
     decision = AccessDecision.allow('LASER-T08', 'CCD-T16', '允许加工')
     assert request.request_no == '000123'
     assert request.sn == 'SN001'
@@ -61,10 +65,8 @@ def test_v2_parses_identity_and_formats_enhanced_response():
 
 
 def test_v2_reject_response_sanitizes_delimiters_and_newlines():
-    endpoint = dict(ENDPOINT, protocol_version=2)
-    request = parse_request(
-        b'REQ|2|AIM001|LASER01|CAVITY1|9|SN001\r\n', endpoint
-    )
+    endpoint = dict(ENDPOINT, protocol_version=2, shared_secret='secret-key')
+    request = parse_request(v2_frame(request_no='9'), endpoint)
     response = format_response(
         request, AccessDecision.reject('WRONG_STEP', '错误|工序\r\n请检查')
     ).decode('utf-8')
@@ -78,14 +80,14 @@ def test_v2_reject_response_sanitizes_delimiters_and_newlines():
 ])
 def test_v2_rejects_invalid_frames(frame):
     with pytest.raises(ProtocolError):
-        parse_request(frame, dict(ENDPOINT, protocol_version=2))
+        parse_request(frame, dict(ENDPOINT, protocol_version=2, shared_secret='secret-key'))
 
 
 def test_v2_identity_must_match_endpoint():
     with pytest.raises(ProtocolError, match='设备身份'):
         parse_request(
-            b'REQ|2|OTHER|LASER01|CAVITY1|1|SN001\r\n',
-            dict(ENDPOINT, protocol_version=2),
+            v2_frame(device='OTHER'),
+            dict(ENDPOINT, protocol_version=2, shared_secret='secret-key'),
         )
 
 
@@ -112,3 +114,18 @@ def test_v2_requires_valid_hmac_when_endpoint_has_shared_secret():
         parse_request((unsigned + '|bad\r\n').encode(), endpoint)
     with pytest.raises(ProtocolError, match='签名'):
         parse_request((unsigned + '\r\n').encode(), endpoint)
+
+
+def test_endpoint_protocol_cannot_be_downgraded_and_v2_requires_secret():
+    with pytest.raises(ProtocolError, match='V2'):
+        parse_request(b'SN001\r\n', dict(ENDPOINT, protocol_version=2, shared_secret='secret'))
+    with pytest.raises(ProtocolError, match='密钥'):
+        parse_request(
+            b'REQ|2|AIM001|LASER01|CAVITY1|1|SN001\r\n',
+            dict(ENDPOINT, protocol_version=2, shared_secret=''),
+        )
+    with pytest.raises(ProtocolError, match='V1'):
+        parse_request(
+            b'REQ|2|AIM001|LASER01|CAVITY1|1|SN001\r\n',
+            ENDPOINT,
+        )

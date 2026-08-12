@@ -3,6 +3,8 @@ import socket
 import sqlite3
 import sys
 import threading
+import hashlib
+import hmac
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -16,7 +18,7 @@ from machine_socket_server import MachineSocketServer  # noqa: E402
 SCHEMA = '''
 CREATE TABLE eqp_ledger(id INTEGER PRIMARY KEY, equipment_name TEXT, code TEXT, status INTEGER);
 CREATE TABLE base_process(id INTEGER PRIMARY KEY, process_name TEXT);
-CREATE TABLE iot_machine_endpoint(id INTEGER PRIMARY KEY, equipment_id INTEGER, protocol_version INTEGER, bind_ip TEXT, listen_port INTEGER, station_code TEXT, process_id INTEGER, cavity_code TEXT, encoding TEXT, timeout_ms INTEGER, enabled INTEGER, laser_template TEXT, inspection_template TEXT, last_seen_at TEXT, last_error TEXT);
+CREATE TABLE iot_machine_endpoint(id INTEGER PRIMARY KEY, equipment_id INTEGER, protocol_version INTEGER, bind_ip TEXT, allowed_remote_ip TEXT, listen_port INTEGER, station_code TEXT, process_id INTEGER, cavity_code TEXT, encoding TEXT, timeout_ms INTEGER, enabled INTEGER, laser_template TEXT, inspection_template TEXT, shared_secret TEXT, last_seen_at TEXT, last_error TEXT);
 CREATE TABLE iot_machine_session(id INTEGER PRIMARY KEY, endpoint_id INTEGER, remote_address TEXT, connected_at TEXT DEFAULT CURRENT_TIMESTAMP, last_heartbeat_at TEXT, disconnected_at TEXT, status TEXT, request_count INTEGER DEFAULT 0, last_error TEXT);
 CREATE TABLE prod_serial(id INTEGER PRIMARY KEY, serial_no TEXT, product_id INTEGER, workorder_id INTEGER, status INTEGER);
 CREATE TABLE prod_workorder(id INTEGER PRIMARY KEY, product_id INTEGER, status INTEGER);
@@ -33,7 +35,7 @@ def make_db(path):
     db.executescript(SCHEMA)
     db.execute("INSERT INTO eqp_ledger VALUES(1,'AIM测试机','AIM001',1)")
     db.execute("INSERT INTO base_process VALUES(11,'扫码检测')")
-    db.execute("INSERT INTO iot_machine_endpoint VALUES(1,1,2,'127.0.0.1',0,'ST01',11,'C1','utf-8',1000,1,'','','','')")
+    db.execute("INSERT INTO iot_machine_endpoint VALUES(1,1,2,'127.0.0.1','127.0.0.1',0,'ST01',11,'C1','utf-8',1000,1,'LASER-T1','CCD-T1','socket-secret','','')")
     db.execute("INSERT INTO prod_serial VALUES(1,'SN001',10,1,0)")
     db.execute("INSERT INTO prod_workorder VALUES(1,10,1)")
     db.execute("INSERT INTO prod_workorder_route_snapshot VALUES(1,1)")
@@ -60,11 +62,17 @@ def exchange(address, chunks, reads=1):
         return [stream.readline() for _ in range(reads)]
 
 
+def v2_frame(request_no, sn='SN001', device='AIM001'):
+    unsigned = f'REQ|2|{device}|ST01|C1|{request_no}|{sn}'
+    signature = hmac.new(b'socket-secret', unsigned.encode(), hashlib.sha256).hexdigest()
+    return (unsigned + '|' + signature + '\r\n').encode()
+
+
 def test_v2_real_socket_handles_split_frame_and_identity(tmp_path):
     server, thread = start_server(tmp_path)
     try:
-        response = exchange(server.server_address, [
-            b'REQ|2|AIM001|ST01|C1|R1|', b'SN001\r\n'])
+        frame = v2_frame('R1')
+        response = exchange(server.server_address, [frame[:20], frame[20:]])
         assert response[0].startswith(b'ACK|2|R1|L1|OK|')
     finally:
         server.shutdown(); server.server_close(); thread.join(2)
@@ -74,21 +82,32 @@ def test_two_frames_in_one_connection_and_bad_identity_fail_closed(tmp_path):
     server, thread = start_server(tmp_path)
     try:
         responses = exchange(server.server_address, [
-            b'REQ|2|OTHER|ST01|C1|BAD|SN001\r\n'
-            b'REQ|2|AIM001|ST01|C1|R2|MISSING\r\n'], reads=2)
+            v2_frame('BAD', device='OTHER') + v2_frame('R2', sn='MISSING')], reads=2)
         assert b'|BAD|L3|PROTOCOL_ERROR|' in responses[0]
         assert b'|R2|L3|UNKNOWN_SN|' in responses[1]
     finally:
         server.shutdown(); server.server_close(); thread.join(2)
 
 
-def test_noread_and_clean_session_shutdown(tmp_path):
+def test_protocol_downgrade_and_clean_session_shutdown(tmp_path):
     server, thread = start_server(tmp_path)
     try:
         response = exchange(server.server_address, [b'NoRead\r\n'])[0]
-        assert response == b'<L3>\r\n'
+        assert b'|L3|PROTOCOL_ERROR|' in response
     finally:
         server.shutdown(); server.server_close(); thread.join(2)
     db = sqlite3.connect(server.db_path)
     session = db.execute('SELECT status,request_count FROM iot_machine_session').fetchone()
     assert session == ('offline', 1)
+
+
+def test_oversized_frame_is_rejected_and_connection_closed(tmp_path):
+    server, thread = start_server(tmp_path)
+    try:
+        with socket.create_connection(server.server_address, timeout=2) as client:
+            client.sendall((b'X' * 5000) + b'\r\n' + v2_frame('AFTER'))
+            stream = client.makefile('rb')
+            assert b'|L3|PROTOCOL_ERROR|' in stream.readline()
+            assert stream.readline() == b''
+    finally:
+        server.shutdown(); server.server_close(); thread.join(2)

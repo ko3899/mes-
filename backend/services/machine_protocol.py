@@ -72,22 +72,26 @@ def _decode_frame(frame, encoding):
 def parse_request(frame, endpoint):
     """解析一条完整报文，endpoint可以是dict或sqlite Row。"""
     text = _decode_frame(frame, str(_endpoint_value(endpoint, 'encoding', 'utf-8')))
+    configured_version = int(_endpoint_value(endpoint, 'protocol_version', 1))
     if text.startswith('REQ|'):
+        if configured_version != 2:
+            raise ProtocolError('V1端点不接受V2报文')
         parts = text.split('|')
         secret = str(_endpoint_value(endpoint, 'shared_secret', ''))
-        expected_fields = 8 if secret else 7
-        if secret and len(parts) == 7:
+        if not secret:
+            raise ProtocolError('V2端点未配置共享密钥')
+        expected_fields = 8
+        if len(parts) == 7:
             raise ProtocolError('V2报文缺少签名')
         if len(parts) != expected_fields or parts[0] != 'REQ' or parts[1] != '2':
             raise ProtocolError('V2报文字段或版本错误')
         unsigned_parts = parts[:7]
         _, _, device, station, cavity, request_no, sn = unsigned_parts
-        if secret:
-            expected_signature = hmac.new(
-                secret.encode('utf-8'), '|'.join(unsigned_parts).encode('utf-8'), hashlib.sha256
-            ).hexdigest()
-            if not hmac.compare_digest(parts[7].lower(), expected_signature):
-                raise ProtocolError('V2报文签名错误')
+        expected_signature = hmac.new(
+            secret.encode('utf-8'), '|'.join(unsigned_parts).encode('utf-8'), hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(parts[7].lower(), expected_signature):
+            raise ProtocolError('V2报文签名错误')
         if not all((device, station, cavity, request_no, sn)):
             raise ProtocolError('V2必填字段为空')
         expected = (
@@ -98,6 +102,8 @@ def parse_request(frame, endpoint):
         if (device, station, cavity) != expected:
             raise ProtocolError('设备身份与端点配置不匹配')
         return MachineRequest(2, device, station, cavity, request_no, sn)
+    if configured_version != 1:
+        raise ProtocolError('V2端点不接受V1报文')
     if '|' in text:
         raise ProtocolError('V1序列号包含非法分隔符')
     return MachineRequest(

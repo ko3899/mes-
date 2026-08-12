@@ -1241,6 +1241,7 @@ def _init_extra_tables():
         equipment_id INTEGER NOT NULL,
         protocol_version INTEGER NOT NULL DEFAULT 1,
         bind_ip TEXT NOT NULL,
+        allowed_remote_ip TEXT,
         listen_port INTEGER NOT NULL,
         station_code TEXT NOT NULL,
         process_id INTEGER NOT NULL,
@@ -1259,6 +1260,7 @@ def _init_extra_tables():
         FOREIGN KEY (equipment_id) REFERENCES eqp_ledger(id),
         FOREIGN KEY (process_id) REFERENCES base_process(id)
     )''')
+    _add_column_if_missing(db, 'iot_machine_endpoint', 'allowed_remote_ip', 'TEXT')
     db.execute('''CREATE TABLE IF NOT EXISTS prod_serial (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         serial_no TEXT NOT NULL UNIQUE,
@@ -1380,6 +1382,9 @@ def _init_extra_tables():
         'CREATE INDEX IF NOT EXISTS idx_plan_item_plan ON prod_plan_item(plan_id)',
         'CREATE UNIQUE INDEX IF NOT EXISTS idx_iot_machine_endpoint_binding ON iot_machine_endpoint(bind_ip,listen_port,station_code,cavity_code)',
         'CREATE UNIQUE INDEX IF NOT EXISTS idx_iot_machine_request_dedupe ON iot_machine_request(dedupe_key)',
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_iot_machine_pending_step
+           ON iot_machine_request(endpoint_id,sn,route_step_id)
+           WHERE decision='L1' AND report_status='pending'""",
         'CREATE UNIQUE INDEX IF NOT EXISTS idx_iot_inspection_report_hash ON iot_inspection_report(endpoint_id,file_hash)',
         'CREATE INDEX IF NOT EXISTS idx_iot_machine_request_sn ON iot_machine_request(sn,requested_at)',
         'CREATE INDEX IF NOT EXISTS idx_iot_machine_session_endpoint ON iot_machine_session(endpoint_id,status)',

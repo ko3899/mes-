@@ -39,7 +39,7 @@ def build_db():
     db.executemany("INSERT INTO prod_workorder_route_step VALUES(?,?,?,?,?)", [
         (101, 1, 11, '扫码检测', 1), (102, 1, 12, '字符检测', 2)])
     db.executemany("INSERT INTO prod_task(id,task_no,workorder_id,process_id,route_step_id,planned_qty,status) VALUES(?,?,?,?,?,?,?)", [
-        (201, 'TK1', 1, 11, 101, 5, 1), (202, 'TK2', 1, 12, 102, 5, 0)])
+        (201, 'TK1', 1, 11, 101, 5, 1), (202, 'TK2', 1, 12, 102, 5, 1)])
     db.commit()
     return db
 
@@ -47,7 +47,7 @@ def build_db():
 def endpoint(process_id=11, **values):
     data = {'id': 301, 'equipment_id': 1, 'device_code': 'AIM001', 'station_code': 'ST01',
             'process_id': process_id, 'cavity_code': 'C1', 'enabled': 1,
-            'equipment_status': 1, 'laser_template': '', 'inspection_template': ''}
+            'equipment_status': 1, 'laser_template': 'LASER-T1', 'inspection_template': 'CCD-T1'}
     data.update(values)
     return data
 
@@ -101,6 +101,31 @@ def test_duplicate_request_returns_original_decision_once():
     assert db.execute('SELECT COUNT(*) FROM iot_machine_request').fetchone()[0] == 1
 
 
+def test_v1_repeat_scan_reuses_outstanding_l1_for_same_sn():
+    db = build_db()
+    first = evaluate_access(db, endpoint(), MachineRequest(1, 'AIM001', 'ST01', 'C1', 'legacy-1', 'SN001'))
+    second = evaluate_access(db, endpoint(), MachineRequest(1, 'AIM001', 'ST01', 'C1', 'legacy-2', 'SN001'))
+    assert first == second
+    assert db.execute("SELECT COUNT(*) FROM iot_machine_request WHERE decision='L1'").fetchone()[0] == 1
+
+
+def test_v2_repeat_scan_reuses_pending_step_and_paused_task_is_rejected():
+    db = build_db()
+    assert evaluate_access(db, endpoint(), request('first')).decision == 'L1'
+    assert evaluate_access(db, endpoint(), request('second')).decision == 'L1'
+    assert db.execute("SELECT COUNT(*) FROM iot_machine_request WHERE decision='L1'").fetchone()[0] == 1
+    db = build_db()
+    db.execute('UPDATE prod_task SET status=2 WHERE id=201')
+    db.commit()
+    assert evaluate_access(db, endpoint(), request()).reason_code == 'TASK_UNAVAILABLE'
+
+
+def test_v2_requires_processing_templates():
+    db = build_db()
+    decision = evaluate_access(db, endpoint(laser_template=''), request())
+    assert decision.reason_code == 'TEMPLATE_MISSING'
+
+
 def test_repeated_process_name_is_tracked_by_frozen_route_step_id():
     db = build_db()
     db.execute("UPDATE prod_workorder_route_step SET process_name='重复检测' WHERE id IN (101,102)")
@@ -144,6 +169,7 @@ def test_ng_report_creates_defect_pending_report_and_no_pass(tmp_path):
     assert prod['qualified_qty'] == 0
     assert prod['defect_qty'] == 1
     assert db.execute("SELECT COUNT(*) FROM prod_station_record WHERE result='PASS'").fetchone()[0] == 0
+    assert db.execute("SELECT COUNT(*) FROM prod_station_record WHERE result='FAIL'").fetchone()[0] == 1
 
 
 def test_report_rejects_missing_l1_sn_mismatch_bad_header_and_duplicate(tmp_path):

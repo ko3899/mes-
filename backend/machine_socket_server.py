@@ -23,6 +23,7 @@ class MachineRequestHandler(socketserver.StreamRequestHandler):
         super().setup()
         self.db = sqlite3.connect(self.server.db_path, timeout=5)
         self.db.row_factory = sqlite3.Row
+        self.db.execute('PRAGMA busy_timeout=900')
         self.endpoint = _row_dict(self.db.execute(
             '''SELECT e.*,q.code AS device_code,q.status AS equipment_status,
                       q.equipment_name,p.process_name
@@ -31,6 +32,10 @@ class MachineRequestHandler(socketserver.StreamRequestHandler):
                LEFT JOIN base_process p ON p.id=e.process_id WHERE e.id=?''',
             (self.server.endpoint_id,),
         ).fetchone())
+        allowed_remote = str(self.endpoint.get('allowed_remote_ip') or '').strip()
+        if allowed_remote and self.client_address[0] != allowed_remote:
+            self.db.close()
+            raise ConnectionRefusedError('远端IP不在端点白名单')
         remote = f'{self.client_address[0]}:{self.client_address[1]}'
         self.session_id = self.db.execute(
             '''INSERT INTO iot_machine_session(endpoint_id,remote_address,status,last_heartbeat_at)
@@ -52,9 +57,10 @@ class MachineRequestHandler(socketserver.StreamRequestHandler):
         except Exception:
             pass
         parts = text.split('|')
-        if len(parts) > 5 and parts[0] == 'REQ':
+        if int(self.endpoint.get('protocol_version') or 1) == 2:
             request = MachineRequest(2, self.endpoint['device_code'], self.endpoint['station_code'],
-                                     self.endpoint['cavity_code'], parts[5] or 'UNKNOWN', '')
+                                     self.endpoint['cavity_code'],
+                                     parts[5] if len(parts) > 5 and parts[5] else 'UNKNOWN', '')
         else:
             request = MachineRequest(1, self.endpoint['device_code'], self.endpoint['station_code'],
                                      self.endpoint['cavity_code'], 'UNKNOWN', '')
@@ -67,6 +73,10 @@ class MachineRequestHandler(socketserver.StreamRequestHandler):
             except OSError:
                 break
             if not frame:
+                break
+            if len(frame) >= 4099 and not frame.endswith(b'\n'):
+                self.wfile.write(self._protocol_failure(frame, ProtocolError('报文过长')))
+                self.wfile.flush()
                 break
             try:
                 machine_request = parse_request(frame, self.endpoint)
@@ -140,4 +150,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

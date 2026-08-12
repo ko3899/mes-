@@ -68,11 +68,19 @@ function machineEndpointLoad(body) {
                 + '</td><td>' + machineEscape(row.cavity_code) + '</td><td>' + machineEscape(row.bind_ip + ':' + row.listen_port)
                 + '</td><td>V' + machineEscape(row.protocol_version) + '</td><td>'
                 + (row.enabled ? '<span class="tag tag-ok">启用</span>' : '<span class="tag tag-draft">停用</span>')
-                + '</td><td><button class="btn btn-blue btn-sm" onclick="machineEndpointEditJson(\'' + encoded + '\')">编辑</button> '
-                + '<button class="btn btn-gray btn-sm" onclick="machineEndpointToggle(' + row.id + ',' + (row.enabled ? 0 : 1) + ')">'
+                + '</td><td><button class="btn btn-blue btn-sm machine-endpoint-edit" data-endpoint="' + machineEscape(encoded) + '">编辑</button> '
+                + '<button class="btn btn-gray btn-sm machine-endpoint-toggle" data-id="' + Number(row.id) + '" data-enabled="' + (row.enabled ? 0 : 1) + '">'
                 + (row.enabled ? '停用' : '启用') + '</button></td></tr>';
         });
         body.innerHTML = machineTable(['ID','设备','工站','工序','穴位','监听地址','协议','状态','操作'], rows);
+        body.querySelectorAll('.machine-endpoint-edit').forEach(function(button) {
+            button.onclick = function() { machineEndpointEditJson(button.getAttribute('data-endpoint')); };
+        });
+        body.querySelectorAll('.machine-endpoint-toggle').forEach(function(button) {
+            button.onclick = function() {
+                machineEndpointToggle(Number(button.getAttribute('data-id')), Number(button.getAttribute('data-enabled')));
+            };
+        });
     });
 }
 
@@ -133,6 +141,7 @@ function machineEndpointEdit(row) {
             + '<div class="form-item"><label>穴位 *</label><input id="miCavity" value="' + machineEscape(row && row.cavity_code || 'C1') + '"></div></div>'
             + '<div class="form-row"><div class="form-item"><label>监听IP *</label><input id="miIp" value="' + machineEscape(row && row.bind_ip || '0.0.0.0') + '"></div>'
             + '<div class="form-item"><label>端口 *</label><input type="number" id="miPort" value="' + machineEscape(row && row.listen_port || 2004) + '"></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>机台来源IP</label><input id="miRemoteIp" value="' + machineEscape(row && row.allowed_remote_ip || '') + '" placeholder="V1正式生产建议必填"></div></div>'
             + '<div class="form-row"><div class="form-item"><label>协议</label><select id="miProtocol"><option value="1">V1 原协议</option><option value="2"' + (row && Number(row.protocol_version) === 2 ? ' selected' : '') + '>V2 增强协议</option></select></div>'
             + '<div class="form-item"><label>编码</label><select id="miEncoding"><option value="utf-8">UTF-8</option><option value="gbk"' + (row && row.encoding === 'gbk' ? ' selected' : '') + '>GBK</option></select></div></div>'
             + '<div class="form-row"><div class="form-item"><label>V2共享密钥</label><input type="password" id="miSecret" placeholder="' + (row && row.shared_secret_configured ? '已配置，留空保持不变' : '可选') + '"></div>'
@@ -146,6 +155,7 @@ function machineEndpointSave(id) {
     var payload = {id:id, equipment_id:document.getElementById('miEquipment').value,
         process_id:document.getElementById('miProcess').value, station_code:document.getElementById('miStation').value,
         cavity_code:document.getElementById('miCavity').value, bind_ip:document.getElementById('miIp').value,
+        allowed_remote_ip:document.getElementById('miRemoteIp').value,
         listen_port:Number(document.getElementById('miPort').value), protocol_version:Number(document.getElementById('miProtocol').value),
         encoding:document.getElementById('miEncoding').value, timeout_ms:1000, heartbeat_seconds:30, enabled:1,
         shared_secret:document.getElementById('miSecret').value,

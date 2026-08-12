@@ -1,12 +1,13 @@
 """AIM机台通讯配置、监控和检测报告API。"""
 import os
 import sqlite3
+import ipaddress
 
 from flask import Blueprint, jsonify, request
 
 from services.machine_access import import_inspection_report
 from utils.database import get_db
-from utils.helpers import login_required
+from utils.helpers import admin_required, login_required
 
 
 machine_iot_bp = Blueprint('machine_iot', __name__)
@@ -51,7 +52,7 @@ def endpoint_list():
 
 
 @machine_iot_bp.route('/api/iot/machine/endpoints/save', methods=['POST'])
-@login_required
+@admin_required
 def endpoint_save():
     data = request.get_json(silent=True) or {}
     try:
@@ -65,6 +66,7 @@ def endpoint_save():
     except (TypeError, ValueError):
         return jsonify({'code': 400, 'message': '设备、工序、端口和数值参数不合法'}), 400
     bind_ip = str(data.get('bind_ip', '')).strip()
+    allowed_remote_ip = str(data.get('allowed_remote_ip', '')).strip() or None
     station = str(data.get('station_code', '')).strip()
     cavity = str(data.get('cavity_code', '1')).strip()
     encoding = str(data.get('encoding', 'utf-8')).lower().strip()
@@ -74,14 +76,23 @@ def endpoint_save():
         return jsonify({'code': 400, 'message': 'IP、工站、穴位或编码不合法'}), 400
     if not (500 <= timeout_ms <= 5000) or not (5 <= heartbeat <= 3600):
         return jsonify({'code': 400, 'message': '超时或心跳参数超出范围'}), 400
+    try:
+        ipaddress.ip_address(bind_ip)
+        if allowed_remote_ip:
+            ipaddress.ip_address(allowed_remote_ip)
+    except ValueError:
+        return jsonify({'code': 400, 'message': '监听IP或机台来源IP格式不合法'}), 400
+    if protocol == 1 and enabled and not allowed_remote_ip:
+        return jsonify({'code': 400, 'message': 'V1端点必须配置机台来源IP白名单'}), 400
     db = get_db()
     equipment = db.execute('SELECT code FROM eqp_ledger WHERE id=?', (equipment_id,)).fetchone()
     process = db.execute('SELECT id FROM base_process WHERE id=?', (process_id,)).fetchone()
     if not equipment or not process:
         return jsonify({'code': 400, 'message': '设备或工序不存在'}), 400
     conflict = db.execute(
-        '''SELECT id FROM iot_machine_endpoint WHERE bind_ip=? AND listen_port=?
-           AND id<>?''', (bind_ip, port, int(data.get('id') or 0))
+        '''SELECT id FROM iot_machine_endpoint WHERE listen_port=?
+           AND (bind_ip=? OR bind_ip='0.0.0.0' OR ?='0.0.0.0') AND id<>?''',
+        (port, bind_ip, bind_ip, int(data.get('id') or 0))
     ).fetchone()
     if conflict:
         return jsonify({'code': 409, 'message': '该监听IP和端口已被其他通讯端点占用'}), 409
@@ -92,7 +103,9 @@ def endpoint_save():
             (int(data['id']),),
         ).fetchone()
         shared_secret = current['shared_secret'] if current else None
-    values = (equipment_id, protocol, bind_ip, port, station, process_id, cavity,
+    if protocol == 2 and enabled and not shared_secret:
+        return jsonify({'code': 400, 'message': 'V2端点必须配置共享密钥'}), 400
+    values = (equipment_id, protocol, bind_ip, allowed_remote_ip, port, station, process_id, cavity,
               encoding, timeout_ms, heartbeat, data.get('laser_template'),
               data.get('inspection_template'), shared_secret, enabled)
     try:
@@ -100,17 +113,17 @@ def endpoint_save():
             endpoint_id = int(data['id'])
             db.execute(
                 '''UPDATE iot_machine_endpoint SET equipment_id=?,protocol_version=?,
-                   bind_ip=?,listen_port=?,station_code=?,process_id=?,cavity_code=?,
+                   bind_ip=?,allowed_remote_ip=?,listen_port=?,station_code=?,process_id=?,cavity_code=?,
                    encoding=?,timeout_ms=?,heartbeat_seconds=?,laser_template=?,
                    inspection_template=?,shared_secret=?,enabled=?,updated_at=CURRENT_TIMESTAMP
                    WHERE id=?''', values + (endpoint_id,))
         else:
             endpoint_id = db.execute(
                 '''INSERT INTO iot_machine_endpoint
-                   (equipment_id,protocol_version,bind_ip,listen_port,station_code,
+                   (equipment_id,protocol_version,bind_ip,allowed_remote_ip,listen_port,station_code,
                     process_id,cavity_code,encoding,timeout_ms,heartbeat_seconds,
                     laser_template,inspection_template,shared_secret,enabled)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', values
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', values
             ).lastrowid
         db.commit()
     except sqlite3.IntegrityError:
@@ -120,7 +133,7 @@ def endpoint_save():
 
 
 @machine_iot_bp.route('/api/iot/machine/endpoints/<int:endpoint_id>/toggle', methods=['POST'])
-@login_required
+@admin_required
 def endpoint_toggle(endpoint_id):
     enabled = 1 if int((request.get_json(silent=True) or {}).get('enabled', 0)) else 0
     db = get_db()
@@ -185,7 +198,7 @@ def report_list():
 
 
 @machine_iot_bp.route('/api/iot/machine/reports/upload', methods=['POST'])
-@login_required
+@admin_required
 def report_upload():
     try:
         endpoint_id = int(request.form.get('endpoint_id'))
