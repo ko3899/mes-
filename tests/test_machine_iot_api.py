@@ -83,6 +83,22 @@ def test_v1_requires_remote_ip_and_v2_requires_shared_secret(client):
     assert save_endpoint(client, protocol_version=2, shared_secret='').status_code == 400
 
 
+def test_csv_directory_must_be_absolute_unique_and_stable_seconds_bounded(client, tmp_path):
+    assert save_endpoint(client, csv_input_dir='relative/results').status_code == 400
+    assert save_endpoint(client, csv_input_dir=str(tmp_path / 'aim'), csv_stable_seconds=0).status_code == 400
+    saved = save_endpoint(client, csv_input_dir=str(tmp_path / 'aim'), csv_stable_seconds=3)
+    assert saved.status_code == 200
+    data = saved.get_json()['data']
+    assert data['csv_input_dir'] == str((tmp_path / 'aim').resolve())
+    assert data['csv_stable_seconds'] == 3
+    assert data['csv_directory_exists'] is False
+    duplicate = save_endpoint(
+        client, bind_ip='127.0.0.2', listen_port=2005, station_code='ST02',
+        cavity_code='C2', csv_input_dir=str(tmp_path / 'aim'), csv_stable_seconds=3,
+    )
+    assert duplicate.status_code == 409
+
+
 def test_request_report_lists_health_and_multipart_upload(client):
     endpoint_id = save_endpoint(client).get_json()['data']['id']
     db = sqlite3.connect(database.DB_PATH)

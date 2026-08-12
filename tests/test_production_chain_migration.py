@@ -50,6 +50,7 @@ def test_extra_migration_preserves_legacy_rows_and_adds_snapshots(tmp_path, monk
         'equipment_id', 'protocol_version', 'bind_ip', 'listen_port',
         'station_code', 'process_id', 'cavity_code', 'enabled',
         'allowed_remote_ip',
+        'csv_input_dir', 'csv_stable_seconds',
     } <= column_names(db, 'iot_machine_endpoint')
     assert {
         'request_no', 'sn', 'decision', 'reason_code', 'dedupe_key',

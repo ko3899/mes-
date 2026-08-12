@@ -2,6 +2,7 @@
 import os
 import sqlite3
 import ipaddress
+from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
@@ -17,6 +18,7 @@ def _public_endpoint(row):
     data = dict(row)
     data.pop('shared_secret', None)
     data['shared_secret_configured'] = bool(row['shared_secret'])
+    data['csv_directory_exists'] = bool(data.get('csv_input_dir') and Path(data['csv_input_dir']).is_dir())
     return data
 
 
@@ -62,6 +64,7 @@ def endpoint_save():
         port = int(data.get('listen_port'))
         timeout_ms = int(data.get('timeout_ms', 1000))
         heartbeat = int(data.get('heartbeat_seconds', 30))
+        csv_stable_seconds = int(data.get('csv_stable_seconds', 2))
         enabled = 1 if int(data.get('enabled', 1)) else 0
     except (TypeError, ValueError):
         return jsonify({'code': 400, 'message': '设备、工序、端口和数值参数不合法'}), 400
@@ -70,12 +73,18 @@ def endpoint_save():
     station = str(data.get('station_code', '')).strip()
     cavity = str(data.get('cavity_code', '1')).strip()
     encoding = str(data.get('encoding', 'utf-8')).lower().strip()
+    raw_csv_dir = str(data.get('csv_input_dir', '')).strip()
+    if raw_csv_dir and not Path(raw_csv_dir).is_absolute():
+        return jsonify({'code': 400, 'message': 'CSV输入目录必须是绝对路径'}), 400
+    csv_input_dir = str(Path(raw_csv_dir).resolve()) if raw_csv_dir else None
     if protocol not in (1, 2) or not (1 <= port <= 65535):
         return jsonify({'code': 400, 'message': '协议版本或监听端口不合法'}), 400
     if not bind_ip or not station or not cavity or encoding not in ('utf-8', 'gbk'):
         return jsonify({'code': 400, 'message': 'IP、工站、穴位或编码不合法'}), 400
     if not (500 <= timeout_ms <= 5000) or not (5 <= heartbeat <= 3600):
         return jsonify({'code': 400, 'message': '超时或心跳参数超出范围'}), 400
+    if not (1 <= csv_stable_seconds <= 60):
+        return jsonify({'code': 400, 'message': 'CSV稳定秒数必须在1到60之间'}), 400
     try:
         ipaddress.ip_address(bind_ip)
         if allowed_remote_ip:
@@ -96,6 +105,14 @@ def endpoint_save():
     ).fetchone()
     if conflict:
         return jsonify({'code': 409, 'message': '该监听IP和端口已被其他通讯端点占用'}), 409
+    if csv_input_dir and enabled:
+        directory_conflict = db.execute(
+            '''SELECT id FROM iot_machine_endpoint
+               WHERE enabled=1 AND csv_input_dir=? AND id<>?''',
+            (csv_input_dir, int(data.get('id') or 0)),
+        ).fetchone()
+        if directory_conflict:
+            return jsonify({'code': 409, 'message': '该CSV输入目录已绑定其他启用端点'}), 409
     shared_secret = data.get('shared_secret')
     if data.get('id') and not shared_secret:
         current = db.execute(
@@ -107,7 +124,8 @@ def endpoint_save():
         return jsonify({'code': 400, 'message': 'V2端点必须配置共享密钥'}), 400
     values = (equipment_id, protocol, bind_ip, allowed_remote_ip, port, station, process_id, cavity,
               encoding, timeout_ms, heartbeat, data.get('laser_template'),
-              data.get('inspection_template'), shared_secret, enabled)
+              data.get('inspection_template'), shared_secret, csv_input_dir,
+              csv_stable_seconds, enabled)
     try:
         if data.get('id'):
             endpoint_id = int(data['id'])
@@ -115,15 +133,17 @@ def endpoint_save():
                 '''UPDATE iot_machine_endpoint SET equipment_id=?,protocol_version=?,
                    bind_ip=?,allowed_remote_ip=?,listen_port=?,station_code=?,process_id=?,cavity_code=?,
                    encoding=?,timeout_ms=?,heartbeat_seconds=?,laser_template=?,
-                   inspection_template=?,shared_secret=?,enabled=?,updated_at=CURRENT_TIMESTAMP
+                   inspection_template=?,shared_secret=?,csv_input_dir=?,csv_stable_seconds=?,
+                   enabled=?,updated_at=CURRENT_TIMESTAMP
                    WHERE id=?''', values + (endpoint_id,))
         else:
             endpoint_id = db.execute(
                 '''INSERT INTO iot_machine_endpoint
                    (equipment_id,protocol_version,bind_ip,allowed_remote_ip,listen_port,station_code,
                     process_id,cavity_code,encoding,timeout_ms,heartbeat_seconds,
-                    laser_template,inspection_template,shared_secret,enabled)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', values
+                    laser_template,inspection_template,shared_secret,csv_input_dir,
+                    csv_stable_seconds,enabled)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', values
             ).lastrowid
         db.commit()
     except sqlite3.IntegrityError:

@@ -1252,6 +1252,8 @@ def _init_extra_tables():
         laser_template TEXT,
         inspection_template TEXT,
         shared_secret TEXT,
+        csv_input_dir TEXT,
+        csv_stable_seconds INTEGER NOT NULL DEFAULT 2,
         enabled INTEGER NOT NULL DEFAULT 1,
         last_seen_at TIMESTAMP,
         last_error TEXT,
@@ -1261,6 +1263,8 @@ def _init_extra_tables():
         FOREIGN KEY (process_id) REFERENCES base_process(id)
     )''')
     _add_column_if_missing(db, 'iot_machine_endpoint', 'allowed_remote_ip', 'TEXT')
+    _add_column_if_missing(db, 'iot_machine_endpoint', 'csv_input_dir', 'TEXT')
+    _add_column_if_missing(db, 'iot_machine_endpoint', 'csv_stable_seconds', 'INTEGER NOT NULL DEFAULT 2')
     db.execute('''CREATE TABLE IF NOT EXISTS prod_serial (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         serial_no TEXT NOT NULL UNIQUE,
