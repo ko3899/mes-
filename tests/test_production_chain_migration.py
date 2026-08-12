@@ -33,7 +33,8 @@ def test_extra_migration_preserves_legacy_rows_and_adds_snapshots(tmp_path, monk
         'sys_business_status_log',
         'iot_machine_endpoint', 'iot_machine_session',
         'iot_machine_request', 'iot_inspection_report',
-        'iot_inspection_value',
+        'iot_inspection_value', 'prod_serial', 'prod_station_flow',
+        'prod_station_record',
     } <= table_names(db)
     assert {'workshop_id', 'version'} <= column_names(db, 'base_process_route')
     assert {'workshop_id', 'is_inspection_point'} <= column_names(db, 'base_process_route_detail')

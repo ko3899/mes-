@@ -1259,6 +1259,41 @@ def _init_extra_tables():
         FOREIGN KEY (equipment_id) REFERENCES eqp_ledger(id),
         FOREIGN KEY (process_id) REFERENCES base_process(id)
     )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_serial (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        serial_no TEXT NOT NULL UNIQUE,
+        product_id INTEGER NOT NULL,
+        workorder_id INTEGER,
+        status INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (product_id) REFERENCES base_product(id),
+        FOREIGN KEY (workorder_id) REFERENCES prod_workorder(id)
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_station_flow (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        flow_no TEXT NOT NULL UNIQUE,
+        sn TEXT,
+        product_id INTEGER,
+        workorder_id INTEGER,
+        current_station TEXT,
+        current_process TEXT,
+        status INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_station_record (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        flow_id INTEGER NOT NULL,
+        sn TEXT,
+        station TEXT NOT NULL,
+        process_name TEXT,
+        action TEXT NOT NULL,
+        operator INTEGER,
+        result TEXT,
+        remark TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (flow_id) REFERENCES prod_station_flow(id)
+    )''')
     db.execute('''CREATE TABLE IF NOT EXISTS iot_machine_session (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         endpoint_id INTEGER NOT NULL,
