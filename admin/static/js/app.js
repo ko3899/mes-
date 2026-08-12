@@ -401,6 +401,7 @@ function renderPage(key) {
         'prod/task': function(e){renderTask(e)},
         'prod/report': function(e){renderReport2(e)},
         'eqp/ledger': function(e){renderEqp(e)},
+        'eqp/machine-iot': function(e){renderMachineIot(e)},
         'eqp/repair': function(e){renderRepair(e)},
         'eqp/maintenance': function(e){renderMaintenance(e)},
         'eqp/check': function(e){renderCheckList(e)},
