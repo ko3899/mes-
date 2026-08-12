@@ -10,7 +10,12 @@ BACKEND_ROOT = os.path.join(PROJECT_ROOT, 'backend')
 if BACKEND_ROOT not in sys.path:
     sys.path.insert(0, BACKEND_ROOT)
 
-from services.machine_access import evaluate_access, import_inspection_report  # noqa: E402
+from services.machine_access import (  # noqa: E402
+    evaluate_access,
+    import_inspection_report,
+    record_failed_inspection,
+    retry_inspection_report,
+)
 from services.machine_protocol import MachineRequest  # noqa: E402
 
 
@@ -193,3 +198,50 @@ def test_report_rejects_missing_l1_sn_mismatch_bad_header_and_duplicate(tmp_path
     second = import_inspection_report(db, endpoint(), make_csv(), 'renamed.csv', tmp_path)
     assert second['id'] == first['id']
     assert db.execute('SELECT COUNT(*) FROM iot_inspection_report').fetchone()[0] == 1
+
+
+def test_records_unparseable_report_failure_without_production_side_effects(tmp_path):
+    db = build_db()
+    failed_dir = tmp_path / 'input' / '_failed'
+    failed_dir.mkdir(parents=True)
+    failed_path = failed_dir / 'broken.csv'
+    failed_path.write_bytes(b'bad,header\n1,2\n')
+    row = record_failed_inspection(
+        db, endpoint(csv_input_dir=str(tmp_path / 'input')),
+        failed_path.read_bytes(), failed_path.name, failed_path, 'CSV表头错误',
+    )
+    assert row['import_status'] == 'failed'
+    assert row['sn'] == 'UNKNOWN'
+    assert row['failure_reason'] == 'CSV表头错误'
+    assert row['archive_path'] == str(failed_path.resolve())
+    assert db.execute('SELECT COUNT(*) FROM prod_report').fetchone()[0] == 0
+    duplicate = record_failed_inspection(
+        db, endpoint(csv_input_dir=str(tmp_path / 'input')),
+        failed_path.read_bytes(), 'renamed.csv', failed_path, '仍然失败',
+    )
+    assert duplicate['id'] == row['id']
+
+
+def test_retry_updates_same_failed_report_after_l1_becomes_available(tmp_path):
+    db = build_db()
+    input_dir = tmp_path / 'input'
+    failed_dir = input_dir / '_failed'
+    archive = tmp_path / 'archive'
+    failed_dir.mkdir(parents=True)
+    failed_path = failed_dir / 'SN001.csv'
+    failed_path.write_bytes(make_csv())
+    failed = record_failed_inspection(
+        db, endpoint(csv_input_dir=str(input_dir)), make_csv(), failed_path.name,
+        failed_path, '没有对应的L1准入请求',
+    )
+    evaluate_access(db, endpoint(), request('RETRY-L1'))
+    retried = retry_inspection_report(
+        db, endpoint(csv_input_dir=str(input_dir)), failed['id'], archive,
+    )
+    assert retried['id'] == failed['id']
+    assert retried['import_status'] == 'imported'
+    assert retried['retry_count'] == 1
+    assert retried['failure_reason'] is None
+    assert not failed_path.exists()
+    assert db.execute('SELECT COUNT(*) FROM iot_inspection_report').fetchone()[0] == 1
+    assert db.execute('SELECT COUNT(*) FROM prod_report').fetchone()[0] == 1

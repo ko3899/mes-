@@ -190,7 +190,71 @@ def _normalize_result(value):
     raise ValueError('检测结果必须是OK/NG或1/0')
 
 
-def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, now=None):
+def _failure_request_id(db, endpoint, file_hash, sn='UNKNOWN'):
+    dedupe_key = f"{_value(endpoint, 'id')}:file-failure:{file_hash}"
+    existing = db.execute(
+        'SELECT id FROM iot_machine_request WHERE dedupe_key=?', (dedupe_key,)
+    ).fetchone()
+    if existing:
+        return existing[0]
+    return db.execute(
+        '''INSERT INTO iot_machine_request
+           (endpoint_id,request_no,protocol_version,station_code,cavity_code,sn,
+            decision,reason_code,reason_message,elapsed_ms,dedupe_key,report_status)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
+        (_value(endpoint, 'id'), f'FILE-{file_hash[:20]}',
+         int(_value(endpoint, 'protocol_version', 1)),
+         str(_value(endpoint, 'station_code', 'UNKNOWN')),
+         str(_value(endpoint, 'cavity_code', 'UNKNOWN')), sn or 'UNKNOWN',
+         'L3', 'REPORT_IMPORT_FAILED', '检测报告导入失败', 0, dedupe_key,
+         'not_required'),
+    ).lastrowid
+
+
+def record_failed_inspection(db, endpoint, csv_bytes, filename, failure_path, reason):
+    """持久化隔离文件；同一端点相同内容只保留一条失败记录。"""
+    file_hash = hashlib.sha256(csv_bytes).hexdigest()
+    existing = db.execute(
+        'SELECT * FROM iot_inspection_report WHERE endpoint_id=? AND file_hash=?',
+        (_value(endpoint, 'id'), file_hash),
+    ).fetchone()
+    if existing:
+        return dict(existing)
+    sn, inspected_at, result = 'UNKNOWN', datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'UNKNOWN'
+    try:
+        rows = list(csv.reader(io.StringIO(_decode_csv(csv_bytes))))
+        if (len(rows) > 1 and len(rows[0]) >= 4
+                and tuple(cell.strip() for cell in rows[0][:4]) == REQUIRED_CSV_HEADERS):
+            values = rows[1]
+            sn = values[0].strip() or sn
+            if len(values) > 2:
+                inspected_at = _parse_inspected_at(values[1], values[2])
+            if len(values) > 3:
+                result = _normalize_result(values[3])
+    except (ValueError, IndexError):
+        pass
+    try:
+        request_id = _failure_request_id(db, endpoint, file_hash, sn)
+        report_id = db.execute(
+            '''INSERT INTO iot_inspection_report
+               (request_id,endpoint_id,sn,inspected_at,result,original_filename,
+                archive_path,file_hash,import_status,failure_reason)
+               VALUES(?,?,?,?,?,?,?,?,?,?)''',
+            (request_id, _value(endpoint, 'id'), sn, inspected_at, result,
+             os.path.basename(filename), str(Path(failure_path).resolve()), file_hash,
+             'failed', str(reason)[:1000]),
+        ).lastrowid
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return dict(db.execute(
+        'SELECT * FROM iot_inspection_report WHERE id=?', (report_id,)
+    ).fetchone())
+
+
+def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, now=None,
+                             _retry_report_id=None):
     """验证、归档和导入单件AIM检测报告。"""
     if not csv_bytes:
         raise ValueError('CSV文件为空')
@@ -200,7 +264,7 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
            WHERE endpoint_id=? AND file_hash=?''',
         (_value(endpoint, 'id'), file_hash),
     ).fetchone()
-    if existing:
+    if existing and int(existing['id']) != int(_retry_report_id or 0):
         return dict(existing)
 
     rows = list(csv.reader(io.StringIO(_decode_csv(csv_bytes))))
@@ -235,8 +299,9 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
     target_dir = Path(archive_root) / date_path.strftime('%Y') / date_path.strftime('%m') / date_path.strftime('%d')
     db.execute('BEGIN IMMEDIATE')
     concurrent = db.execute(
-        'SELECT * FROM iot_inspection_report WHERE endpoint_id=? AND file_hash=?',
-        (_value(endpoint, 'id'), file_hash),
+        '''SELECT * FROM iot_inspection_report
+           WHERE endpoint_id=? AND file_hash=? AND id<>?''',
+        (_value(endpoint, 'id'), file_hash, int(_retry_report_id or 0)),
     ).fetchone()
     if concurrent:
         db.commit()
@@ -250,14 +315,25 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
     os.replace(temporary, target)
 
     try:
-        report_id = db.execute(
-            '''INSERT INTO iot_inspection_report
-               (request_id,endpoint_id,sn,inspected_at,result,original_filename,
-                archive_path,file_hash,import_status)
-               VALUES(?,?,?,?,?,?,?,?,?)''',
-            (request_row['id'], _value(endpoint, 'id'), sn, inspected_at, result,
-             os.path.basename(filename), str(target), file_hash, 'imported'),
-        ).lastrowid
+        if _retry_report_id:
+            report_id = int(_retry_report_id)
+            db.execute('DELETE FROM iot_inspection_value WHERE report_id=?', (report_id,))
+            db.execute(
+                '''UPDATE iot_inspection_report SET request_id=?,sn=?,inspected_at=?,result=?,
+                   original_filename=?,archive_path=?,file_hash=?,import_status='imported',
+                   failure_reason=NULL,retry_count=retry_count+1 WHERE id=?''',
+                (request_row['id'], sn, inspected_at, result, os.path.basename(filename),
+                 str(target), file_hash, report_id),
+            )
+        else:
+            report_id = db.execute(
+                '''INSERT INTO iot_inspection_report
+                   (request_id,endpoint_id,sn,inspected_at,result,original_filename,
+                    archive_path,file_hash,import_status)
+                   VALUES(?,?,?,?,?,?,?,?,?)''',
+                (request_row['id'], _value(endpoint, 'id'), sn, inspected_at, result,
+                 os.path.basename(filename), str(target), file_hash, 'imported'),
+            ).lastrowid
         for item_code, measured_value in zip(headers[4:], values[4:]):
             db.execute(
                 '''INSERT INTO iot_inspection_value
@@ -325,3 +401,48 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
     row = dict(db.execute('SELECT * FROM iot_inspection_report WHERE id=?', (report_id,)).fetchone())
     row['archive_path'] = str(target)
     return row
+
+
+def retry_inspection_report(db, endpoint, report_id, archive_root):
+    """使用服务器保存的隔离路径重试，成功后更新原失败记录。"""
+    row = db.execute(
+        'SELECT * FROM iot_inspection_report WHERE id=? AND endpoint_id=?',
+        (int(report_id), _value(endpoint, 'id')),
+    ).fetchone()
+    if not row or row['import_status'] != 'failed':
+        raise ValueError('失败报告不存在或状态不可重试')
+    source = Path(row['archive_path']).resolve()
+    input_dir = Path(str(_value(endpoint, 'csv_input_dir', ''))).resolve()
+    failed_root = (input_dir / '_failed').resolve()
+    archive_resolved = Path(archive_root).resolve()
+    def is_within(path, root):
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            return False
+
+    if not (is_within(source, failed_root) or is_within(source, archive_resolved)):
+        raise ValueError('失败报告路径不在允许目录内')
+    if not source.is_file():
+        raise ValueError('失败报告原文件不存在')
+    payload = source.read_bytes()
+    try:
+        result = import_inspection_report(
+            db, endpoint, payload, row['original_filename'], archive_root,
+            _retry_report_id=row['id'],
+        )
+    except Exception as exc:
+        db.rollback()
+        db.execute(
+            '''UPDATE iot_inspection_report SET retry_count=retry_count+1,
+               failure_reason=? WHERE id=?''', (str(exc)[:1000], row['id']),
+        )
+        db.commit()
+        raise
+    try:
+        if source != Path(result['archive_path']).resolve():
+            source.unlink()
+    except OSError:
+        pass
+    return result
