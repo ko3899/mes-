@@ -134,7 +134,9 @@ function machineEndpointEdit(row) {
             + '<div class="form-row"><div class="form-item"><label>监听IP *</label><input id="miIp" value="' + machineEscape(row && row.bind_ip || '0.0.0.0') + '"></div>'
             + '<div class="form-item"><label>端口 *</label><input type="number" id="miPort" value="' + machineEscape(row && row.listen_port || 2004) + '"></div></div>'
             + '<div class="form-row"><div class="form-item"><label>协议</label><select id="miProtocol"><option value="1">V1 原协议</option><option value="2"' + (row && Number(row.protocol_version) === 2 ? ' selected' : '') + '>V2 增强协议</option></select></div>'
-            + '<div class="form-item"><label>编码</label><select id="miEncoding"><option value="utf-8">UTF-8</option><option value="gbk"' + (row && row.encoding === 'gbk' ? ' selected' : '') + '>GBK</option></select></div></div>';
+            + '<div class="form-item"><label>编码</label><select id="miEncoding"><option value="utf-8">UTF-8</option><option value="gbk"' + (row && row.encoding === 'gbk' ? ' selected' : '') + '>GBK</option></select></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>V2共享密钥</label><input type="password" id="miSecret" placeholder="' + (row && row.shared_secret_configured ? '已配置，留空保持不变' : '可选') + '"></div>'
+            + '<div class="form-item"><label>检测模板</label><input id="miTemplate" value="' + machineEscape(row && row.inspection_template || '') + '" placeholder="CCD模板编号"></div></div>';
         modalSaveHandler = function(){ machineEndpointSave(row && row.id); };
         document.getElementById('modal').classList.add('show');
     });
@@ -145,7 +147,9 @@ function machineEndpointSave(id) {
         process_id:document.getElementById('miProcess').value, station_code:document.getElementById('miStation').value,
         cavity_code:document.getElementById('miCavity').value, bind_ip:document.getElementById('miIp').value,
         listen_port:Number(document.getElementById('miPort').value), protocol_version:Number(document.getElementById('miProtocol').value),
-        encoding:document.getElementById('miEncoding').value, timeout_ms:1000, heartbeat_seconds:30, enabled:1};
+        encoding:document.getElementById('miEncoding').value, timeout_ms:1000, heartbeat_seconds:30, enabled:1,
+        shared_secret:document.getElementById('miSecret').value,
+        inspection_template:document.getElementById('miTemplate').value};
     api('/api/iot/machine/endpoints/save', {method:'POST', body:payload}).then(function(response) {
         if(response && response.code === 0) { closeModal(); machineIotLoad(); machineIotHealth(); }
         else alert(response ? response.message : '保存失败');
@@ -166,4 +170,3 @@ function machineReportUpload() {
         else alert(result.message || '上传失败');
     });
 }
-

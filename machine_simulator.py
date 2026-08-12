@@ -1,5 +1,7 @@
 """AIM机台V1/V2命令行模拟器。"""
 import argparse
+import hashlib
+import hmac
 import socket
 
 
@@ -13,12 +15,18 @@ def main():
     parser.add_argument('--cavity', default='C1')
     parser.add_argument('--request-no', default='SIM001')
     parser.add_argument('--sn', required=True)
+    parser.add_argument('--secret', default='', help='V2共享密钥；端点未配置时留空')
     args = parser.parse_args()
     if args.protocol == '1':
         frame = args.sn
     else:
         frame = '|'.join(('REQ', '2', args.device, args.station, args.cavity,
                           args.request_no, args.sn))
+        if args.secret:
+            signature = hmac.new(
+                args.secret.encode('utf-8'), frame.encode('utf-8'), hashlib.sha256
+            ).hexdigest()
+            frame += '|' + signature
     with socket.create_connection((args.host, args.port), timeout=5) as connection:
         connection.sendall((frame + '\r\n').encode('utf-8'))
         response = connection.makefile('rb').readline().decode('utf-8').rstrip()
@@ -27,4 +35,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

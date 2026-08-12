@@ -1,0 +1,105 @@
+# AIM机台接入操作手册
+
+## 上线准备
+
+MES服务器必须使用固定内网IP，例如`192.168.10.20`。不要把PPT示例中的`127.0.1.5`配置给另一台电脑。机台工控电脑需要与MES网络互通，防火墙只向车间OT网开放所需TCP端口。MES中必须提前准备设备台账、产品、冻结工艺路线、已下达工单、任务和产品SN。
+
+## 配置通讯端点
+
+进入“设备管理 → 机台通讯 → 通讯端点 → 新增端点”，配置设备、工序、工站、穴位、监听IP、端口、协议和编码。
+
+- 旧机台选择V1，新机台选择V2。
+- 正式V2机台建议配置共享密钥，机台使用相同密钥计算HMAC-SHA256签名。
+- 一个监听IP和端口只能对应一个端点。
+- 双穴旧机台使用不同端口，例如穴位1使用2004、穴位2使用2005。
+- 修改启用端点后重启生产服务，使Socket监听配置生效。
+
+## 启动服务
+
+执行`python production.py`。生产入口会升级数据库，为每个启用端点启动独立Socket子进程，再启动MES Web服务；Web服务退出时会回收Socket进程。
+
+## 通讯协议
+
+V1请求与响应：
+
+```text
+SN001\r\n
+<L1>\r\n
+<L3>\r\n
+```
+
+V2未配置密钥：
+
+```text
+REQ|2|AIM001|LASER01|CAVITY1|R0001|SN001\r\n
+```
+
+配置密钥时，末尾增加前7字段的HMAC-SHA256十六进制签名：
+
+```text
+REQ|2|AIM001|LASER01|CAVITY1|R0001|SN001|SIGNATURE\r\n
+```
+
+允许与拒绝响应：
+
+```text
+ACK|2|R0001|L1|OK|镭雕模板|检测模板|允许加工\r\n
+ACK|2|R0001|L3|WRONG_STEP|||当前应执行工序：清洗\r\n
+```
+
+请求号在同一端点内唯一，重复请求返回第一次的相同判定。
+
+## 模拟器联调
+
+V1：
+
+```powershell
+python machine_simulator.py --host 127.0.0.1 --port 2004 --protocol 1 --sn SN001
+```
+
+V2：
+
+```powershell
+python machine_simulator.py --host 127.0.0.1 --port 2004 --protocol 2 --device AIM001 --station LASER01 --cavity CAVITY1 --request-no TEST001 --sn SN001
+```
+
+V2配置密钥后追加`--secret your-secret`。模拟数据和请求号应备注为测试。
+
+## CSV检测报告
+
+前四列必须为`2D Barcode,Date,Time,OK(1)/NG(0)`，后续列是不同机台的动态检测点。日期支持`YYYY/M/D`或`YYYY-MM-DD`，时间使用`HH:MM:SS`，结果支持`OK/NG`或`1/0`。
+
+进入“设备管理 → 机台通讯 → 检测报告”，填写端点ID并上传CSV。测试样例位于`examples/aim/ok.csv`和`examples/aim/ng.csv`；使用前必须将第一列改成已经取得L1的真实测试SN。
+
+## 业务结果
+
+- L1只允许本次加工，不增加产量。
+- OK报告创建SN PASS过站及待审核合格报工。
+- NG报告创建待审核不良报工，不创建PASS过站。
+- 报工审核和过账后才更新任务、工单数量。
+- 相同请求或相同CSV不会重复记账。
+
+## 常见L3原因
+
+| 原因码 | 含义 | 处理 |
+|---|---|---|
+| `NO_READ` | 扫码失败 | 放入扫码异常区 |
+| `UNKNOWN_SN` | SN不存在 | 检查SN及工单绑定 |
+| `ENDPOINT_DISABLED` | 端点停用 | 启用后重启生产服务 |
+| `EQUIPMENT_UNAVAILABLE` | 设备停用或维修 | 检查设备台账 |
+| `WORKORDER_UNAVAILABLE` | 工单不允许生产 | 检查工单状态 |
+| `WRONG_STEP` | 工序不匹配 | 完成上工序或修正绑定 |
+| `TASK_NOT_FOUND` | 没有当前任务 | 从工单生成任务 |
+| `ROUTE_COMPLETED` | SN已完成路线 | 检查重复投入 |
+| `PROTOCOL_ERROR` | 报文、身份或签名错误 | 检查字段、编码和密钥 |
+
+## 单机试点验收
+
+1. 正确SN返回L1。
+2. 错工序、未知SN、NoRead返回L3。
+3. 断网时机台停止加工，恢复后能够重连。
+4. OK报告只生成一条待审核合格报工和PASS过站。
+5. NG报告只生成一条待审核不良报工。
+6. 重复请求和重复CSV不重复记账。
+7. 后台可以查看在线会话、准入日志、耗时和检测报告。
+8. 双穴设备使用不同端口时互不串号。

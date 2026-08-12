@@ -1294,6 +1294,8 @@ def _init_extra_tables():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (flow_id) REFERENCES prod_station_flow(id)
     )''')
+    _add_column_if_missing(db, 'prod_station_record', 'route_step_id', 'INTEGER')
+    _add_column_if_missing(db, 'prod_station_record', 'machine_request_id', 'INTEGER')
     db.execute('''CREATE TABLE IF NOT EXISTS iot_machine_session (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         endpoint_id INTEGER NOT NULL,

@@ -12,6 +12,13 @@ from utils.helpers import login_required
 machine_iot_bp = Blueprint('machine_iot', __name__)
 
 
+def _public_endpoint(row):
+    data = dict(row)
+    data.pop('shared_secret', None)
+    data['shared_secret_configured'] = bool(row['shared_secret'])
+    return data
+
+
 def _page():
     page = max(1, int(request.args.get('page', 1)))
     size = min(200, max(1, int(request.args.get('size', 20))))
@@ -40,7 +47,7 @@ def endpoint_list():
            JOIN eqp_ledger q ON q.id=e.equipment_id
            JOIN base_process p ON p.id=e.process_id ORDER BY e.id DESC'''
     ).fetchall()
-    return jsonify({'code': 0, 'data': {'list': [dict(row) for row in rows], 'total': len(rows)}})
+    return jsonify({'code': 0, 'data': {'list': [_public_endpoint(row) for row in rows], 'total': len(rows)}})
 
 
 @machine_iot_bp.route('/api/iot/machine/endpoints/save', methods=['POST'])
@@ -72,9 +79,22 @@ def endpoint_save():
     process = db.execute('SELECT id FROM base_process WHERE id=?', (process_id,)).fetchone()
     if not equipment or not process:
         return jsonify({'code': 400, 'message': '设备或工序不存在'}), 400
+    conflict = db.execute(
+        '''SELECT id FROM iot_machine_endpoint WHERE bind_ip=? AND listen_port=?
+           AND id<>?''', (bind_ip, port, int(data.get('id') or 0))
+    ).fetchone()
+    if conflict:
+        return jsonify({'code': 409, 'message': '该监听IP和端口已被其他通讯端点占用'}), 409
+    shared_secret = data.get('shared_secret')
+    if data.get('id') and not shared_secret:
+        current = db.execute(
+            'SELECT shared_secret FROM iot_machine_endpoint WHERE id=?',
+            (int(data['id']),),
+        ).fetchone()
+        shared_secret = current['shared_secret'] if current else None
     values = (equipment_id, protocol, bind_ip, port, station, process_id, cavity,
               encoding, timeout_ms, heartbeat, data.get('laser_template'),
-              data.get('inspection_template'), data.get('shared_secret'), enabled)
+              data.get('inspection_template'), shared_secret, enabled)
     try:
         if data.get('id'):
             endpoint_id = int(data['id'])
@@ -96,7 +116,7 @@ def endpoint_save():
     except sqlite3.IntegrityError:
         db.rollback()
         return jsonify({'code': 409, 'message': '该IP、端口、工站和穴位已被占用'}), 409
-    return jsonify({'code': 0, 'data': dict(_endpoint(db, endpoint_id))})
+    return jsonify({'code': 0, 'data': _public_endpoint(_endpoint(db, endpoint_id))})
 
 
 @machine_iot_bp.route('/api/iot/machine/endpoints/<int:endpoint_id>/toggle', methods=['POST'])
@@ -110,7 +130,7 @@ def endpoint_toggle(endpoint_id):
     row = _endpoint(db, endpoint_id)
     if not row:
         return jsonify({'code': 404, 'message': '通讯端点不存在'}), 404
-    return jsonify({'code': 0, 'data': dict(row)})
+    return jsonify({'code': 0, 'data': _public_endpoint(row)})
 
 
 def _log_list(table, joins='', fields='t.*', filters=()):
@@ -201,4 +221,3 @@ def health():
     failures = db.execute("SELECT COUNT(*) FROM iot_inspection_report WHERE import_status='failed'").fetchone()[0]
     return jsonify({'code': 0, 'data': {'enabled_endpoints': enabled, 'online_sessions': online,
                                         'pending_reports': pending, 'failed_reports': failures}})
-

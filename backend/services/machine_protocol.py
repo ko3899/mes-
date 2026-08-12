@@ -1,5 +1,7 @@
 """AIM机台V1/V2 TCP报文编解码。"""
 from dataclasses import dataclass
+import hashlib
+import hmac
 import uuid
 
 
@@ -72,9 +74,20 @@ def parse_request(frame, endpoint):
     text = _decode_frame(frame, str(_endpoint_value(endpoint, 'encoding', 'utf-8')))
     if text.startswith('REQ|'):
         parts = text.split('|')
-        if len(parts) != 7 or parts[0] != 'REQ' or parts[1] != '2':
+        secret = str(_endpoint_value(endpoint, 'shared_secret', ''))
+        expected_fields = 8 if secret else 7
+        if secret and len(parts) == 7:
+            raise ProtocolError('V2报文缺少签名')
+        if len(parts) != expected_fields or parts[0] != 'REQ' or parts[1] != '2':
             raise ProtocolError('V2报文字段或版本错误')
-        _, _, device, station, cavity, request_no, sn = parts
+        unsigned_parts = parts[:7]
+        _, _, device, station, cavity, request_no, sn = unsigned_parts
+        if secret:
+            expected_signature = hmac.new(
+                secret.encode('utf-8'), '|'.join(unsigned_parts).encode('utf-8'), hashlib.sha256
+            ).hexdigest()
+            if not hmac.compare_digest(parts[7].lower(), expected_signature):
+                raise ProtocolError('V2报文签名错误')
         if not all((device, station, cavity, request_no, sn)):
             raise ProtocolError('V2必填字段为空')
         expected = (
@@ -111,4 +124,3 @@ def format_response(request, decision):
         decision.inspection_template, decision.reason_message,
     ]
     return ('|'.join(_safe_field(value) for value in fields) + '\r\n').encode('utf-8')
-

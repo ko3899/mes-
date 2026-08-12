@@ -66,8 +66,11 @@ def test_endpoint_crud_enriches_equipment_and_process_and_validates_port(client)
     assert listing[0]['equipment_name'] == 'AIM测试机'
     assert listing[0]['device_code'] == 'AIM001'
     assert listing[0]['process_name'] == '扫码检测'
+    assert 'shared_secret' not in listing[0]
     duplicate = save_endpoint(client)
     assert duplicate.status_code == 409
+    address_conflict = save_endpoint(client, station_code='ST02', cavity_code='C2')
+    assert address_conflict.status_code == 409
     toggled = client.post(f'/api/iot/machine/endpoints/{endpoint_id}/toggle', json={'enabled': 0})
     assert toggled.get_json()['data']['enabled'] == 0
 
@@ -102,3 +105,12 @@ def test_machine_api_requires_login(client):
     anonymous = create_app().test_client()
     assert anonymous.get('/api/iot/machine/endpoints').status_code == 401
 
+
+def test_endpoint_secret_is_write_only_and_blank_edit_keeps_existing(client):
+    saved = save_endpoint(client, shared_secret='top-secret').get_json()['data']
+    assert saved['shared_secret_configured'] is True
+    assert 'shared_secret' not in saved
+    edited = save_endpoint(client, id=saved['id'], shared_secret='', station_code='ST01B').get_json()['data']
+    assert edited['shared_secret_configured'] is True
+    db = sqlite3.connect(database.DB_PATH)
+    assert db.execute('SELECT shared_secret FROM iot_machine_endpoint WHERE id=?', (saved['id'],)).fetchone()[0] == 'top-secret'

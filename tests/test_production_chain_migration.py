@@ -56,6 +56,7 @@ def test_extra_migration_preserves_legacy_rows_and_adds_snapshots(tmp_path, monk
     assert {
         'file_hash', 'archive_path', 'import_status',
     } <= column_names(db, 'iot_inspection_report')
+    assert {'route_step_id', 'machine_request_id'} <= column_names(db, 'prod_station_record')
     db.close()
 
 

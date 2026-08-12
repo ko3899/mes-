@@ -23,7 +23,7 @@ CREATE TABLE prod_workorder(id INTEGER PRIMARY KEY, product_id INTEGER, status I
 CREATE TABLE prod_workorder_route_snapshot(id INTEGER PRIMARY KEY, workorder_id INTEGER);
 CREATE TABLE prod_workorder_route_step(id INTEGER PRIMARY KEY, snapshot_id INTEGER, process_id INTEGER, process_name TEXT, step_no INTEGER);
 CREATE TABLE prod_task(id INTEGER PRIMARY KEY, workorder_id INTEGER, process_id INTEGER, route_step_id INTEGER, status INTEGER);
-CREATE TABLE prod_station_record(id INTEGER PRIMARY KEY, sn TEXT, process_name TEXT, action TEXT, result TEXT);
+CREATE TABLE prod_station_record(id INTEGER PRIMARY KEY, sn TEXT, process_name TEXT, action TEXT, result TEXT, route_step_id INTEGER);
 CREATE TABLE iot_machine_request(id INTEGER PRIMARY KEY, endpoint_id INTEGER, session_id INTEGER, request_no TEXT, protocol_version INTEGER, station_code TEXT, cavity_code TEXT, sn TEXT, workorder_id INTEGER, task_id INTEGER, route_step_id INTEGER, decision TEXT, reason_code TEXT, reason_message TEXT, laser_template TEXT, inspection_template TEXT, elapsed_ms INTEGER, dedupe_key TEXT UNIQUE, requested_at TEXT DEFAULT CURRENT_TIMESTAMP, responded_at TEXT DEFAULT CURRENT_TIMESTAMP, report_status TEXT);
 '''
 

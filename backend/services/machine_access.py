@@ -114,9 +114,9 @@ def evaluate_access(db, endpoint, request, now=None):
     for step in steps:
         passed = db.execute(
             '''SELECT 1 FROM prod_station_record
-               WHERE sn=? AND process_name=? AND action='过站' AND result='PASS'
+               WHERE sn=? AND route_step_id=? AND action='过站' AND result='PASS'
                LIMIT 1''',
-            (request.sn, step['process_name']),
+            (request.sn, step['id']),
         ).fetchone()
         if not passed:
             current = step
@@ -277,10 +277,11 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
             ).fetchone()[0]
             db.execute(
                 '''INSERT INTO prod_station_record
-                   (flow_id,sn,station,process_name,action,operator,result,remark)
-                   VALUES(?,?,?,?,?,?,?,?)''',
+                   (flow_id,sn,station,process_name,action,operator,result,remark,
+                    route_step_id,machine_request_id)
+                   VALUES(?,?,?,?,?,?,?,?,?,?)''',
                 (flow_id, sn, request_row['station_code'], process_name, '过站', 1,
-                 'PASS', f'AIM报告#{report_id}'),
+                 'PASS', f'AIM报告#{report_id}', request_row['route_step_id'], request_row['id']),
             )
         db.execute(
             "UPDATE iot_machine_request SET report_status='received' WHERE id=?",
@@ -297,4 +298,3 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
     row = dict(db.execute('SELECT * FROM iot_inspection_report WHERE id=?', (report_id,)).fetchone())
     row['archive_path'] = str(target)
     return row
-

@@ -26,7 +26,7 @@ def build_db():
     CREATE TABLE prod_task(id INTEGER PRIMARY KEY, task_no TEXT, workorder_id INTEGER, process_id INTEGER, route_step_id INTEGER, planned_qty REAL, completed_qty REAL DEFAULT 0, defect_qty REAL DEFAULT 0, status INTEGER DEFAULT 0);
     CREATE TABLE prod_transfer(id INTEGER PRIMARY KEY, workorder_id INTEGER, to_route_step_id INTEGER, quantity REAL, status INTEGER);
     CREATE TABLE prod_station_flow(id INTEGER PRIMARY KEY, flow_no TEXT, sn TEXT, product_id INTEGER, workorder_id INTEGER, current_station TEXT, current_process TEXT, status INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
-    CREATE TABLE prod_station_record(id INTEGER PRIMARY KEY, flow_id INTEGER, sn TEXT, station TEXT, process_name TEXT, action TEXT, operator INTEGER, result TEXT, remark TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE prod_station_record(id INTEGER PRIMARY KEY, flow_id INTEGER, sn TEXT, station TEXT, process_name TEXT, action TEXT, operator INTEGER, result TEXT, remark TEXT, route_step_id INTEGER, machine_request_id INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE prod_report(id INTEGER PRIMARY KEY, report_no TEXT UNIQUE, task_id INTEGER, workorder_id INTEGER, process_id INTEGER, user_id INTEGER, qualified_qty REAL, defect_qty REAL, approval_status INTEGER DEFAULT 0, remark TEXT, client_operation_id TEXT, report_time TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE iot_machine_request(id INTEGER PRIMARY KEY, endpoint_id INTEGER, session_id INTEGER, request_no TEXT, protocol_version INTEGER, station_code TEXT, cavity_code TEXT, sn TEXT, workorder_id INTEGER, task_id INTEGER, route_step_id INTEGER, decision TEXT, reason_code TEXT, reason_message TEXT, laser_template TEXT, inspection_template TEXT, elapsed_ms INTEGER, dedupe_key TEXT UNIQUE, requested_at TEXT DEFAULT CURRENT_TIMESTAMP, responded_at TEXT DEFAULT CURRENT_TIMESTAMP, report_status TEXT DEFAULT 'pending');
     CREATE TABLE iot_inspection_report(id INTEGER PRIMARY KEY, request_id INTEGER, endpoint_id INTEGER, sn TEXT, inspected_at TEXT, result TEXT, original_filename TEXT, archive_path TEXT, file_hash TEXT, import_status TEXT, failure_reason TEXT, retry_count INTEGER DEFAULT 0, prod_report_id INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(endpoint_id,file_hash));
@@ -84,7 +84,7 @@ def test_next_step_requires_previous_sn_pass_record():
     db = build_db()
     assert evaluate_access(db, endpoint(process_id=12), request(process_id=12)).reason_code == 'WRONG_STEP'
     db.execute("INSERT INTO prod_station_flow(id,flow_no,sn,product_id,workorder_id) VALUES(1,'SF1','SN001',10,1)")
-    db.execute("INSERT INTO prod_station_record(flow_id,sn,station,process_name,action,result) VALUES(1,'SN001','ST01','扫码检测','过站','PASS')")
+    db.execute("INSERT INTO prod_station_record(flow_id,sn,station,process_name,action,result,route_step_id) VALUES(1,'SN001','ST01','扫码检测','过站','PASS',101)")
     db.commit()
     decision = evaluate_access(db, endpoint(process_id=12, station_code='ST02'), MachineRequest(2, 'AIM001', 'ST02', 'C1', '2', 'SN001'))
     assert decision.decision == 'L1'
@@ -99,6 +99,17 @@ def test_duplicate_request_returns_original_decision_once():
     second = evaluate_access(db, endpoint(), request('same'))
     assert second == first
     assert db.execute('SELECT COUNT(*) FROM iot_machine_request').fetchone()[0] == 1
+
+
+def test_repeated_process_name_is_tracked_by_frozen_route_step_id():
+    db = build_db()
+    db.execute("UPDATE prod_workorder_route_step SET process_name='重复检测' WHERE id IN (101,102)")
+    db.execute("INSERT INTO prod_station_flow(id,flow_no,sn,product_id,workorder_id) VALUES(1,'SF1','SN001',10,1)")
+    db.execute("INSERT INTO prod_station_record(flow_id,sn,station,process_name,action,result,route_step_id) VALUES(1,'SN001','ST01','重复检测','过站','PASS',101)")
+    db.commit()
+    decision = evaluate_access(db, endpoint(process_id=12, station_code='ST02'), MachineRequest(2, 'AIM001', 'ST02', 'C1', 'R2', 'SN001'))
+    assert decision.decision == 'L1'
+    assert db.execute('SELECT route_step_id FROM iot_machine_request WHERE request_no="R2"').fetchone()[0] == 102
 
 
 def make_csv(sn='SN001', result='OK'):
@@ -156,4 +167,3 @@ def test_report_rejects_missing_l1_sn_mismatch_bad_header_and_duplicate(tmp_path
     second = import_inspection_report(db, endpoint(), make_csv(), 'renamed.csv', tmp_path)
     assert second['id'] == first['id']
     assert db.execute('SELECT COUNT(*) FROM iot_inspection_report').fetchone()[0] == 1
-

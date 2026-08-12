@@ -2,6 +2,8 @@ import os
 import sys
 
 import pytest
+import hashlib
+import hmac
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -99,3 +101,14 @@ def test_uses_configured_encoding():
     request = parse_request('产品序列号001\r\n'.encode('gbk'), endpoint)
     assert request.sn == '产品序列号001'
 
+
+def test_v2_requires_valid_hmac_when_endpoint_has_shared_secret():
+    endpoint = dict(ENDPOINT, protocol_version=2, shared_secret='secret-key')
+    unsigned = 'REQ|2|AIM001|LASER01|CAVITY1|S1|SN001'
+    signature = hmac.new(b'secret-key', unsigned.encode(), hashlib.sha256).hexdigest()
+    parsed = parse_request((unsigned + '|' + signature + '\r\n').encode(), endpoint)
+    assert parsed.sn == 'SN001'
+    with pytest.raises(ProtocolError, match='签名'):
+        parse_request((unsigned + '|bad\r\n').encode(), endpoint)
+    with pytest.raises(ProtocolError, match='签名'):
+        parse_request((unsigned + '\r\n').encode(), endpoint)
