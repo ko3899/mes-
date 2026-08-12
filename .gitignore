@@ -24,6 +24,10 @@ backups/
 # Uploads
 uploads/
 
+# Runtime machine communication files (business records stay in the database)
+machine_archive/
+machine_test_input/
+
 # IDE
 .vscode/
 .idea/
