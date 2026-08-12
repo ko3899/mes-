@@ -39,7 +39,8 @@ function machineIotHealth() {
             + '</b>　在线会话 <b>' + machineEscape(data.online_sessions) + '</b>　待报告 <b>'
             + machineEscape(data.pending_reports) + '</b>　失败报告 <b>' + machineEscape(data.failed_reports) + '</b>';
         document.getElementById('machineHealth').innerHTML += '　采集目录 <b>' + machineEscape(data.collector_directories)
-            + '</b>　目录缺失 <b>' + machineEscape(data.missing_directories) + '</b>';
+            + '</b>　目录缺失 <b>' + machineEscape(data.missing_directories) + '</b>　待稳定文件 <b>'
+            + machineEscape(data.unstable_files) + '</b>　最后扫描 <b>' + machineEscape(data.last_collection_at) + '</b>';
     });
 }
 

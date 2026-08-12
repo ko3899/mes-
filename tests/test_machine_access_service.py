@@ -245,3 +245,16 @@ def test_retry_updates_same_failed_report_after_l1_becomes_available(tmp_path):
     assert not failed_path.exists()
     assert db.execute('SELECT COUNT(*) FROM iot_inspection_report').fetchone()[0] == 1
     assert db.execute('SELECT COUNT(*) FROM prod_report').fetchone()[0] == 1
+
+
+def test_retry_rejects_report_already_claimed_by_another_worker(tmp_path):
+    db = build_db()
+    input_dir = tmp_path / 'input'; failed_dir = input_dir / '_failed'; failed_dir.mkdir(parents=True)
+    source = failed_dir / 'SN001.csv'; source.write_bytes(make_csv())
+    failed = record_failed_inspection(db, endpoint(csv_input_dir=str(input_dir)), make_csv(), source.name, source, '等待')
+    db.execute("UPDATE iot_inspection_report SET import_status='retrying' WHERE id=?", (failed['id'],)); db.commit()
+    try:
+        retry_inspection_report(db, endpoint(csv_input_dir=str(input_dir)), failed['id'], tmp_path / 'archive')
+        assert False, 'expected occupied retry rejection'
+    except ValueError as exc:
+        assert '重试' in str(exc)

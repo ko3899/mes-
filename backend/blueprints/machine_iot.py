@@ -3,10 +3,16 @@ import os
 import sqlite3
 import ipaddress
 from pathlib import Path
+import hashlib
+import uuid
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 
-from services.machine_access import import_inspection_report, retry_inspection_report
+from services.machine_access import (
+    import_inspection_report,
+    record_failed_inspection,
+    retry_inspection_report,
+)
 from utils.database import get_db
 from utils.helpers import admin_required, login_required
 
@@ -19,6 +25,8 @@ def _public_endpoint(row):
     data.pop('shared_secret', None)
     data['shared_secret_configured'] = bool(row['shared_secret'])
     data['csv_directory_exists'] = bool(data.get('csv_input_dir') and Path(data['csv_input_dir']).is_dir())
+    if session.get('username') != 'admin':
+        data.pop('csv_input_dir', None)
     return data
 
 
@@ -108,7 +116,7 @@ def endpoint_save():
     if csv_input_dir and enabled:
         directory_conflict = db.execute(
             '''SELECT id FROM iot_machine_endpoint
-               WHERE enabled=1 AND csv_input_dir=? AND id<>?''',
+               WHERE enabled=1 AND csv_input_dir=? COLLATE NOCASE AND id<>?''',
             (csv_input_dir, int(data.get('id') or 0)),
         ).fetchone()
         if directory_conflict:
@@ -157,6 +165,17 @@ def endpoint_save():
 def endpoint_toggle(endpoint_id):
     enabled = 1 if int((request.get_json(silent=True) or {}).get('enabled', 0)) else 0
     db = get_db()
+    current = _endpoint(db, endpoint_id)
+    if not current:
+        return jsonify({'code': 404, 'message': '通讯端点不存在'}), 404
+    if enabled and current['csv_input_dir']:
+        conflict = db.execute(
+            '''SELECT id FROM iot_machine_endpoint
+               WHERE enabled=1 AND csv_input_dir=? COLLATE NOCASE AND id<>?''',
+            (current['csv_input_dir'], endpoint_id),
+        ).fetchone()
+        if conflict:
+            return jsonify({'code': 409, 'message': '该CSV输入目录已绑定其他启用端点'}), 409
     db.execute('UPDATE iot_machine_endpoint SET enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
                (enabled, endpoint_id))
     db.commit()
@@ -209,12 +228,16 @@ def request_list():
 @machine_iot_bp.route('/api/iot/machine/reports')
 @login_required
 def report_list():
-    return jsonify({'code': 0, 'data': _log_list(
+    data = _log_list(
         'iot_inspection_report',
         'LEFT JOIN iot_machine_endpoint e ON e.id=t.endpoint_id LEFT JOIN eqp_ledger q ON q.id=e.equipment_id',
         't.*,q.code AS device_code',
         (('result', 't.result'), ('import_status', 't.import_status'), ('sn', 't.sn')),
-    )})
+    )
+    if session.get('username') != 'admin':
+        for row in data['list']:
+            row.pop('archive_path', None)
+    return jsonify({'code': 0, 'data': data})
 
 
 @machine_iot_bp.route('/api/iot/machine/reports/upload', methods=['POST'])
@@ -240,6 +263,24 @@ def report_upload():
             os.environ.get('MES_MACHINE_ARCHIVE_DIR', os.path.join(os.getcwd(), 'machine_archive')),
         )
     except ValueError as exc:
+        archive_root = Path(os.environ.get(
+            'MES_MACHINE_ARCHIVE_DIR', os.path.join(os.getcwd(), 'machine_archive')
+        )).resolve()
+        failed_dir = archive_root / '_failed' / f'endpoint_{endpoint_id}'
+        failed_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = os.path.basename(uploaded.filename).replace('/', '_').replace('\\', '_') or 'failed.csv'
+        failed_path = failed_dir / f'{hashlib.sha256(payload).hexdigest()[:12]}_{uuid.uuid4().hex[:8]}_{safe_name}'
+        failed_path.write_bytes(payload)
+        try:
+            record_failed_inspection(
+                db, endpoint, payload, uploaded.filename, failed_path, exc,
+            )
+        except Exception:
+            try:
+                failed_path.unlink()
+            except OSError:
+                pass
+            raise
         return jsonify({'code': 400, 'message': str(exc)}), 400
     return jsonify({'code': 0, 'data': result})
 
@@ -273,10 +314,23 @@ def health():
     pending = db.execute("SELECT COUNT(*) FROM iot_machine_request WHERE decision='L1' AND report_status='pending'").fetchone()[0]
     failures = db.execute("SELECT COUNT(*) FROM iot_inspection_report WHERE import_status='failed'").fetchone()[0]
     directories = db.execute(
-        "SELECT csv_input_dir FROM iot_machine_endpoint WHERE enabled=1 AND TRIM(COALESCE(csv_input_dir,''))<>''"
+        "SELECT csv_input_dir,last_seen_at FROM iot_machine_endpoint WHERE enabled=1 AND TRIM(COALESCE(csv_input_dir,''))<>''"
     ).fetchall()
     missing = sum(1 for row in directories if not Path(row['csv_input_dir']).is_dir())
+    unstable = 0
+    for row in directories:
+        directory = Path(row['csv_input_dir'])
+        if directory.is_dir():
+            unstable += sum(
+                1 for item in directory.iterdir()
+                if item.is_file() and not item.name.startswith('.') and item.suffix.lower() == '.csv'
+            )
+    last_collection = max(
+        (row['last_seen_at'] for row in directories if row['last_seen_at']), default=None
+    )
     return jsonify({'code': 0, 'data': {'enabled_endpoints': enabled, 'online_sessions': online,
                                         'pending_reports': pending, 'failed_reports': failures,
                                         'collector_directories': len(directories),
-                                        'missing_directories': missing}})
+                                        'missing_directories': missing,
+                                        'unstable_files': unstable,
+                                        'last_collection_at': last_collection}})

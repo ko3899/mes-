@@ -83,3 +83,17 @@ def test_ignores_hidden_non_csv_subdirectories_and_oversized_files(tmp_path):
     collector.scan_once()
     assert failures == ['CSV文件不得超过5MB']
     assert (input_dir / '_failed' / 'large.csv').exists()
+
+
+def test_recovers_processing_file_after_restart(tmp_path):
+    input_dir = tmp_path / 'input'; (input_dir / '_processing').mkdir(parents=True)
+    db_path = tmp_path / 'collector.db'; make_db(db_path, input_dir)
+    (input_dir / '_processing' / 'recovered.csv').write_bytes(b'payload')
+    imported = []; clock = [100.0]
+    collector = MachineCsvCollector(
+        db_path, tmp_path / 'archive', now=lambda: clock[0],
+        importer=lambda db, ep, payload, name, root: imported.append(name) or {},
+        failure_recorder=lambda *args: None,
+    )
+    collector.scan_once(); clock[0] = 103.0; collector.scan_once()
+    assert imported == ['recovered.csv']

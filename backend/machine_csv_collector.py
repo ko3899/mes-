@@ -56,7 +56,12 @@ class MachineCsvCollector:
     def _fail_file(self, db, endpoint, source, payload, reason):
         failed = self._unique_target(source.parent.parent / '_failed', source.name)
         self._move(source, failed)
-        self.failure_recorder(db, endpoint, payload, source.name, failed, str(reason))
+        try:
+            self.failure_recorder(db, endpoint, payload, source.name, failed, str(reason))
+        except Exception:
+            recovery = self._unique_target(source.parent.parent, source.name)
+            self._move(failed, recovery)
+            raise
 
     def _endpoint_rows(self, db):
         db.row_factory = sqlite3.Row
@@ -67,6 +72,14 @@ class MachineCsvCollector:
                WHERE e.enabled=1 AND e.csv_input_dir IS NOT NULL
                  AND TRIM(e.csv_input_dir)<>'' ORDER BY e.id'''
         ).fetchall()
+
+    def _recover_processing(self, input_dir):
+        processing = input_dir / '_processing'
+        if not processing.is_dir():
+            return
+        for item in list(processing.iterdir())[:self.max_files]:
+            if item.is_file() and item.suffix.lower() == '.csv':
+                self._move(item, self._unique_target(input_dir, item.name))
 
     def scan_once(self):
         summary = {'imported': 0, 'failed': 0, 'unstable_files': 0,
@@ -87,6 +100,7 @@ class MachineCsvCollector:
                     )
                     db.commit()
                     continue
+                self._recover_processing(input_dir)
                 candidates = sorted(
                     (item for item in input_dir.iterdir()
                      if item.is_file() and not item.name.startswith('.')
@@ -101,10 +115,13 @@ class MachineCsvCollector:
                     payload = None
                     if stat.st_size > MAX_FILE_BYTES:
                         try:
-                            payload = source.read_bytes()
                             processing = self._unique_target(input_dir / '_processing', source.name)
                             self._move(source, processing)
-                            self._fail_file(db, endpoint, processing, payload, 'CSV文件不得超过5MB')
+                            self._fail_file(
+                                db, endpoint, processing,
+                                b'OVERSIZED:' + str(stat.st_size).encode(),
+                                'CSV文件不得超过5MB',
+                            )
                             summary['failed'] += 1
                         except Exception as exc:
                             db.rollback()
@@ -151,6 +168,11 @@ class MachineCsvCollector:
                                 db.commit()
                     finally:
                         self._observed.pop(key, None)
+                db.execute(
+                    'UPDATE iot_machine_endpoint SET last_seen_at=CURRENT_TIMESTAMP WHERE id=?',
+                    (endpoint['id'],),
+                )
+                db.commit()
             self.last_collection_at = self.now()
             return summary
         finally:

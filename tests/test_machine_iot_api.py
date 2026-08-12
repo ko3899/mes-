@@ -130,6 +130,16 @@ def test_machine_api_requires_login(client):
     assert anonymous.get('/api/iot/machine/endpoints').status_code == 401
 
 
+def test_non_admin_lists_hide_server_paths(client, tmp_path):
+    save_endpoint(client, csv_input_dir=str(tmp_path / 'input'))
+    with client.session_transaction() as session:
+        session['username'] = 'operator'
+    endpoint = client.get('/api/iot/machine/endpoints').get_json()['data']['list'][0]
+    assert 'csv_input_dir' not in endpoint
+    reports = client.get('/api/iot/machine/reports').get_json()['data']['list']
+    assert all('archive_path' not in row for row in reports)
+
+
 def test_endpoint_secret_is_write_only_and_blank_edit_keeps_existing(client):
     saved = save_endpoint(client, shared_secret='top-secret').get_json()['data']
     assert saved['shared_secret_configured'] is True
@@ -162,3 +172,30 @@ def test_non_admin_cannot_retry_report(client):
     with client.session_transaction() as session:
         session['username'] = 'operator'
     assert client.post('/api/iot/machine/reports/1/retry').status_code == 403
+
+
+def test_failed_manual_upload_is_quarantined_and_auditable(client, tmp_path):
+    endpoint_id = save_endpoint(client).get_json()['data']['id']
+    uploaded = client.post('/api/iot/machine/reports/upload', data={
+        'endpoint_id': str(endpoint_id),
+        'file': (io.BytesIO(b'bad,header\n1,2\n'), 'broken.csv'),
+    }, content_type='multipart/form-data')
+    assert uploaded.status_code == 400
+    db = sqlite3.connect(database.DB_PATH); db.row_factory = sqlite3.Row
+    failed = db.execute("SELECT * FROM iot_inspection_report WHERE import_status='failed'").fetchone()
+    assert failed is not None
+    assert os.path.isfile(failed['archive_path'])
+    assert '_failed' in failed['archive_path']
+    db.close()
+
+
+def test_toggle_cannot_enable_duplicate_csv_directory(client, tmp_path):
+    directory = str((tmp_path / 'aim').resolve())
+    first = save_endpoint(client, csv_input_dir=directory).get_json()['data']
+    second = save_endpoint(
+        client, bind_ip='127.0.0.2', listen_port=2005, station_code='ST02', cavity_code='C2',
+        enabled=0, csv_input_dir=directory,
+    ).get_json()['data']
+    response = client.post(f"/api/iot/machine/endpoints/{second['id']}/toggle", json={'enabled': 1})
+    assert response.status_code == 409
+    assert client.post(f"/api/iot/machine/endpoints/{first['id']}/toggle", json={'enabled': 0}).status_code == 200

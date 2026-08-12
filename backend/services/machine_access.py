@@ -297,6 +297,12 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
 
     date_path = datetime.strptime(inspected_at, '%Y-%m-%d %H:%M:%S')
     target_dir = Path(archive_root) / date_path.strftime('%Y') / date_path.strftime('%m') / date_path.strftime('%d')
+    target_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = ''.join(char for char in os.path.basename(filename) if char not in '\\/:*?"<>|')
+    safe_name = safe_name or f'{sn}.csv'
+    target = target_dir / f'{file_hash[:12]}_{safe_name}'
+    temporary = target.with_suffix(target.suffix + f'.{uuid.uuid4().hex}.tmp')
+    temporary.write_bytes(csv_bytes)
     db.execute('BEGIN IMMEDIATE')
     concurrent = db.execute(
         '''SELECT * FROM iot_inspection_report
@@ -305,14 +311,8 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
     ).fetchone()
     if concurrent:
         db.commit()
+        temporary.unlink(missing_ok=True)
         return dict(concurrent)
-    target_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = ''.join(char for char in os.path.basename(filename) if char not in '\\/:*?"<>|')
-    safe_name = safe_name or f'{sn}.csv'
-    target = target_dir / f'{file_hash[:12]}_{safe_name}'
-    temporary = target.with_suffix(target.suffix + f'.{uuid.uuid4().hex}.tmp')
-    temporary.write_bytes(csv_bytes)
-    os.replace(temporary, target)
 
     try:
         if _retry_report_id:
@@ -389,14 +389,11 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
             "UPDATE iot_machine_request SET report_status='received' WHERE id=?",
             (request_row['id'],),
         )
+        os.replace(temporary, target)
         db.commit()
     except Exception:
         db.rollback()
-        if 'report_id' not in locals():
-            try:
-                target.unlink()
-            except OSError:
-                pass
+        temporary.unlink(missing_ok=True)
         raise
     row = dict(db.execute('SELECT * FROM iot_inspection_report WHERE id=?', (report_id,)).fetchone())
     row['archive_path'] = str(target)
@@ -405,12 +402,17 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
 
 def retry_inspection_report(db, endpoint, report_id, archive_root):
     """使用服务器保存的隔离路径重试，成功后更新原失败记录。"""
-    row = db.execute(
-        'SELECT * FROM iot_inspection_report WHERE id=? AND endpoint_id=?',
+    db.execute('BEGIN IMMEDIATE')
+    claimed = db.execute(
+        '''UPDATE iot_inspection_report SET import_status='retrying'
+           WHERE id=? AND endpoint_id=? AND import_status='failed' ''',
         (int(report_id), _value(endpoint, 'id')),
-    ).fetchone()
-    if not row or row['import_status'] != 'failed':
+    ).rowcount
+    if not claimed:
+        db.rollback()
         raise ValueError('失败报告不存在或状态不可重试')
+    row = db.execute('SELECT * FROM iot_inspection_report WHERE id=?', (int(report_id),)).fetchone()
+    db.commit()
     source = Path(row['archive_path']).resolve()
     input_dir = Path(str(_value(endpoint, 'csv_input_dir', ''))).resolve()
     failed_root = (input_dir / '_failed').resolve()
@@ -423,8 +425,10 @@ def retry_inspection_report(db, endpoint, report_id, archive_root):
             return False
 
     if not (is_within(source, failed_root) or is_within(source, archive_resolved)):
+        db.execute("UPDATE iot_inspection_report SET import_status='failed' WHERE id=?", (row['id'],)); db.commit()
         raise ValueError('失败报告路径不在允许目录内')
     if not source.is_file():
+        db.execute("UPDATE iot_inspection_report SET import_status='failed' WHERE id=?", (row['id'],)); db.commit()
         raise ValueError('失败报告原文件不存在')
     payload = source.read_bytes()
     try:
@@ -435,8 +439,8 @@ def retry_inspection_report(db, endpoint, report_id, archive_root):
     except Exception as exc:
         db.rollback()
         db.execute(
-            '''UPDATE iot_inspection_report SET retry_count=retry_count+1,
-               failure_reason=? WHERE id=?''', (str(exc)[:1000], row['id']),
+            '''UPDATE iot_inspection_report SET import_status='failed',retry_count=retry_count+1,
+               failure_reason=? WHERE id=? AND import_status='retrying' ''', (str(exc)[:1000], row['id']),
         )
         db.commit()
         raise
