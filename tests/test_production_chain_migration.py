@@ -31,6 +31,9 @@ def test_extra_migration_preserves_legacy_rows_and_adds_snapshots(tmp_path, monk
         'prod_batch', 'prod_workorder_route_snapshot',
         'prod_workorder_route_step', 'prod_workorder_bom_snapshot',
         'sys_business_status_log',
+        'iot_machine_endpoint', 'iot_machine_session',
+        'iot_machine_request', 'iot_inspection_report',
+        'iot_inspection_value',
     } <= table_names(db)
     assert {'workshop_id', 'version'} <= column_names(db, 'base_process_route')
     assert {'workshop_id', 'is_inspection_point'} <= column_names(db, 'base_process_route_detail')
@@ -42,6 +45,16 @@ def test_extra_migration_preserves_legacy_rows_and_adds_snapshots(tmp_path, monk
         'issued_qty', 'received_qty', 'returned_qty', 'warehouse_id', 'location_id',
         'material_batch_no', 'issued_at', 'received_at', 'remark',
     } <= column_names(db, 'prod_material_req')
+    assert {
+        'equipment_id', 'protocol_version', 'bind_ip', 'listen_port',
+        'station_code', 'process_id', 'cavity_code', 'enabled',
+    } <= column_names(db, 'iot_machine_endpoint')
+    assert {
+        'request_no', 'sn', 'decision', 'reason_code', 'dedupe_key',
+    } <= column_names(db, 'iot_machine_request')
+    assert {
+        'file_hash', 'archive_path', 'import_status',
+    } <= column_names(db, 'iot_inspection_report')
     db.close()
 
 
@@ -58,6 +71,9 @@ def test_extra_migration_is_idempotent(tmp_path, monkeypatch):
     )}
     assert 'idx_prod_batch_plan_item' in indexes
     assert 'idx_prod_route_step_snapshot' in indexes
+    assert 'idx_iot_machine_endpoint_binding' in indexes
+    assert 'idx_iot_machine_request_dedupe' in indexes
+    assert 'idx_iot_inspection_report_hash' in indexes
     db.close()
 
 

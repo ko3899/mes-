@@ -1236,6 +1236,99 @@ def _init_extra_tables():
     )''')
     db.execute('''CREATE INDEX IF NOT EXISTS idx_sys_table_order_position
                   ON sys_table_order(table_key, position)''')
+    db.execute('''CREATE TABLE IF NOT EXISTS iot_machine_endpoint (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        equipment_id INTEGER NOT NULL,
+        protocol_version INTEGER NOT NULL DEFAULT 1,
+        bind_ip TEXT NOT NULL,
+        listen_port INTEGER NOT NULL,
+        station_code TEXT NOT NULL,
+        process_id INTEGER NOT NULL,
+        cavity_code TEXT NOT NULL DEFAULT '1',
+        encoding TEXT NOT NULL DEFAULT 'utf-8',
+        timeout_ms INTEGER NOT NULL DEFAULT 1000,
+        heartbeat_seconds INTEGER NOT NULL DEFAULT 30,
+        laser_template TEXT,
+        inspection_template TEXT,
+        shared_secret TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        last_seen_at TIMESTAMP,
+        last_error TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (equipment_id) REFERENCES eqp_ledger(id),
+        FOREIGN KEY (process_id) REFERENCES base_process(id)
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS iot_machine_session (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        endpoint_id INTEGER NOT NULL,
+        remote_address TEXT,
+        connected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_heartbeat_at TIMESTAMP,
+        disconnected_at TIMESTAMP,
+        status TEXT NOT NULL DEFAULT 'online',
+        request_count INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        FOREIGN KEY (endpoint_id) REFERENCES iot_machine_endpoint(id)
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS iot_machine_request (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        endpoint_id INTEGER NOT NULL,
+        session_id INTEGER,
+        request_no TEXT NOT NULL,
+        protocol_version INTEGER NOT NULL,
+        station_code TEXT NOT NULL,
+        cavity_code TEXT NOT NULL,
+        sn TEXT NOT NULL,
+        workorder_id INTEGER,
+        task_id INTEGER,
+        route_step_id INTEGER,
+        decision TEXT NOT NULL,
+        reason_code TEXT NOT NULL,
+        reason_message TEXT,
+        laser_template TEXT,
+        inspection_template TEXT,
+        elapsed_ms INTEGER NOT NULL DEFAULT 0,
+        dedupe_key TEXT NOT NULL,
+        requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        responded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        report_status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (endpoint_id) REFERENCES iot_machine_endpoint(id),
+        FOREIGN KEY (session_id) REFERENCES iot_machine_session(id),
+        FOREIGN KEY (workorder_id) REFERENCES prod_workorder(id),
+        FOREIGN KEY (task_id) REFERENCES prod_task(id)
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS iot_inspection_report (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        request_id INTEGER NOT NULL,
+        endpoint_id INTEGER NOT NULL,
+        sn TEXT NOT NULL,
+        inspected_at TIMESTAMP NOT NULL,
+        result TEXT NOT NULL,
+        original_filename TEXT NOT NULL,
+        archive_path TEXT,
+        file_hash TEXT NOT NULL,
+        import_status TEXT NOT NULL DEFAULT 'imported',
+        failure_reason TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        prod_report_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (request_id) REFERENCES iot_machine_request(id),
+        FOREIGN KEY (endpoint_id) REFERENCES iot_machine_endpoint(id),
+        FOREIGN KEY (prod_report_id) REFERENCES prod_report(id)
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS iot_inspection_value (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        report_id INTEGER NOT NULL,
+        item_code TEXT NOT NULL,
+        item_name TEXT,
+        measured_value TEXT,
+        unit TEXT,
+        lower_limit REAL,
+        upper_limit REAL,
+        result TEXT,
+        FOREIGN KEY (report_id) REFERENCES iot_inspection_report(id)
+    )''')
     indexes = [
         'CREATE INDEX IF NOT EXISTS idx_prod_batch_plan_item ON prod_batch(plan_item_id)',
         'CREATE INDEX IF NOT EXISTS idx_prod_batch_product ON prod_batch(product_id)',
@@ -1248,6 +1341,12 @@ def _init_extra_tables():
         'CREATE INDEX IF NOT EXISTS idx_route_detail_route ON base_process_route_detail(route_id)',
         'CREATE INDEX IF NOT EXISTS idx_sales_item_order ON prod_sales_order_item(order_id)',
         'CREATE INDEX IF NOT EXISTS idx_plan_item_plan ON prod_plan_item(plan_id)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_iot_machine_endpoint_binding ON iot_machine_endpoint(bind_ip,listen_port,station_code,cavity_code)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_iot_machine_request_dedupe ON iot_machine_request(dedupe_key)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_iot_inspection_report_hash ON iot_inspection_report(endpoint_id,file_hash)',
+        'CREATE INDEX IF NOT EXISTS idx_iot_machine_request_sn ON iot_machine_request(sn,requested_at)',
+        'CREATE INDEX IF NOT EXISTS idx_iot_machine_session_endpoint ON iot_machine_session(endpoint_id,status)',
+        'CREATE INDEX IF NOT EXISTS idx_iot_inspection_value_report ON iot_inspection_value(report_id)',
     ]
     for sql in indexes:
         try:
