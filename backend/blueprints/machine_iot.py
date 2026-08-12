@@ -6,7 +6,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
-from services.machine_access import import_inspection_report
+from services.machine_access import import_inspection_report, retry_inspection_report
 from utils.database import get_db
 from utils.helpers import admin_required, login_required
 
@@ -244,6 +244,26 @@ def report_upload():
     return jsonify({'code': 0, 'data': result})
 
 
+@machine_iot_bp.route('/api/iot/machine/reports/<int:report_id>/retry', methods=['POST'])
+@admin_required
+def report_retry(report_id):
+    db = get_db()
+    report = db.execute(
+        'SELECT endpoint_id FROM iot_inspection_report WHERE id=?', (report_id,)
+    ).fetchone()
+    if not report:
+        return jsonify({'code': 404, 'message': '失败报告不存在'}), 404
+    endpoint = _endpoint(db, report['endpoint_id'])
+    try:
+        result = retry_inspection_report(
+            db, endpoint, report_id,
+            os.environ.get('MES_MACHINE_ARCHIVE_DIR', os.path.join(os.getcwd(), 'machine_archive')),
+        )
+    except ValueError as exc:
+        return jsonify({'code': 400, 'message': str(exc)}), 400
+    return jsonify({'code': 0, 'data': result})
+
+
 @machine_iot_bp.route('/api/iot/machine/health')
 @login_required
 def health():
@@ -252,5 +272,11 @@ def health():
     online = db.execute("SELECT COUNT(*) FROM iot_machine_session WHERE status='online'").fetchone()[0]
     pending = db.execute("SELECT COUNT(*) FROM iot_machine_request WHERE decision='L1' AND report_status='pending'").fetchone()[0]
     failures = db.execute("SELECT COUNT(*) FROM iot_inspection_report WHERE import_status='failed'").fetchone()[0]
+    directories = db.execute(
+        "SELECT csv_input_dir FROM iot_machine_endpoint WHERE enabled=1 AND TRIM(COALESCE(csv_input_dir,''))<>''"
+    ).fetchall()
+    missing = sum(1 for row in directories if not Path(row['csv_input_dir']).is_dir())
     return jsonify({'code': 0, 'data': {'enabled_endpoints': enabled, 'online_sessions': online,
-                                        'pending_reports': pending, 'failed_reports': failures}})
+                                        'pending_reports': pending, 'failed_reports': failures,
+                                        'collector_directories': len(directories),
+                                        'missing_directories': missing}})

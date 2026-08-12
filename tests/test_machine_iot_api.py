@@ -13,7 +13,7 @@ if BACKEND_ROOT not in sys.path:
 
 from utils import database  # noqa: E402
 from app import create_app  # noqa: E402
-from services.machine_access import evaluate_access  # noqa: E402
+from services.machine_access import evaluate_access, record_failed_inspection  # noqa: E402
 from services.machine_protocol import MachineRequest  # noqa: E402
 
 
@@ -138,3 +138,27 @@ def test_endpoint_secret_is_write_only_and_blank_edit_keeps_existing(client):
     assert edited['shared_secret_configured'] is True
     db = sqlite3.connect(database.DB_PATH)
     assert db.execute('SELECT shared_secret FROM iot_machine_endpoint WHERE id=?', (saved['id'],)).fetchone()[0] == 'top-secret'
+
+
+def test_admin_retries_failed_report_using_server_path_only(client, tmp_path):
+    input_dir = tmp_path / 'input'; failed_dir = input_dir / '_failed'; failed_dir.mkdir(parents=True)
+    endpoint_id = save_endpoint(client, csv_input_dir=str(input_dir)).get_json()['data']['id']
+    payload = ('2D Barcode,Date,Time,OK(1)/NG(0)\nSN001,2026/8/12,10:01:02,OK\n').encode()
+    source = failed_dir / 'SN001.csv'; source.write_bytes(payload)
+    db = sqlite3.connect(database.DB_PATH); db.row_factory = sqlite3.Row
+    endpoint = dict(db.execute('''SELECT e.*,q.code AS device_code,q.status AS equipment_status
+                                  FROM iot_machine_endpoint e JOIN eqp_ledger q ON q.id=e.equipment_id
+                                  WHERE e.id=?''', (endpoint_id,)).fetchone())
+    failed = record_failed_inspection(db, endpoint, payload, source.name, source, '等待L1')
+    evaluate_access(db, endpoint, MachineRequest(2, 'AIM001', 'ST01', 'C1', 'RETRY-1', 'SN001'))
+    db.close()
+    response = client.post(f"/api/iot/machine/reports/{failed['id']}/retry", json={'path': 'C:/forbidden.csv'})
+    assert response.status_code == 200
+    assert response.get_json()['data']['id'] == failed['id']
+    assert response.get_json()['data']['import_status'] == 'imported'
+
+
+def test_non_admin_cannot_retry_report(client):
+    with client.session_transaction() as session:
+        session['username'] = 'operator'
+    assert client.post('/api/iot/machine/reports/1/retry').status_code == 403

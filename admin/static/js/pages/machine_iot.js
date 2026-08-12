@@ -38,6 +38,8 @@ function machineIotHealth() {
         document.getElementById('machineHealth').innerHTML = '启用端点 <b>' + machineEscape(data.enabled_endpoints)
             + '</b>　在线会话 <b>' + machineEscape(data.online_sessions) + '</b>　待报告 <b>'
             + machineEscape(data.pending_reports) + '</b>　失败报告 <b>' + machineEscape(data.failed_reports) + '</b>';
+        document.getElementById('machineHealth').innerHTML += '　采集目录 <b>' + machineEscape(data.collector_directories)
+            + '</b>　目录缺失 <b>' + machineEscape(data.missing_directories) + '</b>';
     });
 }
 
@@ -114,12 +116,17 @@ function machineReportLoad(body) {
         var list = response && response.data ? response.data.list || [] : [];
         body.innerHTML = '<div class="toolbar"><input type="number" id="machineUploadEndpoint" placeholder="端点ID">'
             + '<input type="file" id="machineUploadFile" accept=".csv"><button class="btn btn-blue btn-sm" onclick="machineReportUpload()">上传CSV</button></div>'
-            + machineTable(['时间','设备','SN','结果','文件','导入状态','失败原因'], list.map(function(row) {
+            + machineTable(['时间','设备','SN','结果','文件','导入状态','失败原因','操作'], list.map(function(row) {
                 return '<tr><td>' + machineEscape(row.inspected_at) + '</td><td>' + machineEscape(row.device_code)
                     + '</td><td>' + machineEscape(row.sn) + '</td><td>' + machineEscape(row.result)
                     + '</td><td>' + machineEscape(row.original_filename) + '</td><td>' + machineEscape(row.import_status)
-                    + '</td><td>' + machineEscape(row.failure_reason) + '</td></tr>';
+                    + '</td><td>' + machineEscape(row.failure_reason) + '</td><td>'
+                    + (row.import_status === 'failed' ? '<button class="btn btn-blue btn-sm machine-report-retry" data-id="' + Number(row.id) + '">重试</button>' : '-')
+                    + '</td></tr>';
             }));
+        body.querySelectorAll('.machine-report-retry').forEach(function(button) {
+            button.onclick = function() { machineReportRetry(Number(button.getAttribute('data-id'))); };
+        });
     });
 }
 
@@ -142,6 +149,8 @@ function machineEndpointEdit(row) {
             + '<div class="form-row"><div class="form-item"><label>监听IP *</label><input id="miIp" value="' + machineEscape(row && row.bind_ip || '0.0.0.0') + '"></div>'
             + '<div class="form-item"><label>端口 *</label><input type="number" id="miPort" value="' + machineEscape(row && row.listen_port || 2004) + '"></div></div>'
             + '<div class="form-row"><div class="form-item"><label>机台来源IP</label><input id="miRemoteIp" value="' + machineEscape(row && row.allowed_remote_ip || '') + '" placeholder="V1正式生产建议必填"></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>CSV输入目录</label><input id="miCsvDir" value="' + machineEscape(row && row.csv_input_dir || '') + '" placeholder="例如 D:\\AIM\\Result"></div>'
+            + '<div class="form-item"><label>文件稳定秒数</label><input type="number" min="1" max="60" id="miStableSeconds" value="' + machineEscape(row && row.csv_stable_seconds || 2) + '"></div></div>'
             + '<div class="form-row"><div class="form-item"><label>协议</label><select id="miProtocol"><option value="1">V1 原协议</option><option value="2"' + (row && Number(row.protocol_version) === 2 ? ' selected' : '') + '>V2 增强协议</option></select></div>'
             + '<div class="form-item"><label>编码</label><select id="miEncoding"><option value="utf-8">UTF-8</option><option value="gbk"' + (row && row.encoding === 'gbk' ? ' selected' : '') + '>GBK</option></select></div></div>'
             + '<div class="form-row"><div class="form-item"><label>V2共享密钥</label><input type="password" id="miSecret" placeholder="' + (row && row.shared_secret_configured ? '已配置，留空保持不变' : '可选') + '"></div>'
@@ -156,6 +165,8 @@ function machineEndpointSave(id) {
         process_id:document.getElementById('miProcess').value, station_code:document.getElementById('miStation').value,
         cavity_code:document.getElementById('miCavity').value, bind_ip:document.getElementById('miIp').value,
         allowed_remote_ip:document.getElementById('miRemoteIp').value,
+        csv_input_dir:document.getElementById('miCsvDir').value,
+        csv_stable_seconds:Number(document.getElementById('miStableSeconds').value),
         listen_port:Number(document.getElementById('miPort').value), protocol_version:Number(document.getElementById('miProtocol').value),
         encoding:document.getElementById('miEncoding').value, timeout_ms:1000, heartbeat_seconds:30, enabled:1,
         shared_secret:document.getElementById('miSecret').value,
@@ -178,5 +189,12 @@ function machineReportUpload() {
     fetch('/api/iot/machine/reports/upload', {method:'POST', body:form}).then(function(response){ return response.json(); }).then(function(result) {
         if(result.code === 0) { alert('检测报告导入成功'); machineIotLoad(); machineIotHealth(); }
         else alert(result.message || '上传失败');
+    });
+}
+
+function machineReportRetry(id) {
+    api('/api/iot/machine/reports/' + id + '/retry', {method:'POST', body:{}}).then(function(result) {
+        if(result && result.code === 0) { alert('失败报告重试成功'); machineIotLoad(); machineIotHealth(); }
+        else alert(result ? result.message : '重试失败');
     });
 }

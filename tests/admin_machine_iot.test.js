@@ -27,4 +27,8 @@ test('machine communication page uses the complete API set and escapes values', 
   assert.match(source, /L3/);
   assert.doesNotMatch(source, /onclick="machineEndpointEditJson/);
   assert.match(source, /machine-endpoint-edit/);
+  assert.match(source, /csv_input_dir/);
+  assert.match(source, /csv_stable_seconds/);
+  assert.match(source, /reports\/.*\/retry/);
+  assert.match(source, /machine-report-retry/);
 });
