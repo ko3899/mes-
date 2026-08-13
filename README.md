@@ -6,6 +6,8 @@
 
 # MES工厂管家
 
+> 通用设备接入平台第一期底座已加入项目：标准事件、边缘持久队列、中央幂等接收及 AIM 兼容桥。操作与边界见 [docs/device-platform-foundation.md](docs/device-platform-foundation.md)。
+
 **轻量级制造执行系统 · 中小工厂数字化管理解决方案**
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
