@@ -1,5 +1,3 @@
-import hashlib
-import hmac
 import json
 import os
 import sqlite3
@@ -36,9 +34,12 @@ def app_client(tmp_path, monkeypatch):
     path = tmp_path / 'gateway.db'; monkeypatch.setattr(database, 'DB_PATH', str(path))
     database.init_db(); database._init_extra_tables()
     db = sqlite3.connect(path)
-    db.execute("INSERT INTO iot_gateway_credential(gateway_code,secret_hash,enabled) VALUES('GW1',?,1)",
-               (hashlib.sha256(b'secret').hexdigest(),))
+    db.execute("""INSERT INTO iot_gateway_credential
+               (gateway_code,customer_code,factory_code,secret_fingerprint,enabled)
+               VALUES('GW1','C','F01',?,1)""",
+               (__import__('hashlib').sha256(b'secret').hexdigest(),))
     db.commit(); db.close()
+    monkeypatch.setenv('MES_GATEWAY_SECRETS_JSON', '{"GW1":"secret"}')
     app = create_app(); app.config.update(TESTING=True)
     return app.test_client()
 
@@ -70,6 +71,24 @@ def test_gateway_endpoint_rejects_invalid_and_stale_signatures(app_client, monke
                            headers=signed_headers(body, timestamp='1786589000', nonce='n2')).status_code == 401
 
 
+def test_gateway_scope_blocks_cross_tenant_and_nonce_rows_expire(app_client, monkeypatch):
+    monkeypatch.setattr('services.gateway_auth.time.time', lambda: 1786590000)
+    bad = event().to_dict(); bad['customer_code'] = 'OTHER'
+    body = json.dumps(bad, separators=(',', ':')).encode()
+    assert app_client.post('/api/device-platform/gateway-events', data=body,
+                           headers=signed_headers(body, nonce='scope')).status_code == 401
+    good = json.dumps(event().to_dict(), separators=(',', ':')).encode()
+    assert app_client.post('/api/device-platform/gateway-events', data=good,
+                           headers=signed_headers(good, nonce='fresh')).status_code == 201
+    db = sqlite3.connect(database.DB_PATH)
+    db.execute("UPDATE iot_gateway_nonce SET expires_at=1")
+    db.commit(); db.close()
+    assert app_client.post('/api/device-platform/gateway-events', data=good,
+                           headers=signed_headers(good, nonce='newer')).status_code in (200, 201)
+    db = sqlite3.connect(database.DB_PATH)
+    assert db.execute('SELECT COUNT(*) FROM iot_gateway_nonce').fetchone()[0] == 1
+
+
 def test_http_transport_maps_success_and_duplicate_receipts(monkeypatch):
     calls = []
     class Response:
@@ -94,4 +113,4 @@ def test_http_transport_rejects_plain_http_and_maps_errors():
     def opener(request, timeout):
         raise HTTPError(request.full_url, 401, 'unauthorized', {}, None)
     receipt = HttpEventTransport('https://mes.local', 'GW1', 'secret', opener=opener).send(event())
-    assert not receipt.accepted and '401' in receipt.message
+    assert not receipt.accepted and '401' in receipt.message and receipt.retryable is False

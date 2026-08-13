@@ -47,15 +47,25 @@ def test_config_rejects_missing_or_unsafe_values(key, value):
         EdgeConfig.from_env(env(**{key: value}))
 
 
+def test_lease_must_exceed_transport_timeout():
+    with pytest.raises(EdgeConfigError):
+        EdgeConfig.from_env(env(MES_EDGE_HTTP_TIMEOUT_SECONDS='10',
+                                MES_EDGE_LEASE_SECONDS='14'))
+
+
 def test_cli_once_runs_one_bounded_cycle(monkeypatch, tmp_path):
     import edge_gateway_service as cli
     config = EdgeConfig.from_env(env(MES_EDGE_DB=str(tmp_path / 'events.db')))
     calls = []
     class Pump:
+        closed = False
         def run_once(self, limit):
             calls.append(limit)
             return type('Summary', (), {'claimed': 0, 'sent': 0, 'failed': 0})()
+        def close(self): self.closed = True
+    pump = Pump()
     monkeypatch.setattr(cli, 'load_config', lambda: config)
-    monkeypatch.setattr(cli, 'build_pump', lambda cfg: Pump())
+    monkeypatch.setattr(cli, 'build_pump', lambda cfg: pump)
     assert cli.main(['--once']) == 0
     assert calls == [20]
+    assert pump.closed is True

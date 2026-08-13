@@ -34,8 +34,16 @@ class EdgeConfig:
     poll_seconds: int
     lease_seconds: int
     batch_size: int
+    transport_timeout_seconds: int
     http_url: str = None
     http_secret: str = None
+    mqtt_host: str = None
+    mqtt_port: int = None
+    mqtt_ca: str = None
+    mqtt_cert: str = None
+    mqtt_key: str = None
+    customer_code: str = None
+    factory_code: str = None
 
     @classmethod
     def from_env(cls, values):
@@ -47,14 +55,34 @@ class EdgeConfig:
         poll = _integer(values, 'MES_EDGE_POLL_SECONDS', 2, 1, 300)
         lease = _integer(values, 'MES_EDGE_LEASE_SECONDS', 30, 5, 3600)
         batch = _integer(values, 'MES_EDGE_BATCH_SIZE', 20, 1, 500)
+        timeout_key = ('MES_EDGE_HTTP_TIMEOUT_SECONDS' if transport == 'http'
+                       else 'MES_EDGE_MQTT_TIMEOUT_SECONDS')
+        timeout = _integer(values, timeout_key, 5 if transport == 'http' else 10, 1, 300)
+        if lease < timeout + 5:
+            raise EdgeConfigError(f'MES_EDGE_LEASE_SECONDS must be at least {timeout + 5}')
         http_url = http_secret = None
         if transport == 'http':
             http_url = _required(values, 'MES_EDGE_HTTP_URL')
             if urlparse(http_url).scheme.lower() != 'https':
                 raise EdgeConfigError('MES_EDGE_HTTP_URL must use https')
             http_secret = _required(values, 'MES_EDGE_HTTP_SECRET')
-        return cls(database_path, gateway_id, transport, poll, lease, batch,
-                   http_url, http_secret)
+        mqtt_host = mqtt_port = mqtt_ca = mqtt_cert = mqtt_key = None
+        customer_code = factory_code = None
+        if transport == 'mqtt':
+            mqtt_host = _required(values, 'MES_EDGE_MQTT_HOST')
+            mqtt_port = _integer(values, 'MES_EDGE_MQTT_PORT', 8883, 1, 65535)
+            mqtt_ca = _required(values, 'MES_EDGE_MQTT_CA')
+            mqtt_cert = _required(values, 'MES_EDGE_MQTT_CERT')
+            mqtt_key = _required(values, 'MES_EDGE_MQTT_KEY')
+            for key, path in (('MES_EDGE_MQTT_CA', mqtt_ca), ('MES_EDGE_MQTT_CERT', mqtt_cert),
+                              ('MES_EDGE_MQTT_KEY', mqtt_key)):
+                if not Path(path).is_file():
+                    raise EdgeConfigError(f'{key} file does not exist')
+            customer_code = _required(values, 'MES_EDGE_CUSTOMER_CODE')
+            factory_code = _required(values, 'MES_EDGE_FACTORY_CODE')
+        return cls(database_path, gateway_id, transport, poll, lease, batch, timeout,
+                   http_url, http_secret, mqtt_host, mqtt_port, mqtt_ca,
+                   mqtt_cert, mqtt_key, customer_code, factory_code)
 
     def safe_summary(self):
         return {
@@ -64,6 +92,12 @@ class EdgeConfig:
             'poll_seconds': self.poll_seconds,
             'lease_seconds': self.lease_seconds,
             'batch_size': self.batch_size,
+            'transport_timeout_seconds': self.transport_timeout_seconds,
             'http_url': self.http_url,
             'http_secret_configured': bool(self.http_secret),
+            'mqtt_host': self.mqtt_host,
+            'mqtt_port': self.mqtt_port,
+            'mqtt_tls_configured': bool(self.mqtt_ca and self.mqtt_cert and self.mqtt_key),
+            'customer_code': self.customer_code,
+            'factory_code': self.factory_code,
         }

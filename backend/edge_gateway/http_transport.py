@@ -44,7 +44,8 @@ class HttpEventTransport:
             with self.opener(request, timeout=self.timeout) as response:
                 data = json.loads(response.read().decode('utf-8'))
         except HTTPError as exc:
-            return DeliveryReceipt(False, False, f'HTTP {exc.code}')
+            retryable = exc.code in (408, 425, 429) or exc.code >= 500
+            return DeliveryReceipt(False, False, f'HTTP {exc.code}', retryable)
         except (URLError, OSError, ValueError, json.JSONDecodeError) as exc:
             raise RuntimeError(f'gateway HTTP delivery failed: {exc}') from exc
         result = data.get('data') or {}

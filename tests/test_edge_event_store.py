@@ -40,7 +40,7 @@ def test_outbox_is_durable_idempotent_and_device_ordered(tmp_path):
     restarted = EdgeEventStore(path)
     assert [item.event_id for item in restarted.pending()] == ['E1', 'E2']
     assert restarted.stats() == {
-        'pending': 2, 'acknowledged': 0, 'attempts': 0, 'failed': 0,
+        'pending': 2, 'acknowledged': 0, 'attempts': 0, 'failed': 0, 'dead_letter': 0,
     }
 
 
@@ -62,7 +62,7 @@ def test_failure_keeps_event_pending_and_records_attempt(tmp_path):
 
     assert [item.event_id for item in store.pending()] == ['E1']
     assert store.stats() == {
-        'pending': 1, 'acknowledged': 0, 'attempts': 1, 'failed': 1,
+        'pending': 1, 'acknowledged': 0, 'attempts': 1, 'failed': 1, 'dead_letter': 0,
     }
     db = sqlite3.connect(tmp_path / 'edge.db')
     row = db.execute(
@@ -98,7 +98,7 @@ def test_claim_allows_only_one_inflight_event_per_device(tmp_path):
     assert [item.event_id for item in first] == ['D1-E1', 'D2-E1']
     assert second == []
     assert store.ack('D1-E1', worker_id='worker-b') is False
-    assert store.ack('D1-E1', worker_id='worker-a') is True
+    assert store.ack('D1-E1', worker_id='worker-a', lease_token=first[0].lease_token) is True
     assert [item.event_id for item in store.claim_pending('worker-b')] == ['D1-E2']
 
 
@@ -121,4 +121,29 @@ def test_existing_outbox_is_migrated_with_lease_columns(tmp_path):
     EdgeEventStore(path)
     db = sqlite3.connect(path)
     columns = {row[1] for row in db.execute('PRAGMA table_info(edge_event_outbox)')}
-    assert {'lease_owner', 'lease_until'} <= columns
+    assert {'lease_owner', 'lease_until', 'lease_token', 'next_attempt_at', 'dead_lettered_at'} <= columns
+
+
+def test_expired_claim_token_cannot_ack_or_release_new_claim(tmp_path):
+    store = EdgeEventStore(tmp_path / 'edge.db')
+    store.append(event('D1', 1, 'E1'))
+    old = store.claim_pending('worker-a', now=100, lease_seconds=5)[0]
+    new = store.claim_pending('worker-b', now=106, lease_seconds=5)[0]
+    assert old.lease_token != new.lease_token
+    assert store.ack('E1', 'worker-a', old.lease_token) is False
+    assert store.release('E1', 'worker-a', old.lease_token, 'late failure', now=106) is False
+    assert store.ack('E1', 'worker-b', new.lease_token) is True
+
+
+def test_retry_backoff_and_dead_letter_stop_hot_loop(tmp_path):
+    store = EdgeEventStore(tmp_path / 'edge.db')
+    store.append(event('D1', 1, 'E1'))
+    claim = store.claim_pending('worker', now=100)[0]
+    assert store.release('E1', 'worker', claim.lease_token, 'offline', now=100,
+                         backoff_seconds=10, max_attempts=2) is True
+    assert store.claim_pending('worker-2', now=109) == []
+    retry = store.claim_pending('worker-2', now=110)[0]
+    assert store.release('E1', 'worker-2', retry.lease_token, 'bad contract', now=110,
+                         backoff_seconds=10, max_attempts=2) is True
+    assert store.claim_pending('worker-3', now=1000) == []
+    assert store.stats()['dead_letter'] == 1

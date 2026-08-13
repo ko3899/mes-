@@ -24,7 +24,8 @@ def build_pump(config):
     store = EdgeEventStore(config.database_path)
     if config.transport == 'http':
         transport = HttpEventTransport(
-            config.http_url, config.gateway_id, config.http_secret
+            config.http_url, config.gateway_id, config.http_secret,
+            timeout=config.transport_timeout_seconds,
         )
     else:
         from edge_gateway.mqtt_transport import MqttEventTransport
@@ -46,13 +47,23 @@ def main(argv=None):
     if args.show_config:
         print(json.dumps(config.safe_summary(), ensure_ascii=False, indent=2))
         return 0
-    pump = build_pump(config)
-    while True:
-        summary = pump.run_once(limit=config.batch_size)
-        print(json.dumps(summary.__dict__, ensure_ascii=False))
-        if args.once:
-            return 0 if summary.failed == 0 else 1
-        time.sleep(config.poll_seconds)
+    pump = None
+    try:
+        pump = build_pump(config)
+        while True:
+            summary = pump.run_once(limit=config.batch_size)
+            print(json.dumps(summary.__dict__, ensure_ascii=False))
+            if args.once:
+                return 0 if summary.failed == 0 else 1
+            time.sleep(config.poll_seconds)
+    except KeyboardInterrupt:
+        return 0
+    except Exception as exc:
+        print(f'edge gateway failed: {exc}', file=sys.stderr)
+        return 1
+    finally:
+        if pump is not None:
+            pump.close()
 
 
 if __name__ == '__main__':

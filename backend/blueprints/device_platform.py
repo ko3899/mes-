@@ -47,8 +47,11 @@ def ingest_gateway_event():
             request.headers.get('X-Gateway-Signature', ''), body,
         )
         event = DeviceEvent.from_dict(request.get_json(silent=True) or {})
-        if event.gateway_code != credential['gateway_code']:
-            raise GatewayAuthError('event gateway identity mismatch')
+        expected = (credential['customer_code'], credential['factory_code'],
+                    credential['gateway_code'])
+        actual = (event.customer_code, event.factory_code, event.gateway_code)
+        if actual != expected:
+            raise GatewayAuthError('event customer, factory or gateway identity mismatch')
     except (GatewayAuthError, ContractError) as exc:
         return jsonify({'code': 401, 'message': str(exc)}), 401
     result = ingest_device_event(get_db(), event)

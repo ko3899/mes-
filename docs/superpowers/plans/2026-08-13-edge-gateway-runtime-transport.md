@@ -28,11 +28,11 @@
 
 **Interfaces:** `DeliveryTransport.send(event) -> DeliveryReceipt`; `DeliveryPump.run_once() -> DeliverySummary`; `release(event_id,worker_id,error)` clears the lease and increments attempts.
 
-- [ ] Write tests for accepted, duplicate, transport failure, wrong-worker acknowledgement and per-device ordering.
-- [ ] Run `python -m pytest -q tests/test_edge_delivery.py` and verify RED import failure.
-- [ ] Implement minimal delivery pump and lease-owner-aware release.
-- [ ] Run delivery and edge store tests; expect all pass.
-- [ ] Commit `feat: add lease-safe edge delivery pump`.
+- [x] Write tests for accepted, duplicate, transport failure, wrong-worker acknowledgement and per-device ordering.
+- [x] Run `python -m pytest -q tests/test_edge_delivery.py` and verify RED import failure.
+- [x] Implement minimal delivery pump and lease-owner-aware release.
+- [x] Run delivery and edge store tests; expect all pass.
+- [x] Commit `feat: add lease-safe edge delivery pump`.
 
 ### Task 2: Gateway HMAC Authentication and HTTP Transport
 
@@ -45,11 +45,11 @@
 
 **Interfaces:** Dedicated `POST /api/device-platform/gateway-events`; headers `X-Gateway-Id`, `X-Gateway-Time`, `X-Gateway-Nonce`, `X-Gateway-Signature`; HMAC-SHA256 over `gateway_id\ntimestamp\nnonce\nsha256(body)`.
 
-- [ ] Write tests for valid request, invalid signature, stale timestamp, nonce replay and HTTP receipt mapping.
-- [ ] Run focused test and verify RED.
-- [ ] Add gateway credential/nonces tables, authentication service, endpoint and stdlib HTTP client.
-- [ ] Run API, transport and migration regressions; expect all pass.
-- [ ] Commit `feat: authenticate edge gateway HTTP delivery`.
+- [x] Write tests for valid request, invalid signature, stale timestamp, nonce replay and HTTP receipt mapping.
+- [x] Run focused test and verify RED.
+- [x] Add gateway credential/nonces tables, authentication service, endpoint and stdlib HTTP client.
+- [x] Run API, transport and migration regressions; expect all pass.
+- [x] Commit `feat: authenticate edge gateway HTTP delivery`.
 
 ### Task 3: Standalone Edge Runtime
 
@@ -61,10 +61,10 @@
 
 **Interfaces:** environment variables `MES_EDGE_DB`, `MES_EDGE_GATEWAY_ID`, `MES_EDGE_TRANSPORT`, transport credentials and polling/lease settings; `--once` performs one bounded delivery cycle.
 
-- [ ] Write tests for missing/unsafe configuration, HTTP construction, `--once`, and secret-safe diagnostics.
-- [ ] Verify RED, implement config and CLI, then verify GREEN.
-- [ ] Add runtime database and local secrets paths to ignore rules.
-- [ ] Commit `feat: run edge delivery as a standalone service`.
+- [x] Write tests for missing/unsafe configuration, HTTP construction, `--once`, and secret-safe diagnostics.
+- [x] Verify RED, implement config and CLI, then verify GREEN.
+- [x] Add runtime database and local secrets paths to ignore rules.
+- [x] Commit `feat: run edge delivery as a standalone service`.
 
 ### Task 4: MQTT QoS1 mTLS Transport
 
@@ -77,8 +77,8 @@
 
 **Interfaces:** publish topic `mes/v1/{customer}/{factory}/{gateway}/events/{device}`; QoS 1; receipt succeeds only after PUBACK; TLS files are mandatory outside explicit test mode.
 
-- [ ] Write fake-client tests for topic, payload, QoS, PUBACK timeout and mandatory TLS.
-- [ ] Verify RED, implement paho adapter behind lazy import, verify GREEN.
-- [ ] Run the complete Python suite and documentation configuration check.
-- [ ] Document Windows/Linux service startup, certificates, firewall, HTTP fallback and recovery.
+- [x] Write fake-client tests for topic, payload, QoS, PUBACK timeout and mandatory TLS.
+- [x] Verify RED, implement paho adapter behind lazy import, verify GREEN.
+- [x] Run the complete Python suite and documentation configuration check.
+- [x] Document Windows/Linux service startup, certificates, firewall, HTTP fallback and recovery.
 - [ ] Commit `feat: deliver edge events over mqtt tls`.

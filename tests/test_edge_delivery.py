@@ -35,6 +35,9 @@ class Transport:
             raise outcome
         return outcome
 
+    def close(self):
+        self.closed = True
+
 
 def test_pump_acknowledges_accepted_and_duplicate_receipts(tmp_path):
     store = EdgeEventStore(tmp_path / 'edge.db')
@@ -51,7 +54,8 @@ def test_pump_acknowledges_accepted_and_duplicate_receipts(tmp_path):
 def test_pump_releases_failed_event_for_retry(tmp_path):
     store = EdgeEventStore(tmp_path / 'edge.db')
     store.append(event('D1', 1))
-    summary = DeliveryPump(store, Transport([RuntimeError('offline')]), 'worker-1').run_once()
+    summary = DeliveryPump(store, Transport([RuntimeError('offline')]), 'worker-1',
+                           base_backoff_seconds=0).run_once()
     assert summary.sent == 0 and summary.failed == 1
     assert store.stats()['pending'] == 1
     assert [e.event_id for e in store.claim_pending('worker-2')] == ['D1-1']
@@ -74,3 +78,14 @@ def test_rejected_receipt_is_released_with_reason(tmp_path):
     summary = DeliveryPump(store, Transport([receipt]), 'worker').run_once()
     assert summary.failed == 1
     assert store.stats()['attempts'] == 1
+
+
+def test_permanent_rejection_is_dead_lettered_and_transport_closes(tmp_path):
+    store = EdgeEventStore(tmp_path / 'edge.db')
+    store.append(event('D1', 1))
+    transport = Transport([DeliveryReceipt(False, message='invalid', retryable=False)])
+    pump = DeliveryPump(store, transport, 'worker')
+    assert pump.run_once().failed == 1
+    assert store.stats()['dead_letter'] == 1
+    pump.close()
+    assert transport.closed is True
