@@ -1064,6 +1064,8 @@ def _init_extra_tables():
     """初始化新增功能的表"""
     db = sqlite3.connect(DB_PATH)
     db.execute("PRAGMA foreign_keys = ON")
+    from services.device_event_ingest import create_device_event_tables
+    create_device_event_tables(db)
     _add_column_if_missing(db, 'base_process', 'sort_order', 'INTEGER DEFAULT 0')
     for col in ['required_sn', 'required_material', 'check_sequence', 'prev_station']:
         try:
