@@ -153,6 +153,20 @@ class EdgeEventStore:
         finally:
             db.close()
 
+    def release(self, event_id, worker_id, error):
+        db = self._connect()
+        try:
+            cursor = db.execute(
+                '''UPDATE edge_event_outbox
+                   SET attempts=attempts+1,last_error=?,lease_owner=NULL,lease_until=NULL
+                   WHERE event_id=? AND status='pending' AND lease_owner=?''',
+                (str(error)[:1000], str(event_id), str(worker_id)),
+            )
+            db.commit()
+            return cursor.rowcount == 1
+        finally:
+            db.close()
+
     def stats(self):
         db = self._connect()
         try:
