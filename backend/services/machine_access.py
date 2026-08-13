@@ -10,7 +10,7 @@ import uuid
 import logging
 
 from services.machine_protocol import AccessDecision
-from services.aim_event_bridge import aim_report_event
+from services.aim_event_bridge import aim_report_event, enqueue_aim_event, dispatch_aim_event
 
 
 logger = logging.getLogger(__name__)
@@ -270,6 +270,17 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
         (_value(endpoint, 'id'), file_hash),
     ).fetchone()
     if existing and int(existing['id']) != int(_retry_report_id or 0):
+        event_id = f"AIM:{_value(endpoint, 'id')}:REPORT:{existing['id']}"
+        try:
+            if event_sink is not None:
+                dispatch_aim_event(db, event_id, event_sink)
+            elif db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='iot_device_event'"
+            ).fetchone():
+                from services.device_event_ingest import ingest_device_event
+                dispatch_aim_event(db, event_id, lambda item: ingest_device_event(db, item))
+        except Exception:
+            logger.exception('AIM report %s standard event retry failed', existing['id'])
         return dict(existing)
 
     rows = list(csv.reader(io.StringIO(_decode_csv(csv_bytes))))
@@ -408,13 +419,14 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
     }
     try:
         standard_event = aim_report_event(endpoint, request_row, row, measurement_map)
+        enqueue_aim_event(db, standard_event)
         if event_sink is not None:
-            event_sink(standard_event)
+            dispatch_aim_event(db, standard_event.event_id, event_sink)
         elif db.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='iot_device_event'"
         ).fetchone():
             from services.device_event_ingest import ingest_device_event
-            ingest_device_event(db, standard_event)
+            dispatch_aim_event(db, standard_event.event_id, lambda item: ingest_device_event(db, item))
     except Exception:
         logger.exception('AIM report %s was imported but its standard event is pending retry', report_id)
     return row

@@ -154,9 +154,21 @@ def ingest_device_event(db, event):
             '''UPDATE iot_device_sequence_gap
                SET status='resolved',resolved_at=CURRENT_TIMESTAMP
                WHERE factory_code=? AND device_code=? AND status='open'
-                 AND missing_from=? AND missing_to=?''',
-            (event.factory_code, event.device_code,
-             event.sequence, event.sequence),
+                 AND NOT EXISTS (
+                   SELECT 1 FROM (
+                     WITH RECURSIVE missing(n) AS (
+                       SELECT iot_device_sequence_gap.missing_from
+                       UNION ALL SELECT n+1 FROM missing
+                         WHERE n < iot_device_sequence_gap.missing_to
+                     ) SELECT n FROM missing
+                   ) m WHERE NOT EXISTS (
+                     SELECT 1 FROM iot_device_event e
+                     WHERE e.factory_code=iot_device_sequence_gap.factory_code
+                       AND e.device_code=iot_device_sequence_gap.device_code
+                       AND e.sequence=m.n
+                   )
+                 )''',
+            (event.factory_code, event.device_code),
         )
         db.execute('RELEASE SAVEPOINT ingest_device_event')
         db.commit()

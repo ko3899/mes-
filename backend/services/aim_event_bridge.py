@@ -1,11 +1,54 @@
 """Compatibility mapping from legacy AIM inspection rows to standard events."""
 
 from datetime import datetime, timezone, timedelta
+import json
 
 from device_platform.contracts import DeviceEvent
 
 
 CHINA_STANDARD_TIME = timezone(timedelta(hours=8))
+
+
+def create_aim_event_outbox(db):
+    db.execute('''CREATE TABLE IF NOT EXISTS iot_aim_event_outbox (
+        event_id TEXT PRIMARY KEY,
+        envelope_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        dispatched_at TIMESTAMP
+    )''')
+    db.commit()
+
+
+def enqueue_aim_event(db, event):
+    create_aim_event_outbox(db)
+    row = db.execute(
+        'INSERT OR IGNORE INTO iot_aim_event_outbox(event_id,envelope_json) VALUES(?,?)',
+        (event.event_id, json.dumps(event.to_dict(), ensure_ascii=False, sort_keys=True)),
+    )
+    db.commit()
+    return row.rowcount == 1
+
+
+def dispatch_aim_event(db, event_id, sink):
+    row = db.execute(
+        "SELECT * FROM iot_aim_event_outbox WHERE event_id=? AND status='pending'", (event_id,)
+    ).fetchone()
+    if not row:
+        return False
+    try:
+        sink(DeviceEvent.from_dict(json.loads(row['envelope_json'])))
+    except Exception as exc:
+        db.execute(
+            'UPDATE iot_aim_event_outbox SET attempts=attempts+1,last_error=? WHERE event_id=?',
+            (str(exc)[:1000], event_id),
+        ); db.commit(); return False
+    db.execute(
+        "UPDATE iot_aim_event_outbox SET status='dispatched',dispatched_at=CURRENT_TIMESTAMP,last_error=NULL WHERE event_id=?",
+        (event_id,),
+    ); db.commit(); return True
 
 
 def _value(row, key, default=None):

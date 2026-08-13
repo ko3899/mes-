@@ -39,10 +39,17 @@ class EdgeEventStore:
                         CHECK(status IN ('pending','acknowledged')),
                     attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
                     last_error TEXT,
+                    lease_owner TEXT,
+                    lease_until TIMESTAMP,
                     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     acknowledged_at TIMESTAMP
                 )'''
             )
+            columns = {row[1] for row in db.execute('PRAGMA table_info(edge_event_outbox)')}
+            if 'lease_owner' not in columns:
+                db.execute('ALTER TABLE edge_event_outbox ADD COLUMN lease_owner TEXT')
+            if 'lease_until' not in columns:
+                db.execute('ALTER TABLE edge_event_outbox ADD COLUMN lease_until TIMESTAMP')
             db.execute(
                 '''CREATE INDEX IF NOT EXISTS idx_edge_outbox_pending
                    ON edge_event_outbox(status,device_code,sequence,id)'''
@@ -86,14 +93,46 @@ class EdgeEventStore:
         finally:
             db.close()
 
-    def ack(self, event_id):
+    def claim_pending(self, worker_id, limit=100, lease_seconds=30):
+        if not str(worker_id).strip():
+            raise ValueError('worker_id is required')
+        if not isinstance(limit, int) or limit < 1 or not isinstance(lease_seconds, int) or lease_seconds < 1:
+            raise ValueError('limit and lease_seconds must be positive integers')
+        db = self._connect()
+        try:
+            db.execute('BEGIN IMMEDIATE')
+            rows = db.execute(
+                '''SELECT o.id,o.event_id,o.envelope_json FROM edge_event_outbox o
+                   WHERE o.status='pending'
+                     AND (o.lease_until IS NULL OR o.lease_until <= CURRENT_TIMESTAMP)
+                     AND NOT EXISTS (
+                       SELECT 1 FROM edge_event_outbox earlier
+                       WHERE earlier.device_code=o.device_code AND earlier.status='pending'
+                         AND earlier.sequence < o.sequence
+                     )
+                   ORDER BY o.device_code,o.sequence,o.id LIMIT ?''', (limit,)
+            ).fetchall()
+            for row in rows:
+                db.execute(
+                    '''UPDATE edge_event_outbox SET lease_owner=?,
+                       lease_until=datetime('now', ?)
+                       WHERE id=?''',
+                    (str(worker_id), f'+{lease_seconds} seconds', row['id']),
+                )
+            db.commit()
+            return [DeviceEvent.from_dict(json.loads(row['envelope_json'])) for row in rows]
+        finally:
+            db.close()
+
+    def ack(self, event_id, worker_id=None):
         db = self._connect()
         try:
             cursor = db.execute(
                 '''UPDATE edge_event_outbox
                    SET status='acknowledged',acknowledged_at=CURRENT_TIMESTAMP,last_error=NULL
-                   WHERE event_id=? AND status='pending' ''',
-                (str(event_id),),
+                   WHERE event_id=? AND status='pending'
+                     AND (? IS NULL OR lease_owner=?)''',
+                (str(event_id), worker_id, worker_id),
             )
             db.commit()
             return cursor.rowcount == 1

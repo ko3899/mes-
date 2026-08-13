@@ -72,6 +72,12 @@ def test_event_api_rejects_bad_contract_and_requires_login(client):
     assert anonymous.get('/api/device-platform/events').status_code == 401
     assert anonymous.get('/api/device-platform/health').status_code == 401
 
+    with client.session_transaction() as session:
+        session['username'] = 'operator'
+    assert client.post('/api/device-platform/events', json=valid_event()).status_code == 403
+    assert client.get('/api/device-platform/events').status_code == 403
+    assert client.get('/api/device-platform/health').status_code == 403
+
 
 def test_event_list_filters_and_health_reports_real_gaps(client):
     assert client.post('/api/device-platform/events', json=valid_event()).status_code == 201

@@ -68,6 +68,17 @@ def test_late_event_closes_single_sequence_gap_without_rewinding_cursor():
     assert db.execute('SELECT status FROM iot_device_sequence_gap').fetchone()[0] == 'resolved'
 
 
+def test_late_events_shrink_and_eventually_close_range_gap():
+    db = build_db()
+    ingest_device_event(db, event('D1', 1, 'E1'))
+    ingest_device_event(db, event('D1', 5, 'E5'))
+    for sequence in (3, 2, 4):
+        ingest_device_event(db, event('D1', sequence, f'E{sequence}'))
+    assert db.execute(
+        "SELECT COUNT(*) FROM iot_device_sequence_gap WHERE status='open'"
+    ).fetchone()[0] == 0
+
+
 def test_same_sequence_with_different_event_id_is_kept_and_flagged():
     db = build_db()
     ingest_device_event(db, event('D1', 1, 'E1'))

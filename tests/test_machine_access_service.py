@@ -200,6 +200,31 @@ def test_report_rejects_missing_l1_sn_mismatch_bad_header_and_duplicate(tmp_path
     assert db.execute('SELECT COUNT(*) FROM iot_inspection_report').fetchone()[0] == 1
 
 
+def test_duplicate_report_retries_pending_standard_event(tmp_path):
+    db = build_db()
+    evaluate_access(db, endpoint(), request())
+    attempts = []
+
+    def offline(event):
+        attempts.append(event.event_id)
+        raise RuntimeError('offline')
+
+    first = import_inspection_report(
+        db, endpoint(), make_csv(), 'one.csv', tmp_path, event_sink=offline
+    )
+    assert attempts == [f'AIM:301:REPORT:{first["id"]}']
+    received = []
+    second = import_inspection_report(
+        db, endpoint(), make_csv(), 'renamed.csv', tmp_path, event_sink=received.append
+    )
+    assert second['id'] == first['id']
+    assert [event.event_id for event in received] == [f'AIM:301:REPORT:{first["id"]}']
+    assert db.execute(
+        'SELECT status FROM iot_aim_event_outbox WHERE event_id=?',
+        (f'AIM:301:REPORT:{first["id"]}',),
+    ).fetchone()[0] == 'dispatched'
+
+
 def test_records_unparseable_report_failure_without_production_side_effects(tmp_path):
     db = build_db()
     failed_dir = tmp_path / 'input' / '_failed'

@@ -86,3 +86,39 @@ def test_database_enables_wal_and_foreign_keys(tmp_path):
     assert store.database_path == str((tmp_path / 'edge.db').resolve())
     db = sqlite3.connect(store.database_path)
     assert db.execute('PRAGMA journal_mode').fetchone()[0].lower() == 'wal'
+
+
+def test_claim_allows_only_one_inflight_event_per_device(tmp_path):
+    store = EdgeEventStore(tmp_path / 'edge.db')
+    store.append(event('D1', 1, 'D1-E1'))
+    store.append(event('D1', 2, 'D1-E2'))
+    store.append(event('D2', 1, 'D2-E1'))
+    first = store.claim_pending('worker-a', limit=10, lease_seconds=30)
+    second = store.claim_pending('worker-b', limit=10, lease_seconds=30)
+    assert [item.event_id for item in first] == ['D1-E1', 'D2-E1']
+    assert second == []
+    assert store.ack('D1-E1', worker_id='worker-b') is False
+    assert store.ack('D1-E1', worker_id='worker-a') is True
+    assert [item.event_id for item in store.claim_pending('worker-b')] == ['D1-E2']
+
+
+def test_existing_outbox_is_migrated_with_lease_columns(tmp_path):
+    path = tmp_path / 'legacy-edge.db'
+    db = sqlite3.connect(path)
+    db.execute('''CREATE TABLE edge_event_outbox (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id TEXT NOT NULL UNIQUE,
+        device_code TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        envelope_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        acknowledged_at TIMESTAMP
+    )''')
+    db.commit(); db.close()
+    EdgeEventStore(path)
+    db = sqlite3.connect(path)
+    columns = {row[1] for row in db.execute('PRAGMA table_info(edge_event_outbox)')}
+    assert {'lease_owner', 'lease_until'} <= columns

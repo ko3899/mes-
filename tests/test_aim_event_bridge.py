@@ -7,7 +7,10 @@ BACKEND_ROOT = os.path.join(PROJECT_ROOT, 'backend')
 if BACKEND_ROOT not in sys.path:
     sys.path.insert(0, BACKEND_ROOT)
 
-from services.aim_event_bridge import aim_report_event  # noqa: E402
+from services.aim_event_bridge import (  # noqa: E402
+    aim_report_event, create_aim_event_outbox, enqueue_aim_event,
+    dispatch_aim_event,
+)
 
 
 def test_ok_report_maps_to_deterministic_standard_quality_event():
@@ -49,3 +52,21 @@ def test_ng_report_uses_safe_legacy_identity_defaults():
     assert event.gateway_code == 'AIM-COMPAT'
     assert event.payload['result'] == 'NG'
     assert event.raw_reference is None
+
+
+def test_failed_dispatch_remains_durable_and_can_retry():
+    import sqlite3
+    db = sqlite3.connect(':memory:'); db.row_factory = sqlite3.Row
+    create_aim_event_outbox(db)
+    event = aim_report_event(
+        {'id': 2, 'device_code': 'AIM002', 'station_code': 'CCD'},
+        {'id': 4, 'request_no': 'R4', 'sn': 'SN1', 'workorder_id': 1},
+        {'id': 5, 'result': 'OK', 'inspected_at': '2026-08-13T02:30:18Z', 'archive_path': None}, {},
+    )
+    assert enqueue_aim_event(db, event) is True
+    assert dispatch_aim_event(db, event.event_id, lambda _: (_ for _ in ()).throw(RuntimeError('offline'))) is False
+    assert tuple(db.execute('SELECT status,attempts FROM iot_aim_event_outbox').fetchone()) == ('pending', 1)
+    received = []
+    assert dispatch_aim_event(db, event.event_id, received.append) is True
+    assert received[0].event_id == event.event_id
+    assert db.execute('SELECT status FROM iot_aim_event_outbox').fetchone()[0] == 'dispatched'

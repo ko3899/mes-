@@ -7,7 +7,7 @@ from flask import Blueprint, jsonify, request
 from device_platform.contracts import ContractError, DeviceEvent
 from services.device_event_ingest import ingest_device_event
 from utils.database import get_db
-from utils.helpers import login_required
+from utils.helpers import admin_required
 
 
 device_platform_bp = Blueprint('device_platform', __name__)
@@ -24,7 +24,7 @@ def _result_data(result):
 
 
 @device_platform_bp.route('/api/device-platform/events', methods=['POST'])
-@login_required
+@admin_required
 def ingest_event():
     try:
         event = DeviceEvent.from_dict(request.get_json(silent=True) or {})
@@ -47,7 +47,7 @@ def _pagination():
 
 
 @device_platform_bp.route('/api/device-platform/events', methods=['GET'])
-@login_required
+@admin_required
 def list_events():
     try:
         page, page_size = _pagination()
@@ -81,7 +81,7 @@ def list_events():
 
 
 @device_platform_bp.route('/api/device-platform/health', methods=['GET'])
-@login_required
+@admin_required
 def health():
     db = get_db()
     row = db.execute(

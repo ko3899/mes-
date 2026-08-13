@@ -1065,7 +1065,9 @@ def _init_extra_tables():
     db = sqlite3.connect(DB_PATH)
     db.execute("PRAGMA foreign_keys = ON")
     from services.device_event_ingest import create_device_event_tables
+    from services.aim_event_bridge import create_aim_event_outbox
     create_device_event_tables(db)
+    create_aim_event_outbox(db)
     _add_column_if_missing(db, 'base_process', 'sort_order', 'INTEGER DEFAULT 0')
     for col in ['required_sn', 'required_material', 'check_sequence', 'prev_station']:
         try:
