@@ -65,6 +65,7 @@ from blueprints.warehouse import warehouse_bp
 from blueprints.eqp_schedule import eqp_schedule_bp
 from blueprints.table_order import table_order_bp
 from blueprints.machine_iot import machine_iot_bp
+from blueprints.device_platform import device_platform_bp
 
 FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
 ADMIN_DIR = os.path.join(BASE_DIR, 'admin')
@@ -128,6 +129,7 @@ def create_app():
     app.register_blueprint(eqp_schedule_bp)
     app.register_blueprint(table_order_bp)
     app.register_blueprint(machine_iot_bp)
+    app.register_blueprint(device_platform_bp)
 
     # 静态文件路由
     @app.route('/')
