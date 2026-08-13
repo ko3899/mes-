@@ -1066,8 +1066,10 @@ def _init_extra_tables():
     db.execute("PRAGMA foreign_keys = ON")
     from services.device_event_ingest import create_device_event_tables
     from services.aim_event_bridge import create_aim_event_outbox
+    from services.gateway_auth import create_gateway_auth_tables
     create_device_event_tables(db)
     create_aim_event_outbox(db)
+    create_gateway_auth_tables(db)
     _add_column_if_missing(db, 'base_process', 'sort_order', 'INTEGER DEFAULT 0')
     for col in ['required_sn', 'required_material', 'check_sequence', 'prev_station']:
         try:

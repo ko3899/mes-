@@ -6,6 +6,7 @@ from flask import Blueprint, jsonify, request
 
 from device_platform.contracts import ContractError, DeviceEvent
 from services.device_event_ingest import ingest_device_event
+from services.gateway_auth import authenticate_gateway, GatewayAuthError
 from utils.database import get_db
 from utils.helpers import admin_required
 
@@ -30,6 +31,26 @@ def ingest_event():
         event = DeviceEvent.from_dict(request.get_json(silent=True) or {})
     except ContractError as exc:
         return jsonify({'code': 400, 'message': str(exc)}), 400
+    result = ingest_device_event(get_db(), event)
+    status = 200 if result.duplicate else 201
+    return jsonify({'code': 0, 'data': _result_data(result)}), status
+
+
+@device_platform_bp.route('/api/device-platform/gateway-events', methods=['POST'])
+def ingest_gateway_event():
+    body = request.get_data(cache=True)
+    try:
+        credential = authenticate_gateway(
+            get_db(), request.headers.get('X-Gateway-Id', ''),
+            request.headers.get('X-Gateway-Time', ''),
+            request.headers.get('X-Gateway-Nonce', ''),
+            request.headers.get('X-Gateway-Signature', ''), body,
+        )
+        event = DeviceEvent.from_dict(request.get_json(silent=True) or {})
+        if event.gateway_code != credential['gateway_code']:
+            raise GatewayAuthError('event gateway identity mismatch')
+    except (GatewayAuthError, ContractError) as exc:
+        return jsonify({'code': 401, 'message': str(exc)}), 401
     result = ingest_device_event(get_db(), event)
     status = 200 if result.duplicate else 201
     return jsonify({'code': 0, 'data': _result_data(result)}), status
