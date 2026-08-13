@@ -81,4 +81,4 @@
 - [x] Verify RED, implement paho adapter behind lazy import, verify GREEN.
 - [x] Run the complete Python suite and documentation configuration check.
 - [x] Document Windows/Linux service startup, certificates, firewall, HTTP fallback and recovery.
-- [ ] Commit `feat: deliver edge events over mqtt tls`.
+- [x] Commit `feat: deliver edge events over mqtt tls`.
