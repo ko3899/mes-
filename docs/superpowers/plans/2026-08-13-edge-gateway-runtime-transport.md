@@ -54,7 +54,7 @@
 ### Task 3: Standalone Edge Runtime
 
 **Files:**
-- Create: `edge_gateway.py`
+- Create: `edge_gateway_service.py`
 - Create: `backend/edge_gateway/config.py`
 - Test: `tests/test_edge_gateway_runtime.py`
 - Modify: `.gitignore`

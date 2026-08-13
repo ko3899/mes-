@@ -27,6 +27,11 @@ uploads/
 # Runtime machine communication files (business records stay in the database)
 machine_archive/
 machine_test_input/
+edge-data/
+*.edge.db
+*.edge.db-wal
+*.edge.db-shm
+.env.edge
 
 # IDE
 .vscode/
