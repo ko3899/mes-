@@ -7,8 +7,13 @@ import os
 from pathlib import Path
 import time
 import uuid
+import logging
 
 from services.machine_protocol import AccessDecision
+from services.aim_event_bridge import aim_report_event
+
+
+logger = logging.getLogger(__name__)
 
 
 ALLOWED_WORKORDER_STATUSES = {1, 2}
@@ -254,7 +259,7 @@ def record_failed_inspection(db, endpoint, csv_bytes, filename, failure_path, re
 
 
 def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, now=None,
-                             _retry_report_id=None):
+                             _retry_report_id=None, event_sink=None):
     """验证、归档和导入单件AIM检测报告。"""
     if not csv_bytes:
         raise ValueError('CSV文件为空')
@@ -397,6 +402,21 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
         raise
     row = dict(db.execute('SELECT * FROM iot_inspection_report WHERE id=?', (report_id,)).fetchone())
     row['archive_path'] = str(target)
+    measurement_map = {
+        item_code: measured_value.strip()
+        for item_code, measured_value in zip(headers[4:], values[4:])
+    }
+    try:
+        standard_event = aim_report_event(endpoint, request_row, row, measurement_map)
+        if event_sink is not None:
+            event_sink(standard_event)
+        elif db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='iot_device_event'"
+        ).fetchone():
+            from services.device_event_ingest import ingest_device_event
+            ingest_device_event(db, standard_event)
+    except Exception:
+        logger.exception('AIM report %s was imported but its standard event is pending retry', report_id)
     return row
 
 
