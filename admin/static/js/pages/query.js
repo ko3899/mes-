@@ -6,7 +6,7 @@ function renderQueryProduction(el) {
         + '<div class="toolbar">'
         + '<input id="q_start" type="date" style="width:140px">'
         + '<input id="q_end" type="date" style="width:140px">'
-        + '<select id="q_status"><option value="">全部状态</option><option value="0">待开始</option><option value="1">进行中</option><option value="2">已完成</option></select>'
+        + '<select id="q_status"><option value="">全部状态</option><option value="0">草稿</option><option value="1">已下达</option><option value="2">生产中</option><option value="3">已完工</option><option value="4">已暂停</option><option value="5">已关闭</option><option value="6">已取消</option></select>'
         + '<button class="btn btn-blue" onclick="queryProduction()">查询</button>'
         + '<button class="btn btn-gray" onclick="queryProductionReset()">重置</button>'
         + '</div></div>'
@@ -26,7 +26,7 @@ function queryProduction() {
         var list = r.data || [];
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">无匹配数据</td></tr>'; return; }
-        var st = {0:'<span class="tag tag-wait">待开始</span>',1:'<span class="tag tag-run">进行中</span>',2:'<span class="tag tag-ok">已完成</span>',3:'<span class="tag tag-no">已关闭</span>'};
+        var st = {0:'<span class="tag tag-draft">草稿</span>',1:'<span class="tag tag-wait">已下达</span>',2:'<span class="tag tag-run">生产中</span>',3:'<span class="tag tag-ok">已完工</span>',4:'<span class="tag tag-wait">已暂停</span>',5:'<span class="tag tag-ok">已关闭</span>',6:'<span class="tag tag-no">已取消</span>'};
         tb.innerHTML = list.map(function(w) {
             return '<tr><td>'+w.order_no+'</td><td>'+(w.product_name||'-')+'</td><td>'+w.planned_qty+'</td><td>'+w.completed_qty+'</td>'
                 +'<td>'+(w.defect_qty||0)+'</td><td>'+(w.workshop_name||'-')+'</td>'

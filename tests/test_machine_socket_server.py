@@ -87,6 +87,10 @@ def test_two_frames_in_one_connection_and_bad_identity_fail_closed(tmp_path):
         assert b'|R2|L3|UNKNOWN_SN|' in responses[1]
     finally:
         server.shutdown(); server.server_close(); thread.join(2)
+    db = sqlite3.connect(server.db_path)
+    assert '设备身份' in db.execute(
+        'SELECT last_error FROM iot_machine_session ORDER BY id LIMIT 1'
+    ).fetchone()[0]
 
 
 def test_protocol_downgrade_and_clean_session_shutdown(tmp_path):
@@ -111,3 +115,31 @@ def test_oversized_frame_is_rejected_and_connection_closed(tmp_path):
             assert stream.readline() == b''
     finally:
         server.shutdown(); server.server_close(); thread.join(2)
+
+
+def test_ping_keeps_session_alive_without_creating_business_request(tmp_path):
+    server, thread = start_server(tmp_path)
+    try:
+        response = exchange(server.server_address, [b'PING\r\n'])[0]
+        assert response == b'PONG\r\n'
+    finally:
+        server.shutdown(); server.server_close(); thread.join(2)
+    db = sqlite3.connect(server.db_path)
+    assert db.execute('SELECT COUNT(*) FROM iot_machine_request').fetchone()[0] == 0
+    assert db.execute('SELECT status,request_count FROM iot_machine_session').fetchone() == (
+        'offline', 0,
+    )
+
+
+def test_request_is_linked_to_the_socket_session(tmp_path):
+    server, thread = start_server(tmp_path)
+    try:
+        assert b'|L1|OK|' in exchange(server.server_address, [v2_frame('SESSION')])[0]
+    finally:
+        server.shutdown(); server.server_close(); thread.join(2)
+    db = sqlite3.connect(server.db_path)
+    request_session, session_id = db.execute(
+        '''SELECT r.session_id,s.id FROM iot_machine_request r
+           JOIN iot_machine_session s ON s.id=r.session_id'''
+    ).fetchone()
+    assert request_session == session_id

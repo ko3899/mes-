@@ -179,7 +179,7 @@ test('the eight warehouse, quality, equipment, and schedule renderers use real r
   assert.equal(transaction.actions.edit, false);
   assert.equal(transaction.actions.delete, false);
   assert.equal(transaction.actions.import, false);
-  assert.notEqual(transaction.actions.add, false);
+  assert.equal(transaction.actions.add, false);
   assert.notEqual(transaction.actions.export, false);
 });
 

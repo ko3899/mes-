@@ -806,6 +806,9 @@ def init_db():
     salt = secrets.token_hex(16)
     pwd_hash = hashlib.pbkdf2_hmac('sha256', 'admin123'.encode(), salt.encode(), 100000)
     pwd = f"{salt}${pwd_hash.hex()}"
+    db.execute("""INSERT OR IGNORE INTO sys_tenant
+                  (tenant_name, tenant_code, max_users, status)
+                  VALUES (?, 'default', 100, 1)""", ('默认租户',))
     db.execute("INSERT OR IGNORE INTO sys_user (username, password, real_name, phone, status) VALUES (?, ?, ?, ?, ?)",
                ('admin', pwd, '系统管理员', '13800000000', 1))
 
@@ -813,6 +816,12 @@ def init_db():
                ('超级管理员', 'admin', '拥有所有权限', ''))
     db.execute("INSERT OR IGNORE INTO sys_role (role_name, role_key, description, menu_ids) VALUES (?, ?, ?, ?)",
                ('普通用户', 'user', '普通用户权限', ''))
+
+    # Backfill role references for databases created before role assignment was enforced.
+    db.execute("""UPDATE sys_user SET role_id=(SELECT id FROM sys_role WHERE role_key='admin')
+                  WHERE username='admin' AND (role_id IS NULL OR role_id=0)""")
+    db.execute("""UPDATE sys_user SET role_id=(SELECT id FROM sys_role WHERE role_key='user')
+                  WHERE role_id IS NULL OR role_id=0""")
 
     db.execute("INSERT OR IGNORE INTO sys_dept (dept_name, parent_id, sort_order) VALUES (?, ?, ?)",
                ('总经办', 0, 1))
@@ -1064,6 +1073,122 @@ def _init_extra_tables():
     """初始化新增功能的表"""
     db = sqlite3.connect(DB_PATH)
     db.execute("PRAGMA foreign_keys = ON")
+    db.executescript('''
+        CREATE TABLE IF NOT EXISTS sys_document (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, doc_name TEXT NOT NULL,
+            doc_type TEXT, category TEXT, file_path TEXT, file_size INTEGER,
+            uploader INTEGER, status INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS prod_cost (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, workorder_id INTEGER,
+            cost_type TEXT, amount REAL DEFAULT 0, remark TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS sys_backup (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, backup_name TEXT NOT NULL,
+            file_path TEXT, file_size INTEGER, status INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS base_stage_code (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, stage_name TEXT NOT NULL,
+            code TEXT UNIQUE, color TEXT, description TEXT,
+            sort_order INTEGER DEFAULT 0, status INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS prod_stage_record (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, stage_code TEXT,
+            workorder_id INTEGER, product_id INTEGER, quantity REAL DEFAULT 0,
+            start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP, end_time TIMESTAMP,
+            duration REAL DEFAULT 0, operator INTEGER, remark TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS util_energy (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, workshop_id INTEGER,
+            energy_type TEXT, quantity REAL DEFAULT 0, unit TEXT,
+            cost REAL DEFAULT 0, record_date TEXT, remark TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS util_environment (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, workshop_id INTEGER,
+            temperature REAL, humidity REAL, noise REAL, pm25 REAL,
+            voc REAL, recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS sys_5s_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, audit_no TEXT UNIQUE,
+            workshop_id INTEGER, auditor INTEGER, audit_date TEXT,
+            sort_score INTEGER DEFAULT 0, set_in_order_score INTEGER DEFAULT 0,
+            shine_score INTEGER DEFAULT 0, standardize_score INTEGER DEFAULT 0,
+            sustain_score INTEGER DEFAULT 0, total_score REAL DEFAULT 0,
+            issues TEXT, corrective_action TEXT, status INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS eqp_mold (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, mold_name TEXT, code TEXT UNIQUE,
+            product_id INTEGER, specification TEXT, cavity_count INTEGER,
+            usage_count INTEGER DEFAULT 0, max_usage INTEGER DEFAULT 0,
+            location TEXT, status INTEGER DEFAULT 1, remark TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS eqp_fixture (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, fixture_name TEXT,
+            code TEXT UNIQUE, process_id INTEGER, specification TEXT,
+            quantity INTEGER DEFAULT 0, location TEXT, status INTEGER DEFAULT 1,
+            remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS sys_barcode (id INTEGER PRIMARY KEY AUTOINCREMENT, barcode TEXT UNIQUE, biz_type TEXT, biz_id INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS sys_announcement (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT, announcement_type TEXT, publisher INTEGER, publish_time TEXT, expire_time TEXT, priority INTEGER DEFAULT 0, status INTEGER DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS inv_batch (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_no TEXT UNIQUE, product_id INTEGER, supplier TEXT, quantity REAL DEFAULT 0, production_date TEXT, expiry_date TEXT, status INTEGER DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS inv_trace (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id INTEGER, trace_type TEXT, biz_no TEXT, operation TEXT, ref_no TEXT, ref_id INTEGER, quantity REAL DEFAULT 0, operator INTEGER, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS hr_training (id INTEGER PRIMARY KEY AUTOINCREMENT, training_name TEXT, training_type TEXT, trainer TEXT, start_date TEXT, end_date TEXT, location TEXT, status INTEGER DEFAULT 0, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS hr_training_record (id INTEGER PRIMARY KEY AUTOINCREMENT, training_id INTEGER, user_id INTEGER, score REAL, result TEXT, certificate TEXT, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS hr_skill_matrix (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, process_id INTEGER, skill_level INTEGER DEFAULT 0, certified INTEGER DEFAULT 0, certified_at TEXT, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS spc_data (id INTEGER PRIMARY KEY AUTOINCREMENT, equipment_id INTEGER, process_id INTEGER, item_name TEXT, value REAL, unit TEXT, collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS base_station_config (id INTEGER PRIMARY KEY AUTOINCREMENT, station TEXT UNIQUE, station_name TEXT, process_id INTEGER, sequence_no INTEGER DEFAULT 0, allow_repeat INTEGER DEFAULT 0, previous_station TEXT, status INTEGER DEFAULT 1, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS base_material (id INTEGER PRIMARY KEY AUTOINCREMENT, material_no TEXT UNIQUE, material_name TEXT, specification TEXT, unit TEXT, status INTEGER DEFAULT 1, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS prod_material_lock (id INTEGER PRIMARY KEY AUTOINCREMENT, material_id INTEGER, reason TEXT, operator INTEGER, status INTEGER DEFAULT 1, unlock_time TEXT, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS prod_box (id INTEGER PRIMARY KEY AUTOINCREMENT, box_no TEXT UNIQUE, product_id INTEGER, workorder_id INTEGER, quantity REAL DEFAULT 0, status INTEGER DEFAULT 1, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS prod_outsource (id INTEGER PRIMARY KEY AUTOINCREMENT, outsource_no TEXT UNIQUE, supplier_id INTEGER, product_id INTEGER, quantity REAL DEFAULT 0, unit_price REAL DEFAULT 0, amount REAL DEFAULT 0, delivery_date TEXT, status INTEGER DEFAULT 0, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS prod_labor_time (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, task_id INTEGER, workorder_id INTEGER, work_date TEXT, duration REAL DEFAULT 0, overtime REAL DEFAULT 0, quantity REAL DEFAULT 0, amount REAL DEFAULT 0, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS prod_packing (id INTEGER PRIMARY KEY AUTOINCREMENT, packing_no TEXT UNIQUE, workorder_id INTEGER, package_type TEXT, quantity REAL DEFAULT 0, operator INTEGER, packed_at TEXT, status INTEGER DEFAULT 0, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS qm_defect_process (id INTEGER PRIMARY KEY AUTOINCREMENT, defect_no TEXT UNIQUE, workorder_id INTEGER, defect_id INTEGER, quantity REAL DEFAULT 0, disposition TEXT, responsible TEXT, status INTEGER DEFAULT 0, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS qm_first_inspect (id INTEGER PRIMARY KEY AUTOINCREMENT, inspect_no TEXT UNIQUE, workorder_id INTEGER, process_id INTEGER, inspector INTEGER, result TEXT, inspect_date TEXT, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS qm_8d_report (id INTEGER PRIMARY KEY AUTOINCREMENT, report_no TEXT UNIQUE, title TEXT, customer TEXT, problem TEXT, root_cause TEXT, corrective_action TEXT, owner TEXT, due_date TEXT, status INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS qm_supplier_eval (id INTEGER PRIMARY KEY AUTOINCREMENT, supplier_id INTEGER, eval_date TEXT, quality_score REAL DEFAULT 0, delivery_score REAL DEFAULT 0, service_score REAL DEFAULT 0, total_score REAL DEFAULT 0, grade TEXT, evaluator INTEGER, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS qm_capa (id INTEGER PRIMARY KEY AUTOINCREMENT, capa_no TEXT UNIQUE, source TEXT, issue TEXT, root_cause TEXT, corrective_action TEXT, preventive_action TEXT, owner TEXT, due_date TEXT, status INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS qm_control_plan (id INTEGER PRIMARY KEY AUTOINCREMENT, plan_no TEXT UNIQUE, product_id INTEGER, process_id INTEGER, control_item TEXT, specification TEXT, method TEXT, frequency TEXT, reaction_plan TEXT, status INTEGER DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS qm_eco (id INTEGER PRIMARY KEY AUTOINCREMENT, eco_no TEXT UNIQUE, title TEXT, change_reason TEXT, change_content TEXT, applicant INTEGER, effective_date TEXT, status INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS base_workstation (id INTEGER PRIMARY KEY AUTOINCREMENT, station_name TEXT, workstation_name TEXT, code TEXT UNIQUE, workshop_id INTEGER, process_id INTEGER, location TEXT, status INTEGER DEFAULT 1, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS prod_andon (id INTEGER PRIMARY KEY AUTOINCREMENT, andon_no TEXT UNIQUE, workstation_id INTEGER, andon_type TEXT, description TEXT, caller INTEGER, responder INTEGER, response_time TEXT, resolve_time TEXT, close_time TEXT, status INTEGER DEFAULT 0, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS prod_rework (id INTEGER PRIMARY KEY AUTOINCREMENT, rework_no TEXT UNIQUE, workorder_id INTEGER, quantity REAL DEFAULT 0, reason TEXT, disposition TEXT, operator INTEGER, status INTEGER DEFAULT 0, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS svc_complaint (id INTEGER PRIMARY KEY AUTOINCREMENT, complaint_no TEXT UNIQUE, customer_id INTEGER, product_id INTEGER, complaint_type TEXT, severity TEXT DEFAULT 'medium', description TEXT, complaint_date TEXT, handler INTEGER, resolution TEXT, status INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS svc_return (id INTEGER PRIMARY KEY AUTOINCREMENT, return_no TEXT UNIQUE, complaint_id INTEGER, customer_id INTEGER, product_id INTEGER, quantity REAL DEFAULT 0, return_reason TEXT, return_date TEXT, handler INTEGER, status INTEGER DEFAULT 0, remark TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS flow_definition (id INTEGER PRIMARY KEY AUTOINCREMENT, flow_name TEXT NOT NULL, flow_key TEXT NOT NULL UNIQUE, description TEXT, steps TEXT, status INTEGER DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS flow_instance (id INTEGER PRIMARY KEY AUTOINCREMENT, flow_id INTEGER NOT NULL, biz_type TEXT, biz_id INTEGER, title TEXT, current_step INTEGER DEFAULT 1, status INTEGER DEFAULT 0, creator INTEGER, steps_snapshot TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS flow_task (id INTEGER PRIMARY KEY AUTOINCREMENT, instance_id INTEGER NOT NULL, step_no INTEGER NOT NULL, assignee INTEGER NOT NULL, action TEXT, comment TEXT, status INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, completed_at TIMESTAMP);
+    ''')
+    _add_column_if_missing(db, 'sys_announcement', 'expire_time', 'TEXT')
+    _add_column_if_missing(db, 'sys_announcement', 'priority', 'INTEGER DEFAULT 0')
+    _add_column_if_missing(db, 'inv_batch', 'supplier', 'TEXT')
+    _add_column_if_missing(db, 'inv_trace', 'ref_no', 'TEXT')
+    _add_column_if_missing(db, 'inv_trace', 'ref_id', 'INTEGER')
+    _add_column_if_missing(db, 'inv_trace', 'quantity', 'REAL DEFAULT 0')
+    _add_column_if_missing(db, 'svc_complaint', 'severity', "TEXT DEFAULT 'medium'")
+    _add_column_if_missing(db, 'svc_return', 'complaint_id', 'INTEGER')
+    _add_column_if_missing(db, 'flow_instance', 'steps_snapshot', 'TEXT')
+    _add_column_if_missing(db, 'prod_labor_time', 'duration', 'REAL DEFAULT 0')
+    _add_column_if_missing(db, 'prod_labor_time', 'overtime', 'REAL DEFAULT 0')
+    _add_column_if_missing(db, 'base_workstation', 'station_name', 'TEXT')
+    _add_column_if_missing(db, 'prod_andon', 'resolve_time', 'TEXT')
+    _add_column_if_missing(db, 'prod_andon', 'remark', 'TEXT')
+    _add_column_if_missing(db, 'prod_andon', 'priority', 'INTEGER DEFAULT 1')
+    _add_column_if_missing(db, 'prod_box', 'box_type', 'TEXT')
+    _add_column_if_missing(db, 'prod_box', 'sn_list', 'TEXT')
+    _add_column_if_missing(db, 'prod_material_lock', 'lock_no', 'TEXT')
+    _add_column_if_missing(db, 'prod_material_lock', 'lock_type', 'TEXT')
+    _add_column_if_missing(db, 'prod_material_lock', 'released_at', 'TEXT')
+    _add_column_if_missing(db, 'sys_document', 'version', "TEXT DEFAULT '1.0'")
     from services.device_event_ingest import create_device_event_tables
     from services.aim_event_bridge import create_aim_event_outbox
     from services.gateway_auth import create_gateway_auth_tables
@@ -1232,6 +1357,17 @@ def _init_extra_tables():
            ON prod_report(user_id, client_operation_id)
            WHERE client_operation_id IS NOT NULL"""
     )
+    try:
+        db.execute('''CREATE UNIQUE INDEX IF NOT EXISTS idx_flow_task_instance_step
+                      ON flow_task(instance_id, step_no)''')
+    except sqlite3.IntegrityError:
+        pass
+    try:
+        db.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_flow_active_business
+                      ON flow_instance(biz_type, biz_id)
+                      WHERE status=0 AND biz_type IS NOT NULL AND biz_type<>''""")
+    except sqlite3.IntegrityError:
+        pass
     db.execute('''CREATE TABLE IF NOT EXISTS sys_table_order (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         table_key TEXT NOT NULL,
@@ -1246,9 +1382,13 @@ def _init_extra_tables():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         equipment_id INTEGER NOT NULL,
         protocol_version INTEGER NOT NULL DEFAULT 1,
+        transport_mode TEXT NOT NULL DEFAULT 'server',
         bind_ip TEXT NOT NULL,
         allowed_remote_ip TEXT,
         listen_port INTEGER NOT NULL,
+        reader_ip TEXT,
+        reader_port INTEGER,
+        reader_frame_idle_ms INTEGER NOT NULL DEFAULT 80,
         station_code TEXT NOT NULL,
         process_id INTEGER NOT NULL,
         cavity_code TEXT NOT NULL DEFAULT '1',
@@ -1269,8 +1409,25 @@ def _init_extra_tables():
         FOREIGN KEY (process_id) REFERENCES base_process(id)
     )''')
     _add_column_if_missing(db, 'iot_machine_endpoint', 'allowed_remote_ip', 'TEXT')
+    _add_column_if_missing(db, 'iot_machine_endpoint', 'transport_mode', "TEXT NOT NULL DEFAULT 'server'")
+    _add_column_if_missing(db, 'iot_machine_endpoint', 'reader_ip', 'TEXT')
+    _add_column_if_missing(db, 'iot_machine_endpoint', 'reader_port', 'INTEGER')
+    _add_column_if_missing(db, 'iot_machine_endpoint', 'reader_frame_idle_ms', 'INTEGER NOT NULL DEFAULT 80')
     _add_column_if_missing(db, 'iot_machine_endpoint', 'csv_input_dir', 'TEXT')
     _add_column_if_missing(db, 'iot_machine_endpoint', 'csv_stable_seconds', 'INTEGER NOT NULL DEFAULT 2')
+    _add_column_if_missing(db, 'iot_machine_endpoint', 'listener_status', "TEXT NOT NULL DEFAULT 'stopped'")
+    _add_column_if_missing(db, 'iot_machine_endpoint', 'listener_pid', 'INTEGER')
+    _add_column_if_missing(db, 'iot_machine_endpoint', 'listener_started_at', 'TIMESTAMP')
+    _add_column_if_missing(db, 'iot_machine_endpoint', 'csv_last_scan_at', 'TIMESTAMP')
+    _add_column_if_missing(db, 'iot_machine_endpoint', 'csv_last_error', 'TEXT')
+    db.execute('''CREATE TABLE IF NOT EXISTS iot_machine_runtime (
+        component TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        pid INTEGER,
+        started_at TIMESTAMP,
+        heartbeat_at TIMESTAMP,
+        last_error TEXT
+    )''')
     db.execute('''CREATE TABLE IF NOT EXISTS prod_serial (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         serial_no TEXT NOT NULL UNIQUE,

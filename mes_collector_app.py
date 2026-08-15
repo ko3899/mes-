@@ -15,6 +15,7 @@ def main():
     sys.path.insert(0, os.path.join(base_dir, 'backend'))
     
     from backend.app import app
+    from backend.machine_runtime import MachineCommunicationRuntime
     from backend.utils.database import init_db, _init_extra_tables, _create_indexes
     
     init_db()
@@ -24,6 +25,8 @@ def main():
     def run_server():
         app.run(host='127.0.0.1', port=8080, debug=False, use_reloader=False)
     
+    machine_runtime = MachineCommunicationRuntime()
+    machine_runtime.start()
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
     time.sleep(2)
@@ -37,7 +40,10 @@ def main():
         resizable=True,
         min_size=(360, 600)
     )
-    webview.start()
+    try:
+        webview.start()
+    finally:
+        machine_runtime.stop()
 
 if __name__ == '__main__':
     main()

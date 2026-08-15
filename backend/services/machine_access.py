@@ -35,17 +35,17 @@ def _decision_from_row(row):
     )
 
 
-def _persist_decision(db, endpoint, request, decision, context, started):
+def _persist_decision(db, endpoint, request, decision, context, started, session_id=None):
     dedupe_key = f"{_value(endpoint, 'id')}:{request.request_no}"
     elapsed_ms = max(0, int((time.perf_counter() - started) * 1000))
     try:
         db.execute(
             '''INSERT INTO iot_machine_request
-               (endpoint_id,request_no,protocol_version,station_code,cavity_code,sn,
+               (endpoint_id,session_id,request_no,protocol_version,station_code,cavity_code,sn,
                 workorder_id,task_id,route_step_id,decision,reason_code,reason_message,
                 laser_template,inspection_template,elapsed_ms,dedupe_key,report_status)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-            (_value(endpoint, 'id'), request.request_no, request.protocol_version,
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (_value(endpoint, 'id'), session_id, request.request_no, request.protocol_version,
              request.station_code, request.cavity_code, request.sn,
              context.get('workorder_id'), context.get('task_id'), context.get('route_step_id'),
              decision.decision, decision.reason_code, decision.reason_message,
@@ -72,7 +72,7 @@ def _persist_decision(db, endpoint, request, decision, context, started):
     return decision
 
 
-def evaluate_access(db, endpoint, request, now=None):
+def evaluate_access(db, endpoint, request, now=None, session_id=None):
     """判定SN能否在指定机台工序开始加工，并持久化幂等判定。"""
     started = time.perf_counter()
     dedupe_key = f"{_value(endpoint, 'id')}:{request.request_no}"
@@ -85,7 +85,8 @@ def evaluate_access(db, endpoint, request, now=None):
 
     def reject(code, message):
         return _persist_decision(
-            db, endpoint, request, AccessDecision.reject(code, message), context, started
+            db, endpoint, request, AccessDecision.reject(code, message), context, started,
+            session_id=session_id,
         )
 
     if request.sn.casefold() == 'noread':
@@ -164,7 +165,9 @@ def evaluate_access(db, endpoint, request, now=None):
     if outstanding:
         return _decision_from_row(outstanding)
     decision = AccessDecision.allow(laser, inspection, '允许加工')
-    return _persist_decision(db, endpoint, request, decision, context, started)
+    return _persist_decision(
+        db, endpoint, request, decision, context, started, session_id=session_id
+    )
 
 
 def _decode_csv(payload):

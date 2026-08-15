@@ -31,8 +31,11 @@ def _public_endpoint(row):
 
 
 def _page():
-    page = max(1, int(request.args.get('page', 1)))
-    size = min(200, max(1, int(request.args.get('size', 20))))
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+        size = min(200, max(1, int(request.args.get('size', 20))))
+    except (TypeError, ValueError):
+        page, size = 1, 20
     return page, size
 
 
@@ -69,14 +72,19 @@ def endpoint_save():
         equipment_id = int(data.get('equipment_id'))
         process_id = int(data.get('process_id'))
         protocol = int(data.get('protocol_version', 1))
+        transport_mode = str(data.get('transport_mode', 'server')).strip().lower()
         port = int(data.get('listen_port'))
+        reader_port = int(data.get('reader_port', 2002))
+        reader_frame_idle_ms = int(data.get('reader_frame_idle_ms', 80))
         timeout_ms = int(data.get('timeout_ms', 1000))
         heartbeat = int(data.get('heartbeat_seconds', 30))
         csv_stable_seconds = int(data.get('csv_stable_seconds', 2))
         enabled = 1 if int(data.get('enabled', 1)) else 0
+        endpoint_id = int(data.get('id') or 0)
     except (TypeError, ValueError):
         return jsonify({'code': 400, 'message': '设备、工序、端口和数值参数不合法'}), 400
     bind_ip = str(data.get('bind_ip', '')).strip()
+    reader_ip = str(data.get('reader_ip', '')).strip() or None
     allowed_remote_ip = str(data.get('allowed_remote_ip', '')).strip() or None
     station = str(data.get('station_code', '')).strip()
     cavity = str(data.get('cavity_code', '1')).strip()
@@ -85,10 +93,21 @@ def endpoint_save():
     if raw_csv_dir and not Path(raw_csv_dir).is_absolute():
         return jsonify({'code': 400, 'message': 'CSV输入目录必须是绝对路径'}), 400
     csv_input_dir = str(Path(raw_csv_dir).resolve()) if raw_csv_dir else None
-    if protocol not in (1, 2) or not (1 <= port <= 65535):
+    if protocol not in (1, 2) or transport_mode not in ('server', 'reader_client') or not (1 <= port <= 65535):
         return jsonify({'code': 400, 'message': '协议版本或监听端口不合法'}), 400
     if not bind_ip or not station or not cavity or encoding not in ('utf-8', 'gbk'):
         return jsonify({'code': 400, 'message': 'IP、工站、穴位或编码不合法'}), 400
+    if not (1 <= reader_port <= 65535) or not (20 <= reader_frame_idle_ms <= 2000):
+        return jsonify({'code': 400, 'message': '读码器端口或无结束符切帧参数不合法'}), 400
+    if transport_mode == 'reader_client':
+        if protocol != 1:
+            return jsonify({'code': 400, 'message': '海康直连读码器模式使用V1纯条码协议'}), 400
+        if not reader_ip:
+            return jsonify({'code': 400, 'message': '直连读码器模式必须配置读码器IP'}), 400
+        try:
+            ipaddress.ip_address(reader_ip)
+        except ValueError:
+            return jsonify({'code': 400, 'message': '读码器IP格式不合法'}), 400
     if not (500 <= timeout_ms <= 5000) or not (5 <= heartbeat <= 3600):
         return jsonify({'code': 400, 'message': '超时或心跳参数超出范围'}), 400
     if not (1 <= csv_stable_seconds <= 60):
@@ -99,9 +118,13 @@ def endpoint_save():
             ipaddress.ip_address(allowed_remote_ip)
     except ValueError:
         return jsonify({'code': 400, 'message': '监听IP或机台来源IP格式不合法'}), 400
-    if protocol == 1 and enabled and not allowed_remote_ip:
+    if transport_mode == 'server' and protocol == 1 and enabled and not allowed_remote_ip:
         return jsonify({'code': 400, 'message': 'V1端点必须配置机台来源IP白名单'}), 400
     db = get_db()
+    if endpoint_id and not db.execute(
+        'SELECT 1 FROM iot_machine_endpoint WHERE id=?', (endpoint_id,)
+    ).fetchone():
+        return jsonify({'code': 404, 'message': '通讯端点不存在'}), 404
     equipment = db.execute('SELECT code FROM eqp_ledger WHERE id=?', (equipment_id,)).fetchone()
     process = db.execute('SELECT id FROM base_process WHERE id=?', (process_id,)).fetchone()
     if not equipment or not process:
@@ -109,7 +132,7 @@ def endpoint_save():
     conflict = db.execute(
         '''SELECT id FROM iot_machine_endpoint WHERE listen_port=?
            AND (bind_ip=? OR bind_ip='0.0.0.0' OR ?='0.0.0.0') AND id<>?''',
-        (port, bind_ip, bind_ip, int(data.get('id') or 0))
+        (port, bind_ip, bind_ip, endpoint_id)
     ).fetchone()
     if conflict:
         return jsonify({'code': 409, 'message': '该监听IP和端口已被其他通讯端点占用'}), 409
@@ -117,29 +140,36 @@ def endpoint_save():
         directory_conflict = db.execute(
             '''SELECT id FROM iot_machine_endpoint
                WHERE enabled=1 AND csv_input_dir=? COLLATE NOCASE AND id<>?''',
-            (csv_input_dir, int(data.get('id') or 0)),
+            (csv_input_dir, endpoint_id),
         ).fetchone()
         if directory_conflict:
             return jsonify({'code': 409, 'message': '该CSV输入目录已绑定其他启用端点'}), 409
+    laser_template = str(data.get('laser_template') or '').strip() or None
+    inspection_template = str(data.get('inspection_template') or '').strip() or None
     shared_secret = data.get('shared_secret')
-    if data.get('id') and not shared_secret:
+    if endpoint_id and not shared_secret:
         current = db.execute(
             'SELECT shared_secret FROM iot_machine_endpoint WHERE id=?',
-            (int(data['id']),),
+            (endpoint_id,),
         ).fetchone()
-        shared_secret = current['shared_secret'] if current else None
+        if not current:
+            return jsonify({'code': 404, 'message': '通讯端点不存在'}), 404
+        shared_secret = current['shared_secret']
     if protocol == 2 and enabled and not shared_secret:
         return jsonify({'code': 400, 'message': 'V2端点必须配置共享密钥'}), 400
-    values = (equipment_id, protocol, bind_ip, allowed_remote_ip, port, station, process_id, cavity,
-              encoding, timeout_ms, heartbeat, data.get('laser_template'),
-              data.get('inspection_template'), shared_secret, csv_input_dir,
+    if protocol == 2 and enabled and (not laser_template or not inspection_template):
+        return jsonify({'code': 400, 'message': 'V2端点必须配置加工模板和检测模板'}), 400
+    values = (equipment_id, protocol, transport_mode, bind_ip, allowed_remote_ip, port,
+              reader_ip, reader_port, reader_frame_idle_ms, station, process_id, cavity,
+              encoding, timeout_ms, heartbeat, laser_template,
+              inspection_template, shared_secret, csv_input_dir,
               csv_stable_seconds, enabled)
     try:
-        if data.get('id'):
-            endpoint_id = int(data['id'])
+        if endpoint_id:
             db.execute(
-                '''UPDATE iot_machine_endpoint SET equipment_id=?,protocol_version=?,
-                   bind_ip=?,allowed_remote_ip=?,listen_port=?,station_code=?,process_id=?,cavity_code=?,
+                '''UPDATE iot_machine_endpoint SET equipment_id=?,protocol_version=?,transport_mode=?,
+                   bind_ip=?,allowed_remote_ip=?,listen_port=?,reader_ip=?,reader_port=?,reader_frame_idle_ms=?,
+                   station_code=?,process_id=?,cavity_code=?,
                    encoding=?,timeout_ms=?,heartbeat_seconds=?,laser_template=?,
                    inspection_template=?,shared_secret=?,csv_input_dir=?,csv_stable_seconds=?,
                    enabled=?,updated_at=CURRENT_TIMESTAMP
@@ -147,11 +177,12 @@ def endpoint_save():
         else:
             endpoint_id = db.execute(
                 '''INSERT INTO iot_machine_endpoint
-                   (equipment_id,protocol_version,bind_ip,allowed_remote_ip,listen_port,station_code,
-                    process_id,cavity_code,encoding,timeout_ms,heartbeat_seconds,
+                   (equipment_id,protocol_version,transport_mode,bind_ip,allowed_remote_ip,listen_port,
+                    reader_ip,reader_port,reader_frame_idle_ms,station_code,process_id,cavity_code,
+                    encoding,timeout_ms,heartbeat_seconds,
                     laser_template,inspection_template,shared_secret,csv_input_dir,
-                    csv_stable_seconds,enabled)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', values
+                   csv_stable_seconds,enabled)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', values
             ).lastrowid
         db.commit()
     except sqlite3.IntegrityError:
@@ -163,11 +194,26 @@ def endpoint_save():
 @machine_iot_bp.route('/api/iot/machine/endpoints/<int:endpoint_id>/toggle', methods=['POST'])
 @admin_required
 def endpoint_toggle(endpoint_id):
-    enabled = 1 if int((request.get_json(silent=True) or {}).get('enabled', 0)) else 0
+    try:
+        enabled = 1 if int((request.get_json(silent=True) or {}).get('enabled', 0)) else 0
+    except (TypeError, ValueError):
+        return jsonify({'code': 400, 'message': '启停状态不合法'}), 400
     db = get_db()
     current = _endpoint(db, endpoint_id)
     if not current:
         return jsonify({'code': 404, 'message': '通讯端点不存在'}), 404
+    if enabled and str(current['transport_mode'] or 'server') == 'server' and int(current['protocol_version']) == 1 and not current['allowed_remote_ip']:
+        return jsonify({'code': 400, 'message': 'V1端点必须配置机台来源IP白名单'}), 400
+    if enabled and str(current['transport_mode'] or 'server') == 'reader_client':
+        if int(current['protocol_version']) != 1:
+            return jsonify({'code': 400, 'message': '海康直连读码器模式使用V1纯条码协议'}), 400
+        if not current['reader_ip'] or not current['reader_port']:
+            return jsonify({'code': 400, 'message': '直连读码器端点必须配置读码器IP和端口'}), 400
+    if enabled and int(current['protocol_version']) == 2:
+        if not current['shared_secret']:
+            return jsonify({'code': 400, 'message': 'V2端点必须配置共享密钥'}), 400
+        if not current['laser_template'] or not current['inspection_template']:
+            return jsonify({'code': 400, 'message': 'V2端点必须配置加工模板和检测模板'}), 400
     if enabled and current['csv_input_dir']:
         conflict = db.execute(
             '''SELECT id FROM iot_machine_endpoint
@@ -310,27 +356,52 @@ def report_retry(report_id):
 def health():
     db = get_db()
     enabled = db.execute('SELECT COUNT(*) FROM iot_machine_endpoint WHERE enabled=1').fetchone()[0]
-    online = db.execute("SELECT COUNT(*) FROM iot_machine_session WHERE status='online'").fetchone()[0]
+    listening = db.execute(
+        "SELECT COUNT(*) FROM iot_machine_endpoint WHERE enabled=1 AND listener_status='listening'"
+    ).fetchone()[0]
+    listener_errors = db.execute(
+        "SELECT COUNT(*) FROM iot_machine_endpoint WHERE enabled=1 AND listener_status='error'"
+    ).fetchone()[0]
+    online = db.execute(
+        '''SELECT COUNT(*) FROM iot_machine_session s
+           JOIN iot_machine_endpoint e ON e.id=s.endpoint_id
+           WHERE s.status='online' AND e.listener_status='listening'
+             AND s.last_heartbeat_at >= datetime('now','-' || (e.heartbeat_seconds * 2) || ' seconds')'''
+    ).fetchone()[0]
     pending = db.execute("SELECT COUNT(*) FROM iot_machine_request WHERE decision='L1' AND report_status='pending'").fetchone()[0]
     failures = db.execute("SELECT COUNT(*) FROM iot_inspection_report WHERE import_status='failed'").fetchone()[0]
     directories = db.execute(
-        "SELECT csv_input_dir,last_seen_at FROM iot_machine_endpoint WHERE enabled=1 AND TRIM(COALESCE(csv_input_dir,''))<>''"
+        "SELECT csv_input_dir,csv_last_scan_at,csv_last_error FROM iot_machine_endpoint WHERE enabled=1 AND TRIM(COALESCE(csv_input_dir,''))<>''"
     ).fetchall()
     missing = sum(1 for row in directories if not Path(row['csv_input_dir']).is_dir())
     unstable = 0
     for row in directories:
         directory = Path(row['csv_input_dir'])
         if directory.is_dir():
-            unstable += sum(
-                1 for item in directory.iterdir()
-                if item.is_file() and not item.name.startswith('.') and item.suffix.lower() == '.csv'
-            )
+            try:
+                unstable += sum(
+                    1 for item in directory.iterdir()
+                    if item.is_file() and not item.name.startswith('.') and item.suffix.lower() == '.csv'
+                )
+            except OSError:
+                missing += 1
     last_collection = max(
-        (row['last_seen_at'] for row in directories if row['last_seen_at']), default=None
+        (row['csv_last_scan_at'] for row in directories if row['csv_last_scan_at']), default=None
+    )
+    collector = db.execute(
+        '''SELECT *,CASE WHEN heartbeat_at >= datetime('now','-30 seconds')
+                  THEN 1 ELSE 0 END AS heartbeat_fresh
+           FROM iot_machine_runtime WHERE component='csv_collector' '''
+    ).fetchone()
+    collector_status = (
+        collector['status'] if collector and collector['heartbeat_fresh'] else 'stopped'
     )
     return jsonify({'code': 0, 'data': {'enabled_endpoints': enabled, 'online_sessions': online,
+                                        'listening_endpoints': listening,
+                                        'listener_errors': listener_errors,
                                         'pending_reports': pending, 'failed_reports': failures,
                                         'collector_directories': len(directories),
                                         'missing_directories': missing,
                                         'unstable_files': unstable,
+                                        'collector_status': collector_status,
                                         'last_collection_at': last_collection}})

@@ -66,10 +66,10 @@ function renderStageRecord(el) {
     el.innerHTML = '<div class="card"><div class="card-title"><span>阶段记录</span><button class="btn btn-blue" id="srAddBtn">+ 新增记录</button></div>'
         + '<table><thead><tr><th>ID</th><th>阶段</th><th>工单</th><th>产品</th><th>数量</th><th>操作人</th><th>开始</th><th>结束</th><th>时长</th><th>操作</th></tr></thead>'
         + '<tbody id="tb"><tr><td colspan="10" class="empty">加载中...</td></tr></tbody></table></div>';
-    document.getElementById('srAddBtn').onclick = srAdd;
-    srLoad();
+    document.getElementById('srAddBtn').onclick = stageRecordAdd;
+    stageRecordLoad();
 }
-function srLoad() {
+function stageRecordLoad() {
     api('/api/stage/record/list?size=50').then(function(r) {
         if(!r) return;
         var list = r.data?.list||[];
@@ -84,7 +84,7 @@ function srLoad() {
         }).join('');
     });
 }
-function srAdd() {
+function stageRecordAdd() {
     Promise.all([api('/api/stage/code/list'), api('/api/prod/workorder/list?size=500'), api('/api/base/product/all')]).then(function(r) {
         var stageOpts = '<option value="">选择阶段</option>';
         (r[0]?.data||[]).forEach(function(s) { stageOpts += '<option value="'+s.code+'">'+s.stage_name+' ('+s.code+')</option>'; });
@@ -105,7 +105,7 @@ function srAdd() {
                 remark:document.getElementById('f_remark').value, start_time: new Date().toISOString()};
             if(!d.stage_code) { alert('请选择阶段'); return; }
             api('/api/stage/record/add',{method:'POST',body:d}).then(function(r2) {
-                if(r2&&r2.code===0) { closeModal(); srLoad(); } else alert(r2?r2.message:'保存失败');
+                if(r2&&r2.code===0) { closeModal(); stageRecordLoad(); } else alert(r2?r2.message:'保存失败');
             });
         };
         document.getElementById('modal').classList.add('show');
@@ -116,7 +116,7 @@ function srComplete(id) {
     document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item" style="flex:1"><label>备注</label><textarea id="f_remark"></textarea></div></div>';
     modalSaveHandler = function() {
         api('/api/stage/record/complete',{method:'POST',body:{id:id,remark:document.getElementById('f_remark').value}}).then(function(r) {
-            if(r&&r.code===0) { closeModal(); srLoad(); } else alert(r?r.message:'操作失败');
+            if(r&&r.code===0) { closeModal(); stageRecordLoad(); } else alert(r?r.message:'操作失败');
         });
     };
     document.getElementById('modal').classList.add('show');

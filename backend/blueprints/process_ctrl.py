@@ -269,11 +269,15 @@ def lock_material():
 @login_required
 def unlock_material():
     """解料 - 解锁物料"""
-    d = request.json
+    d = request.get_json(silent=True) or {}
     lock_id = d.get('id')
+    if not lock_id:
+        return jsonify({'code': 400, 'message': '缺少锁料记录ID'}), 400
     
     db = get_db()
-    db.execute("UPDATE prod_material_lock SET status=0, released_at=CURRENT_TIMESTAMP WHERE id=? AND status=1", (lock_id,))
+    cursor = db.execute("UPDATE prod_material_lock SET status=0, released_at=CURRENT_TIMESTAMP WHERE id=? AND status=1", (lock_id,))
+    if cursor.rowcount == 0:
+        return jsonify({'code': 409, 'message': '锁料记录不存在或已解锁'}), 409
     db.commit()
     
     return jsonify({'code': 0, 'message': '解料成功'})

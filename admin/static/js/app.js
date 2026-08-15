@@ -8,6 +8,24 @@ function setAuthenticatedView(authenticated) {
     document.getElementById('appPage').classList.toggle('is-hidden', !authenticated);
 }
 
+function applyAuthenticatedUser(user) {
+    curUser = user;
+    setAuthenticatedView(true);
+    document.getElementById('uname').textContent = curUser.real_name || curUser.username;
+    document.getElementById('uav').textContent = (curUser.real_name || curUser.username).charAt(0);
+    buildMenu();
+    goPage('home');
+    loadNotifications();
+}
+
+function restoreSession() {
+    return api('/api/user/info', {skipAuthRedirect:true}).then(function(r) {
+        if(r && r.code === 0 && r.data) applyAuthenticatedUser(r.data);
+        else setAuthenticatedView(false);
+        return r;
+    });
+}
+
 function toggleSidebar() {
     var appPage = document.getElementById('appPage');
     var toggleBtn = document.getElementById('toggleBtn');
@@ -272,6 +290,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('modal').onclick = function(e) {
         if(e.target === this) closeModal();
     };
+    restoreSession();
 
     // 全局搜索快捷键
     document.addEventListener('keydown', function(e) {
@@ -340,19 +359,15 @@ function doLogin() {
     api('/api/login', {method:'POST', body:{username:u, password:p}}).then(function(r) {
         if(!r) { document.getElementById('lerr').textContent = '网络错误'; return; }
         if(r.code !== 0) { document.getElementById('lerr').textContent = r.message; return; }
-        curUser = r.data;
-        setAuthenticatedView(true);
-        document.getElementById('uname').textContent = curUser.real_name || curUser.username;
-        document.getElementById('uav').textContent = (curUser.real_name || curUser.username).charAt(0);
-        buildMenu();
-        goPage('home');
-        loadNotifications();
+        applyAuthenticatedUser(r.data);
     });
 }
 
-function doLogout() {
-    api('/api/logout', {method:'POST'});
+function doLogout(skipServerLogout) {
+    if(!skipServerLogout && curUser) api('/api/logout', {method:'POST'});
     curUser = null;
+    lastNotifCount = 0;
+    clearApiCache();
     setAuthenticatedView(false);
 }
 

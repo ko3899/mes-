@@ -55,8 +55,8 @@ function renderInv(el, type) {
     el.innerHTML = '<div class="card"><div class="card-title"><span>' + t + '</span>'
         + '<div style="display:flex;gap:8px"><button class="btn btn-green" onclick="doExport2(\'' + table + '\')">导出</button>'
         + '<button class="btn btn-blue" id="invAddBtn">+ 新增</button></div></div>'
-        + '<table><thead><tr><th>ID</th><th>单号</th><th>类型</th><th>' + (isIn ? '供应商' : '客户') + '</th><th>金额</th><th>状态</th><th>操作</th></tr></thead>'
-        + '<tbody id="tb"><tr><td colspan="7" class="empty">加载中...</td></tr></tbody></table></div>';
+        + '<table><thead><tr><th>ID</th><th>单号</th><th>产品</th><th>类型</th><th>' + (isIn ? '供应商' : '客户') + '</th><th>数量</th><th>金额</th><th>状态</th><th>操作</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="9" class="empty">加载中...</td></tr></tbody></table></div>';
     document.getElementById('invAddBtn').onclick = function() { invAdd(type); };
     invLoad(type);
 }
@@ -66,15 +66,20 @@ function invLoad(type) {
         if(!r) return;
         var list = r.data && r.data.list ? r.data.list : [];
         var tb = document.getElementById('tb');
-        if(!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>'; return; }
+        if(!list.length) { tb.innerHTML = '<tr><td colspan="9" class="empty">暂无数据</td></tr>'; return; }
         var h = '';
         var noKey = type === 'in' ? 'inbound_no' : 'outbound_no';
         var nameKey = type === 'in' ? 'supplier' : 'customer';
         list.forEach(function(r2) {
-            h += '<tr><td>' + r2.id + '</td><td>' + r2[noKey] + '</td><td>' + (r2[type === 'in' ? 'inbound_type' : 'outbound_type']||'') + '</td>';
-            h += '<td>' + (r2[nameKey]||'') + '</td><td>' + (r2.total_amount||0) + '</td>';
-            h += '<td><span class="tag ' + (r2.status ? 'tag-ok' : 'tag-draft') + '">' + (r2.status ? '已完成' : '草稿') + '</span></td>';
-            h += '<td><button class="btn btn-red btn-sm" onclick="invDel(\'' + type + '\',' + r2.id + ')">删除</button></td></tr>';
+            var isDraft = Number(r2.status) === 0;
+            h += '<tr><td>' + r2.id + '</td><td>' + MESUI.escapeHtml(r2[noKey] || '') + '</td>';
+            h += '<td>' + MESUI.escapeHtml(r2.product_summary || '') + '</td><td>' + MESUI.escapeHtml(r2[type === 'in' ? 'inbound_type' : 'outbound_type'] || '') + '</td>';
+            h += '<td>' + MESUI.escapeHtml(r2[nameKey] || '') + '</td><td>' + Number(r2.total_quantity || 0) + '</td><td>' + Number(r2.total_amount || 0).toFixed(2) + '</td>';
+            h += '<td><span class="tag ' + (isDraft ? 'tag-draft' : 'tag-ok') + '">' + (isDraft ? '草稿' : '已过账') + '</span></td>';
+            h += '<td>' + (isDraft
+                ? '<button class="btn btn-blue btn-sm" onclick="invPost(\'' + type + '\',' + r2.id + ')">过账</button> '
+                    + '<button class="btn btn-red btn-sm" onclick="invDel(\'' + type + '\',' + r2.id + ')">删除</button>'
+                : '<span class="text-muted">已完成</span>') + '</td></tr>';
         });
         tb.innerHTML = h;
     });
@@ -84,8 +89,12 @@ function invAdd(type) {
     api('/api/base/product/all').then(function(r) {
         var opts = '<option value="">请选择</option>';
         (r && r.data ? r.data : []).forEach(function(p) { opts += '<option value="' + p.id + '">' + p.product_name + '</option>'; });
+        var typeOptions = isIn
+            ? '<option value="采购">采购</option><option value="生产入库">生产入库</option><option value="退料">退料</option><option value="其他">其他</option>'
+            : '<option value="销售">销售</option><option value="生产领料">生产领料</option><option value="调拨">调拨</option><option value="其他">其他</option>';
         document.getElementById('mTitle').textContent = '新增' + (isIn ? '入库' : '出库') + '单';
-        document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>' + (isIn ? '供应商' : '客户') + '</label><input id="f_name" type="text"></div></div>'
+        document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>单据类型</label><select id="f_type">' + typeOptions + '</select></div>'
+            + '<div class="form-item"><label>' + (isIn ? '供应商' : '客户') + '</label><input id="f_name" type="text"></div></div>'
             + '<div class="form-row"><div class="form-item"><label>产品<span style="color:red">*</span></label><select id="f_pid">' + opts + '</select></div>'
             + '<div class="form-item"><label>数量<span style="color:red">*</span></label><input id="f_qty" type="number" step="0.01"></div></div>'
             + '<div class="form-row"><div class="form-item"><label>单价</label><input id="f_price" type="number" step="0.01"></div>'
@@ -94,16 +103,30 @@ function invAdd(type) {
             var d = {product_id:document.getElementById('f_pid').value, quantity:document.getElementById('f_qty').value,
                 unit_price:document.getElementById('f_price').value || 0, remark:document.getElementById('f_remark').value};
             d[isIn ? 'supplier' : 'customer'] = document.getElementById('f_name').value;
-            d.total_amount = (Number(d.quantity) * Number(d.unit_price)).toFixed(2);
-            if(!d.product_id || !d.quantity) { alert('请填写必填项'); return; }
+            d[isIn ? 'inbound_type' : 'outbound_type'] = document.getElementById('f_type').value;
+            if(!d.product_id || Number(d.quantity) <= 0 || Number(d.unit_price) < 0) { alert('请选择产品，数量必须大于0，单价不能小于0'); return; }
             api('/api/inv/' + (isIn ? 'inbound' : 'outbound') + '/add', {method:'POST', body:d}).then(function(r2) {
-                if(r2 && r2.code === 0) { closeModal(); invLoad(type); } else alert(r2 ? r2.message : '保存失败');
+                if(r2 && r2.code === 0) { closeModal(); invLoad(type); alert('草稿已保存，请核对后过账'); } else alert(r2 ? r2.message : '保存失败');
             });
         };
         document.getElementById('modal').classList.add('show');
     });
 }
-function invDel(type, id) { if(!confirm('确定删除？')) return; api('/api/inv/' + (type==='in'?'inbound':'outbound') + '/delete', {method:'POST', body:{id:id}}).then(function(){invLoad(type)}); }
+function invPost(type, id) {
+    if(!confirm('过账后将立即更新库存且不能修改或删除，确定继续？')) return;
+    var apiP = type === 'in' ? 'inbound' : 'outbound';
+    api('/api/inv/' + apiP + '/' + id + '/post', {method:'POST', body:{}}).then(function(r) {
+        if(r && r.code === 0) { alert('过账成功'); invLoad(type); }
+        else alert(r ? r.message : '过账失败');
+    });
+}
+function invDel(type, id) {
+    if(!confirm('确定删除草稿？')) return;
+    api('/api/inv/' + (type === 'in' ? 'inbound' : 'outbound') + '/delete', {method:'POST', body:{id:id}}).then(function(r) {
+        if(r && r.code === 0) invLoad(type);
+        else alert(r ? r.message : '删除失败');
+    });
+}
 
 // 库存余额
 function renderBalance(el) {
@@ -267,4 +290,9 @@ function eqpAdd() {
     };
     document.getElementById('modal').classList.add('show');
 }
-function eqpDel(id) { if(!confirm('确定删除？')) return; api('/api/eqp/ledger/delete', {method:'POST', body:{id:id}}).then(function(){eqpLoad()}); }
+function eqpDel(id) {
+    if(!confirm('确定删除？')) return;
+    api('/api/eqp/ledger/delete', {method:'POST', body:{id:id}}).then(function(r) {
+        if(r&&r.code===0) eqpLoad(); else alert(r?r.message:'删除失败');
+    });
+}

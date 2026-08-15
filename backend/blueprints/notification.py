@@ -40,11 +40,15 @@ def unread_count():
 def mark_read():
     db = get_db()
     user_id = session.get('user_id')
-    data = request.json
+    data = request.get_json(silent=True) or {}
     if data.get('all'):
         db.execute("UPDATE sys_notification SET is_read=1 WHERE user_id=?", (user_id,))
     else:
-        db.execute("UPDATE sys_notification SET is_read=1 WHERE id=? AND user_id=?", (data['id'], user_id))
+        if not data.get('id'):
+            return jsonify({'code': 400, 'message': '缺少通知ID'}), 400
+        cursor = db.execute("UPDATE sys_notification SET is_read=1 WHERE id=? AND user_id=?", (data['id'], user_id))
+        if cursor.rowcount == 0:
+            return jsonify({'code': 404, 'message': '通知不存在'}), 404
     db.commit()
     return jsonify({'code': 0})
 

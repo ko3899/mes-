@@ -1,5 +1,5 @@
 """系统管理蓝图"""
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
 from utils.helpers import (
     admin_required,
@@ -39,16 +39,46 @@ def sys_user_list():
 @system_bp.route('/api/sys/user/add', methods=['POST'])
 @admin_required
 def sys_user_add():
-    data = request.json
-    data['password'] = hash_password(data.get('password', '123456'))
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'code': 400, 'message': '请求数据必须是JSON对象'}), 400
+    username = str(data.get('username') or '').strip()
+    password = str(data.get('password') or '')
+    if not username or len(password) < 6:
+        return jsonify({'code': 400, 'message': '用户名不能为空，密码至少6位'}), 400
+    data['username'] = username
+    data['password'] = hash_password(password)
+    db = get_db()
+    # New users get the ordinary role unless an explicit valid role was supplied.
+    role_id = data.get('role_id')
+    if role_id in (None, ''):
+        role = db.execute("SELECT id FROM sys_role WHERE role_key='user' AND status=1").fetchone()
+        if role:
+            data['role_id'] = role['id']
+    elif not db.execute("SELECT 1 FROM sys_role WHERE id=? AND status=1", (role_id,)).fetchone():
+        return jsonify({'code': 400, 'message': '角色不存在或已停用'}), 400
+    for field, table in (('tenant_id', 'sys_tenant'), ('dept_id', 'sys_dept')):
+        if data.get(field) not in (None, '') and not db.execute(
+                f"SELECT 1 FROM {table} WHERE id=? AND status=1", (data[field],)).fetchone():
+            return jsonify({'code': 400, 'message': f'{field}引用不存在或已停用'}), 400
     return jsonify(crud_add('sys_user', data))
 
 
 @system_bp.route('/api/sys/user/update', methods=['POST'])
 @admin_required
 def sys_user_update():
-    data = request.json
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not data.get('id'):
+        return jsonify({'code': 400, 'message': '缺少用户ID'}), 400
+    data.pop('username', None)
+    db = get_db()
+    for field, table in (('role_id', 'sys_role'), ('tenant_id', 'sys_tenant'), ('dept_id', 'sys_dept')):
+        if field in data and data[field] not in (None, ''):
+            if not db.execute(f"SELECT 1 FROM {table} WHERE id=? AND status=1", (data[field],)).fetchone():
+                return jsonify({'code': 400, 'message': f'{field}引用不存在或已停用'}), 400
     if 'password' in data and data['password']:
+        if len(str(data['password'])) < 6:
+            return jsonify({'code': 400, 'message': '密码至少6位'}), 400
         data['password'] = hash_password(data['password'])
     else:
         data.pop('password', None)
@@ -58,7 +88,13 @@ def sys_user_update():
 @system_bp.route('/api/sys/user/delete', methods=['POST'])
 @admin_required
 def sys_user_delete():
-    return jsonify(crud_delete('sys_user', request.json.get('id')))
+    data = request.get_json(silent=True) or {}
+    user_id = data.get('id')
+    if not user_id:
+        return jsonify({'code': 400, 'message': '缺少用户ID'}), 400
+    if int(user_id) == int(session.get('user_id')):
+        return jsonify({'code': 409, 'message': '不能删除当前登录账号'}), 409
+    return jsonify(crud_delete('sys_user', user_id))
 
 
 @system_bp.route('/api/sys/role/list')

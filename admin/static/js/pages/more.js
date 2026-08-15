@@ -18,28 +18,65 @@ function repairLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>'; return; }
         var h = '';
         list.forEach(function(r2) {
-            h += '<tr><td>' + r2.id + '</td><td>' + r2.repair_no + '</td><td>' + (r2.equipment_name||r2.equipment_id) + '</td>';
-            h += '<td>' + (r2.fault_desc||'') + '</td>';
+            h += '<tr><td>' + MESUI.escapeHtml(r2.id) + '</td><td>' + MESUI.escapeHtml(r2.repair_no) + '</td><td>' + MESUI.escapeHtml(r2.equipment_name||r2.equipment_id) + '</td>';
+            h += '<td>' + MESUI.escapeHtml(r2.fault_desc||'') + '</td>';
             h += '<td><span class="tag ' + (r2.status === 2 ? 'tag-ok' : r2.status ? 'tag-wait' : 'tag-draft') + '">' + (r2.status === 2 ? '已完成' : r2.status ? '维修中' : '待修') + '</span></td>';
-            h += '<td><button class="btn btn-red btn-sm" onclick="repairDel(' + r2.id + ')">删除</button></td></tr>';
+            h += '<td>';
+            if(r2.status === 0) h += '<button class="btn btn-blue btn-sm" onclick="repairStart(' + r2.id + ')">开始维修</button> <button class="btn btn-red btn-sm" onclick="repairDel(' + r2.id + ')">删除</button>';
+            if(r2.status === 1) h += '<button class="btn btn-green btn-sm" onclick="repairComplete(' + r2.id + ')">完成维修</button>';
+            h += '</td></tr>';
         });
         tb.innerHTML = h;
     });
 }
 function repairAdd() {
-    document.getElementById('mTitle').textContent = '新增维修单';
-    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>设备ID<span style="color:red">*</span></label><input id="f_eqid" type="number"></div></div>'
-        + '<div class="form-row"><div class="form-item"><label>故障描述</label><textarea id="f_fault"></textarea></div></div>';
+    api('/api/eqp/ledger/list').then(function(r) {
+        var equipment = r && Array.isArray(r.data) ? r.data.filter(function(item) {
+            return Number(item.status) === 1;
+        }) : [];
+        var options = '<option value="">请选择可用设备</option>';
+        equipment.forEach(function(item) {
+            options += '<option value="' + MESUI.escapeHtml(item.id) + '">'
+                + MESUI.escapeHtml((item.code || '-') + ' / ' + (item.equipment_name || '-')) + '</option>';
+        });
+        document.getElementById('mTitle').textContent = '新增维修单';
+        document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>设备<span style="color:red">*</span></label><select id="f_eqid">' + options + '</select></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>故障描述<span style="color:red">*</span></label><textarea id="f_fault"></textarea></div></div>'
+            + (!equipment.length ? '<div class="empty">暂无可报修设备，请先维护设备台账或完成现有维修单。</div>' : '');
+        modalSaveHandler = function() {
+            var d = {equipment_id:document.getElementById('f_eqid').value, fault_desc:document.getElementById('f_fault').value.trim()};
+            if(!d.equipment_id) { alert('请选择设备'); return; }
+            if(!d.fault_desc) { alert('请填写故障描述'); return; }
+            api('/api/eqp/repair/add', {method:'POST', body:d}).then(function(result) {
+                if(result && result.code === 0) { closeModal(); repairLoad(); } else alert(result ? result.message : '保存失败');
+            });
+        };
+        document.getElementById('modal').classList.add('show');
+    });
+}
+function repairStart(id) {
+    api('/api/eqp/repair/'+id+'/start', {method:'POST',body:{}}).then(function(r) {
+        if(r&&r.code===0) repairLoad(); else alert(r?r.message:'操作失败');
+    });
+}
+function repairComplete(id) {
+    document.getElementById('mTitle').textContent = '完成维修';
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item" style="flex:1"><label>维修结果<span style="color:red">*</span></label><textarea id="f_result"></textarea></div></div>';
     modalSaveHandler = function() {
-        var d = {equipment_id:document.getElementById('f_eqid').value, fault_desc:document.getElementById('f_fault').value};
-        if(!d.equipment_id) { alert('请填写设备ID'); return; }
-        api('/api/eqp/repair/add', {method:'POST', body:d}).then(function(r) {
-            if(r && r.code === 0) { closeModal(); repairLoad(); } else alert(r ? r.message : '保存失败');
+        var result = document.getElementById('f_result').value.trim();
+        if(!result) { alert('请填写维修结果'); return; }
+        api('/api/eqp/repair/'+id+'/complete', {method:'POST',body:{repair_desc:result}}).then(function(r) {
+            if(r&&r.code===0) { closeModal(); repairLoad(); } else alert(r?r.message:'操作失败');
         });
     };
     document.getElementById('modal').classList.add('show');
 }
-function repairDel(id) { if(!confirm('确定删除？')) return; api('/api/eqp/repair/delete', {method:'POST', body:{id:id}}).then(function(){repairLoad()}); }
+function repairDel(id) {
+    if(!confirm('确定删除？')) return;
+    api('/api/eqp/repair/delete', {method:'POST', body:{id:id}}).then(function(r) {
+        if(r&&r.code===0) repairLoad(); else alert(r?r.message:'删除失败');
+    });
+}
 
 // 用户管理
 function renderUser(el) {
@@ -72,13 +109,13 @@ function userLoad() {
 function userAdd() {
     document.getElementById('mTitle').textContent = '新增用户';
     document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>用户名<span style="color:red">*</span></label><input id="f_uname" type="text"></div>'
-        + '<div class="form-item"><label>密码<span style="color:red">*</span></label><input id="f_pwd" type="password" value="123456"></div></div>'
+        + '<div class="form-item"><label>密码<span style="color:red">*</span></label><input id="f_pwd" type="password" minlength="6" autocomplete="new-password"></div></div>'
         + '<div class="form-row"><div class="form-item"><label>姓名</label><input id="f_rname" type="text"></div>'
         + '<div class="form-item"><label>手机</label><input id="f_phone" type="text"></div></div>';
     modalSaveHandler = function() {
         var d = {username:document.getElementById('f_uname').value, password:document.getElementById('f_pwd').value,
             real_name:document.getElementById('f_rname').value, phone:document.getElementById('f_phone').value};
-        if(!d.username || !d.password) { alert('请填写必填项'); return; }
+        if(!d.username || d.password.length < 6) { alert('用户名不能为空，密码至少6位'); return; }
         api('/api/sys/user/add', {method:'POST', body:d}).then(function(r) {
             if(r && r.code === 0) { closeModal(); userLoad(); } else alert(r ? r.message : '保存失败');
         });
@@ -101,7 +138,13 @@ function userEdit(row) {
     };
     document.getElementById('modal').classList.add('show');
 }
-function userDel(id) { if(!confirm('确定删除？')) return; api('/api/sys/user/delete', {method:'POST', body:{id:id}}).then(function(){userLoad()}); }
+function userDel(id) {
+    if(!confirm('确定删除？')) return;
+    api('/api/sys/user/delete', {method:'POST', body:{id:id}}).then(function(r) {
+        if(r && r.code === 0) userLoad();
+        else alert(r ? r.message : '删除失败');
+    });
+}
 
 // 系统日志
 function renderLog(el) {

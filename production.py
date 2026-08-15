@@ -26,8 +26,7 @@ def main():
 
     from app import app, init_db, _init_extra_tables
     from init_sample_data import init_sample_data
-    from machine_gateway_manager import MachineGatewayManager
-    from machine_csv_collector import MachineCsvCollector
+    from machine_runtime import MachineCommunicationRuntime
     from utils.database import _create_indexes
 
     logger.info('正在初始化数据库')
@@ -37,18 +36,11 @@ def main():
     init_sample_data()
     logger.info('数据库初始化完成')
 
-    gateway_manager = MachineGatewayManager()
-    gateway_count = gateway_manager.start()
-    logger.info('AIM机台Socket服务已启动：%s个端点', gateway_count)
-
-    csv_collector = MachineCsvCollector(
-        archive_root=os.environ.get(
-            'MES_MACHINE_ARCHIVE_DIR', os.path.join(BASE_DIR, 'machine_archive')
-        ),
-        interval=float(os.environ.get('MES_MACHINE_SCAN_SECONDS', '2')),
+    machine_runtime = MachineCommunicationRuntime()
+    owns_runtime = machine_runtime.start()
+    logger.info(
+        'AIM机台通讯运行时：%s', '已启动' if owns_runtime else '已由其他进程托管'
     )
-    csv_collector.start()
-    logger.info('AIM机台CSV目录采集服务已启动')
 
     host = os.environ.get('MES_HOST', '0.0.0.0')
     port = int(os.environ.get('MES_PORT', '8080'))
@@ -64,10 +56,8 @@ def main():
             logger.warning('Waitress未安装，使用Flask内置服务器')
             app.run(host=host, port=port, debug=False)
     finally:
-        csv_collector.stop()
-        logger.info('AIM机台CSV目录采集服务已停止')
-        gateway_manager.stop()
-        logger.info('AIM机台Socket服务已停止')
+        machine_runtime.stop()
+        logger.info('AIM机台通讯运行时已停止')
 
 
 if __name__ == '__main__':

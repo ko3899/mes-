@@ -45,7 +45,7 @@ function wsAdd() {
         document.getElementById('modal').classList.add('show');
     });
 }
-function wsDel(id) { if(!confirm('确定删除？')) return; api('/api/site/workstation/delete',{method:'POST',body:{id:id}}).then(function(){wsLoad()}); }
+function wsDel(id) { if(!confirm('确定删除？')) return; api('/api/site/workstation/delete',{method:'POST',body:{id:id}}).then(function(r){if(r&&r.code===0)wsLoad();else alert(r?r.message:'删除失败')}); }
 
 // 安灯系统
 function renderAndon(el) {
@@ -76,7 +76,7 @@ function andonLoad() {
 function andonCall() {
     api('/api/site/workstation/list').then(function(r) {
         var opts = '<option value="">选择工位</option>';
-        (r?.data||[]).forEach(function(w) { opts += '<option value="'+w.id+'">'+w.station_name+'</option>'; });
+        (r?.data||[]).filter(function(w) { return Number(w.status) === 1; }).forEach(function(w) { opts += '<option value="'+MESUI.escapeHtml(w.id)+'">'+MESUI.escapeHtml(w.station_name)+'</option>'; });
         document.getElementById('mTitle').textContent = '呼叫安灯';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>工位</label><select id="f_ws">'+opts+'</select></div>'
             + '<div class="form-item"><label>类型</label><select id="f_type"><option value="quality">质量</option><option value="equipment">设备</option><option value="material">物料</option><option value="safety">安全</option></select></div></div>'
@@ -84,7 +84,9 @@ function andonCall() {
             + '<div class="form-row"><div class="form-item" style="flex:1"><label>描述</label><textarea id="f_desc"></textarea></div></div>';
         modalSaveHandler = function() {
             var d = {workstation_id:document.getElementById('f_ws').value, andon_type:document.getElementById('f_type').value,
-                priority:document.getElementById('f_pri').value, description:document.getElementById('f_desc').value};
+                priority:document.getElementById('f_pri').value, description:document.getElementById('f_desc').value.trim()};
+            if(!d.workstation_id) { alert('请选择工位'); return; }
+            if(!d.description) { alert('请填写安灯描述'); return; }
             api('/api/site/andon/call',{method:'POST',body:d}).then(function(r2) {
                 if(r2&&r2.code===0) { closeModal(); andonLoad(); } else alert(r2?r2.message:'操作失败');
             });
@@ -110,30 +112,38 @@ function rwLoad() {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(rw) {
-            return '<tr><td>'+rw.id+'</td><td>'+rw.rework_no+'</td><td>'+(rw.workorder_no||'-')+'</td><td>'+rw.quantity+'</td>'
-                +'<td>'+rw.rework_type+'</td><td>'+(rw.reason||'-')+'</td>'
-                +'<td><span class="tag '+(rw.status?'tag-ok':'tag-wait')+'">'+(rw.status?'已处理':'待处理')+'</span></td></tr>';
+            return '<tr><td>'+MESUI.escapeHtml(rw.id)+'</td><td>'+MESUI.escapeHtml(rw.rework_no)+'</td><td>'+MESUI.escapeHtml(rw.workorder_no||'-')+'</td><td>'+MESUI.escapeHtml(rw.quantity)+'</td>'
+                +'<td>'+MESUI.escapeHtml(rw.disposition||'-')+'</td><td>'+MESUI.escapeHtml(rw.reason||'-')+'</td>'
+                +'<td><span class="tag '+(rw.status?'tag-ok':'tag-wait')+'">'+(rw.status?'已处理':'待处理')+'</span>'
+                +(rw.status?'':' <button class="btn btn-green btn-sm" onclick="rwComplete('+rw.id+')">完成</button>')+'</td></tr>';
         }).join('');
     });
 }
 function rwAdd() {
     api('/api/prod/workorder/list?size=500').then(function(r) {
         var opts = '<option value="">选择工单</option>';
-        (r?.data?.list||[]).forEach(function(w) { opts += '<option value="'+w.id+'">'+w.order_no+'</option>'; });
+        (r?.data?.list||[]).filter(function(w) { return Number(w.status) < 3; }).forEach(function(w) { opts += '<option value="'+MESUI.escapeHtml(w.id)+'">'+MESUI.escapeHtml(w.order_no)+'</option>'; });
         document.getElementById('mTitle').textContent = '新增返工/报废';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>工单</label><select id="f_wo">'+opts+'</select></div>'
             + '<div class="form-item"><label>类型</label><select id="f_type"><option value="返工">返工</option><option value="报废">报废</option></select></div></div>'
             + '<div class="form-row"><div class="form-item"><label>数量<span style="color:red">*</span></label><input id="f_qty" type="number"></div></div>'
             + '<div class="form-row"><div class="form-item" style="flex:1"><label>原因</label><textarea id="f_reason"></textarea></div></div>';
         modalSaveHandler = function() {
-            var d = {workorder_id:document.getElementById('f_wo').value, rework_type:document.getElementById('f_type').value,
-                quantity:document.getElementById('f_qty').value, reason:document.getElementById('f_reason').value};
-            if(!d.quantity) { alert('请输入数量'); return; }
+            var d = {workorder_id:document.getElementById('f_wo').value, disposition:document.getElementById('f_type').value,
+                quantity:document.getElementById('f_qty').value, reason:document.getElementById('f_reason').value.trim()};
+            if(!d.workorder_id) { alert('请选择工单'); return; }
+            if(!d.quantity || Number(d.quantity) <= 0) { alert('数量必须大于0'); return; }
+            if(!d.reason) { alert('请填写原因'); return; }
             api('/api/site/rework/add',{method:'POST',body:d}).then(function(r2) {
                 if(r2&&r2.code===0) { closeModal(); rwLoad(); } else alert(r2?r2.message:'保存失败');
             });
         };
         document.getElementById('modal').classList.add('show');
+    });
+}
+function rwComplete(id) {
+    api('/api/site/rework/'+id+'/complete',{method:'POST',body:{}}).then(function(r) {
+        if(r&&r.code===0) rwLoad(); else alert(r?r.message:'操作失败');
     });
 }
 

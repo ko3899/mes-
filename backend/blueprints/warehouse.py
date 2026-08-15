@@ -183,9 +183,10 @@ def transaction_list():
 @warehouse_bp.route('/api/transaction/add', methods=['POST'])
 @login_required
 def transaction_add():
-    d = request.json
-    d['operator'] = session.get('user_id')
-    return jsonify(crud_add('inv_transaction_log', d))
+    return jsonify({
+        'code': 409,
+        'message': '库存流水只能由入库、出库、领料或退料过账生成',
+    }), 409
 
 
 # ==================== 到货通知 ====================

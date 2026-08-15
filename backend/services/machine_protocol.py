@@ -120,13 +120,29 @@ def _safe_field(value):
     return ''.join(' ' if char in '|\r\n' else char for char in str(value or ''))
 
 
-def format_response(request, decision):
+def format_response(request, decision, terminator=b'\r\n'):
     """根据请求协议返回精确的线协议响应。"""
     if request.protocol_version == 1:
-        return f'<{decision.decision}>\r\n'.encode('ascii')
+        return f'<{decision.decision}>'.encode('ascii') + bytes(terminator)
     fields = [
         'ACK', '2', request.request_no, decision.decision,
         decision.reason_code, decision.laser_template,
         decision.inspection_template, decision.reason_message,
     ]
-    return ('|'.join(_safe_field(value) for value in fields) + '\r\n').encode('utf-8')
+    return ('|'.join(_safe_field(value) for value in fields)).encode('utf-8') + bytes(terminator)
+
+
+def parse_reader_frame(frame, endpoint):
+    """Decode a Hikrobot TCP payload configured without CR/LF delimiters."""
+    if not isinstance(frame, (bytes, bytearray)):
+        raise ProtocolError('读码器报文必须是字节数据')
+    encoding = str(_endpoint_value(endpoint, 'encoding', 'utf-8'))
+    try:
+        text = bytes(frame).decode(encoding).replace('\x00', '').strip()
+    except (LookupError, UnicodeDecodeError) as exc:
+        raise ProtocolError('读码器报文编码错误') from exc
+    if not text:
+        raise ProtocolError('读码器报文为空')
+    if ';' in text:
+        text = text.split(';', 1)[0].strip()
+    return parse_request((text + '\r\n').encode(encoding), endpoint)

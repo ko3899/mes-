@@ -60,7 +60,9 @@ def line_warehouse_add():
 @login_required
 def line_warehouse_replenish():
     """补货请求"""
-    d = request.json
+    d = request.get_json(silent=True) or {}
+    if not d.get('product_id') or not d.get('workshop_id'):
+        return jsonify({'code': 400, 'message': '产品和车间不能为空'}), 400
     db = get_db()
     d['req_no'] = gen_no('RP')
     d['operator'] = session.get('user_id')

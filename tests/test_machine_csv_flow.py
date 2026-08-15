@@ -15,11 +15,11 @@ from services.machine_protocol import MachineRequest  # noqa: E402
 from utils import database  # noqa: E402
 
 
-def test_production_entry_starts_and_stops_csv_collector():
+def test_production_entry_starts_and_stops_machine_runtime():
     source = (PROJECT_ROOT / 'production.py').read_text(encoding='utf-8')
-    assert 'from machine_csv_collector import MachineCsvCollector' in source
-    assert 'csv_collector.start()' in source
-    assert 'csv_collector.stop()' in source
+    assert 'from machine_runtime import MachineCommunicationRuntime' in source
+    assert 'machine_runtime.start()' in source
+    assert 'machine_runtime.stop()' in source
 
 
 def test_real_directory_flow_keeps_ok_and_ng_traceability(tmp_path, monkeypatch):

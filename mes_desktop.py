@@ -16,11 +16,14 @@ def main():
     
     # 启动 Flask 服务器
     from backend.app import app
+    from backend.machine_runtime import MachineCommunicationRuntime
     from backend.utils.database import init_db, _init_extra_tables, _create_indexes
     
     init_db()
     _init_extra_tables()
     _create_indexes()
+    machine_runtime = MachineCommunicationRuntime()
+    machine_runtime.start()
     
     def run_server():
         app.run(host='127.0.0.1', port=8080, debug=False, use_reloader=False)
@@ -39,7 +42,10 @@ def main():
         resizable=True,
         min_size=(800, 600)
     )
-    webview.start()
+    try:
+        webview.start()
+    finally:
+        machine_runtime.stop()
 
 if __name__ == '__main__':
     main()

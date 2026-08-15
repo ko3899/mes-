@@ -2,6 +2,7 @@
 var lastNotifCount = 0;
 
 function loadNotifications() {
+    if(typeof curUser === 'undefined' || !curUser) return Promise.resolve(null);
     api('/api/notification/unread/count').then(function(r) {
         if (r && r.code === 0) {
             var count = r.data.count;
@@ -63,9 +64,9 @@ function notifLoad() {
                 + (n.is_read ? 'opacity:0.6;' : 'background:#f6ffed;')
                 + '" onclick="readNotif(' + n.id + ')">'
                 + '<div style="display:flex;justify-content:space-between;align-items:center">'
-                + '<span style="font-weight:' + (n.is_read ? 'normal' : 'bold') + '">' + typeIcon + ' ' + n.title + '</span>'
-                + '<span style="color:#999;font-size:12px">' + (n.created_at || '') + '</span></div>'
-                + '<div style="color:#666;font-size:13px;margin-top:4px">' + (n.content || '') + '</div>'
+                + '<span style="font-weight:' + (n.is_read ? 'normal' : 'bold') + '">' + typeIcon + ' ' + MESUI.escapeHtml(n.title || '') + '</span>'
+                + '<span style="color:#999;font-size:12px">' + MESUI.escapeHtml(n.created_at || '') + '</span></div>'
+                + '<div style="color:#666;font-size:13px;margin-top:4px">' + MESUI.escapeHtml(n.content || '') + '</div>'
                 + '</div>';
         });
         el.innerHTML = h;
@@ -87,4 +88,6 @@ function markAllRead() {
 }
 
 // 定时刷新通知
-setInterval(loadNotifications, 30000);
+setInterval(function() {
+    if(typeof curUser !== 'undefined' && curUser) loadNotifications();
+}, 30000);

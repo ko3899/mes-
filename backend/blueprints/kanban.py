@@ -25,7 +25,7 @@ def kanban_realtime():
         FROM prod_workorder w
         LEFT JOIN base_product p ON w.product_id=p.id
         LEFT JOIN base_workshop ws ON w.workshop_id=ws.id
-        WHERE w.status IN (0,1)
+        WHERE w.status IN (0,1,2,4)
         ORDER BY w.priority DESC, w.id ASC LIMIT 10''').fetchall()
     today_report = db.execute('''SELECT COALESCE(SUM(qualified_qty),0) AS qualified,
         COALESCE(SUM(defect_qty),0) AS defect

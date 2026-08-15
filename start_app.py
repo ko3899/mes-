@@ -20,6 +20,7 @@ def main():
             sys.path.insert(0, p)
     
     from backend.app import app
+    from backend.machine_runtime import MachineCommunicationRuntime
     from backend.utils.database import init_db, _init_extra_tables, _create_indexes
     
     print("=" * 50)
@@ -41,7 +42,12 @@ def main():
     print("采集终端: http://localhost:8080")
     print("账号: admin / admin123")
     
-    app.run(host='0.0.0.0', port=8080, debug=False)
+    machine_runtime = MachineCommunicationRuntime()
+    machine_runtime.start()
+    try:
+        app.run(host='0.0.0.0', port=8080, debug=False)
+    finally:
+        machine_runtime.stop()
 
 if __name__ == '__main__':
     main()

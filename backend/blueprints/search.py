@@ -237,7 +237,7 @@ def query_statistics():
     
     # 生产统计
     total_orders = db.execute("SELECT COUNT(*) as c FROM prod_workorder").fetchone()['c']
-    completed_orders = db.execute("SELECT COUNT(*) as c FROM prod_workorder WHERE status=2").fetchone()['c']
+    completed_orders = db.execute("SELECT COUNT(*) as c FROM prod_workorder WHERE status=3").fetchone()['c']
     total_output = db.execute("SELECT COALESCE(SUM(completed_qty),0) as t FROM prod_workorder").fetchone()['t']
     total_defect = db.execute("SELECT COALESCE(SUM(defect_qty),0) as t FROM prod_workorder").fetchone()['t']
     
