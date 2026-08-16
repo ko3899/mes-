@@ -117,3 +117,92 @@ def create_quality_disposition_tables(db):
                 "UPDATE prod_serial SET quality_status=? WHERE serial_no=?",
                 (QUALITY_HOLD, row['sn']),
             )
+
+
+def _dict(row):
+    return dict(row) if row is not None else None
+
+
+def create_ng_disposition(db, endpoint, request_row, inspection_report_id,
+                          prod_report_id, reason=''):
+    """Create one pending disposition and hold the SN in the caller transaction."""
+    existing = db.execute(
+        'SELECT * FROM prod_quality_disposition WHERE inspection_report_id=?',
+        (inspection_report_id,),
+    ).fetchone()
+    if existing:
+        return _dict(existing)
+
+    sn = request_row['sn']
+    route_step_id = request_row['route_step_id']
+    conflict = db.execute(
+        '''SELECT * FROM prod_quality_disposition
+           WHERE sn=? AND route_step_id=?
+             AND status IN ('pending_review','approved','task_started')''',
+        (sn, route_step_id),
+    ).fetchone()
+    if conflict:
+        raise ValueError('SN当前工序已存在未完成质量处置单')
+
+    disposition_no = 'QD-%s' % inspection_report_id
+    cursor = db.execute(
+        '''INSERT OR IGNORE INTO prod_quality_disposition
+           (disposition_no,sn,inspection_report_id,machine_request_id,prod_report_id,
+            workorder_id,source_task_id,route_step_id,action,status,cycle_no,reason)
+           VALUES(?,?,?,?,?,?,?,?,?,'pending_review',1,?)''',
+        (disposition_no, sn, inspection_report_id, request_row['id'], prod_report_id,
+         request_row['workorder_id'], request_row['task_id'], route_step_id,
+         'pending', reason),
+    )
+    disposition_id = cursor.lastrowid
+    if not disposition_id:
+        row = db.execute(
+            'SELECT * FROM prod_quality_disposition WHERE disposition_no=?',
+            (disposition_no,),
+        ).fetchone()
+        if not row:
+            raise ValueError('质量处置单创建冲突')
+        disposition_id = row['id']
+    updated = db.execute(
+        '''UPDATE prod_serial SET quality_status=?
+           WHERE serial_no=? AND quality_status IN (?,?)''',
+        (QUALITY_HOLD, sn, QUALITY_NORMAL, QUALITY_HOLD),
+    ).rowcount
+    if updated != 1:
+        raise ValueError('SN不存在或当前质量状态不允许转为待审核')
+    return _dict(db.execute(
+        'SELECT * FROM prod_quality_disposition WHERE id=?', (disposition_id,)
+    ).fetchone())
+
+
+def access_context(db, sn, route_step_id):
+    """Return the quality gate and linked rework task for machine admission."""
+    if (not _table_exists(db, 'prod_quality_disposition')
+            or 'quality_status' not in {
+                row[1] for row in db.execute('PRAGMA table_info(prod_serial)')
+            }):
+        return {
+            'quality_status': QUALITY_NORMAL,
+            'disposition': None,
+            'rework_task': None,
+        }
+    serial = db.execute(
+        'SELECT quality_status FROM prod_serial WHERE serial_no=?', (sn,)
+    ).fetchone()
+    quality_status = serial['quality_status'] if serial else QUALITY_NORMAL
+    disposition = db.execute(
+        '''SELECT * FROM prod_quality_disposition
+           WHERE sn=? AND route_step_id=?
+           ORDER BY cycle_no DESC,id DESC LIMIT 1''',
+        (sn, route_step_id),
+    ).fetchone()
+    rework_task = None
+    if disposition and disposition['rework_task_id']:
+        rework_task = db.execute(
+            'SELECT * FROM prod_task WHERE id=?', (disposition['rework_task_id'],)
+        ).fetchone()
+    return {
+        'quality_status': quality_status or QUALITY_NORMAL,
+        'disposition': _dict(disposition),
+        'rework_task': _dict(rework_task),
+    }

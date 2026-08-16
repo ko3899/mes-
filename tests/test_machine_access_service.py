@@ -17,6 +17,7 @@ from services.machine_access import (  # noqa: E402
     retry_inspection_report,
 )
 from services.machine_protocol import MachineRequest  # noqa: E402
+from services.quality_disposition import create_quality_disposition_tables  # noqa: E402
 
 
 def build_db():
@@ -45,6 +46,7 @@ def build_db():
         (101, 1, 11, '扫码检测', 1), (102, 1, 12, '字符检测', 2)])
     db.executemany("INSERT INTO prod_task(id,task_no,workorder_id,process_id,route_step_id,planned_qty,status) VALUES(?,?,?,?,?,?,?)", [
         (201, 'TK1', 1, 11, 101, 5, 1), (202, 'TK2', 1, 12, 102, 5, 1)])
+    create_quality_disposition_tables(db)
     db.commit()
     return db
 
@@ -175,6 +177,32 @@ def test_ng_report_creates_defect_pending_report_and_no_pass(tmp_path):
     assert prod['defect_qty'] == 1
     assert db.execute("SELECT COUNT(*) FROM prod_station_record WHERE result='PASS'").fetchone()[0] == 0
     assert db.execute("SELECT COUNT(*) FROM prod_station_record WHERE result='FAIL'").fetchone()[0] == 1
+    disposition = db.execute('SELECT * FROM prod_quality_disposition').fetchone()
+    assert disposition['status'] == 'pending_review'
+    assert disposition['sn'] == 'SN001'
+    assert db.execute(
+        "SELECT quality_status FROM prod_serial WHERE serial_no='SN001'"
+    ).fetchone()[0] == 'quality_hold'
+
+    duplicate = import_inspection_report(
+        db, endpoint(), make_csv(result='NG'), 'same-ng.csv', tmp_path
+    )
+    assert duplicate['id'] == result['id']
+    assert db.execute('SELECT COUNT(*) FROM prod_quality_disposition').fetchone()[0] == 1
+
+
+def test_quality_held_sn_is_rejected_before_ordinary_task_selection():
+    db = build_db()
+    db.execute("UPDATE prod_serial SET quality_status='quality_hold' WHERE serial_no='SN001'")
+    db.execute(
+        '''INSERT INTO prod_quality_disposition
+           (disposition_no,sn,workorder_id,source_task_id,route_step_id,status)
+           VALUES('QD-HOLD','SN001',1,201,101,'pending_review')'''
+    )
+    db.commit()
+    decision = evaluate_access(db, endpoint(), request('HELD'))
+    assert decision.decision == 'L3'
+    assert decision.reason_code == 'QUALITY_HOLD'
 
 
 def test_report_rejects_missing_l1_sn_mismatch_bad_header_and_duplicate(tmp_path):

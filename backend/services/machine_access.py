@@ -11,6 +11,13 @@ import logging
 
 from services.machine_protocol import AccessDecision
 from services.aim_event_bridge import aim_report_event, enqueue_aim_event, dispatch_aim_event
+from services.quality_disposition import (
+    QUALITY_HOLD,
+    QUALITY_REWORK,
+    QUALITY_SCRAPPED,
+    access_context,
+    create_ng_disposition,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -140,11 +147,23 @@ def evaluate_access(db, endpoint, request, now=None, session_id=None):
     if int(current['process_id']) != int(_value(endpoint, 'process_id', 0)):
         return reject('WRONG_STEP', f"当前应执行工序：{current['process_name']}")
 
-    task = db.execute(
-        '''SELECT * FROM prod_task
-           WHERE workorder_id=? AND route_step_id=? ORDER BY id LIMIT 1''',
-        (workorder['id'], current['id']),
-    ).fetchone()
+    quality = access_context(db, request.sn, current['id'])
+    if quality['quality_status'] == QUALITY_HOLD:
+        return reject('QUALITY_HOLD', 'SN处于质量冻结，等待质量处置')
+    if quality['quality_status'] == QUALITY_SCRAPPED:
+        return reject('SN_SCRAPPED', 'SN已报废')
+    if quality['quality_status'] == QUALITY_REWORK:
+        task = quality['rework_task']
+        if not task or int(_value(task, 'status', 0)) == 0:
+            return reject('REWORK_TASK_NOT_STARTED', '返工任务尚未启动')
+    else:
+        task_columns = {row[1] for row in db.execute('PRAGMA table_info(prod_task)')}
+        normal_filter = " AND COALESCE(task_type,'normal')='normal'" if 'task_type' in task_columns else ''
+        task = db.execute(
+            '''SELECT * FROM prod_task
+               WHERE workorder_id=? AND route_step_id=?%s ORDER BY id LIMIT 1''' % normal_filter,
+            (workorder['id'], current['id']),
+        ).fetchone()
     if not task:
         return reject('TASK_NOT_FOUND', '当前工序没有生产任务')
     context['task_id'] = task['id']
@@ -408,6 +427,11 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
             "UPDATE iot_machine_request SET report_status='received' WHERE id=?",
             (request_row['id'],),
         )
+        if result == 'NG':
+            create_ng_disposition(
+                db, endpoint, request_row, report_id, prod_report_id,
+                reason='AIM机台检测NG',
+            )
         os.replace(temporary, target)
         db.commit()
     except Exception:
