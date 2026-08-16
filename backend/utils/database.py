@@ -1594,6 +1594,8 @@ def _init_extra_tables():
             db.execute(sql)
         except sqlite3.OperationalError:
             pass
+    from services.quality_disposition import create_quality_disposition_tables
+    create_quality_disposition_tables(db)
     db.commit()
     db.close()
 
