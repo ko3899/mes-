@@ -1,7 +1,14 @@
 """生产现场蓝图 - 工位/安灯/返工报废"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no_in_transaction
+from utils.helpers import (
+    login_required, permission_required, crud_list, crud_add, crud_update,
+    crud_delete, gen_no_in_transaction,
+)
+from services.production_flow import BusinessError, transition_status
+from services.quality_disposition import (
+    approve_disposition, reject_disposition, validate_rework_task_start,
+)
 
 site_bp = Blueprint('site', __name__)
 
@@ -154,12 +161,76 @@ def rework_list():
     except (TypeError, ValueError):
         return jsonify({'code': 400, 'message': '分页参数格式错误'}), 400
     offset = (page - 1) * size
-    total = db.execute("SELECT COUNT(*) as cnt FROM prod_rework").fetchone()['cnt']
-    rows = db.execute('''SELECT r.*, w.order_no as workorder_no
-        FROM prod_rework r
-        LEFT JOIN prod_workorder w ON r.workorder_id=w.id
-        ORDER BY r.id DESC LIMIT ? OFFSET ?''', (size, offset)).fetchall()
+    total = db.execute("SELECT COUNT(*) as cnt FROM prod_quality_disposition").fetchone()['cnt']
+    rows = db.execute('''SELECT d.*,w.order_no AS workorder_no,
+               s.process_name,ir.result AS inspection_result,
+               ir.original_filename,t.task_no AS rework_task_no,
+               t.status AS rework_task_status,req.station_code
+        FROM prod_quality_disposition d
+        LEFT JOIN prod_workorder w ON w.id=d.workorder_id
+        LEFT JOIN prod_workorder_route_step s ON s.id=d.route_step_id
+        LEFT JOIN iot_inspection_report ir ON ir.id=d.inspection_report_id
+        LEFT JOIN prod_task t ON t.id=d.rework_task_id
+        LEFT JOIN iot_machine_request req ON req.id=d.machine_request_id
+        ORDER BY d.id DESC LIMIT ? OFFSET ?''', (size, offset)).fetchall()
     return jsonify({'code': 0, 'data': {'list': [dict(r) for r in rows], 'total': total}})
+
+
+@site_bp.route('/api/site/rework/<int:record_id>/approve', methods=['POST'])
+@permission_required('qm:process:list')
+def rework_approve(record_id):
+    data = request.get_json(silent=True) or {}
+    try:
+        result = approve_disposition(
+            get_db(), record_id, data.get('action'), session.get('user_id'),
+            str(data.get('reason') or '').strip(),
+        )
+        return jsonify({'code': 0, 'data': result})
+    except ValueError as exc:
+        return jsonify({'code': 409, 'message': str(exc)}), 409
+
+
+@site_bp.route('/api/site/rework/<int:record_id>/reject', methods=['POST'])
+@permission_required('qm:process:list')
+def rework_reject(record_id):
+    data = request.get_json(silent=True) or {}
+    try:
+        result = reject_disposition(
+            get_db(), record_id, session.get('user_id'), data.get('reason'),
+        )
+        return jsonify({'code': 0, 'data': result})
+    except ValueError as exc:
+        return jsonify({'code': 409, 'message': str(exc)}), 409
+
+
+@site_bp.route('/api/site/rework/<int:record_id>/start-task', methods=['POST'])
+@permission_required('prod:task:list')
+def rework_start_task(record_id):
+    db = get_db()
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        disposition = db.execute(
+            'SELECT * FROM prod_quality_disposition WHERE id=?', (record_id,)
+        ).fetchone()
+        if not disposition or not disposition['rework_task_id']:
+            raise ValueError('处置单没有可启动的返工任务')
+        validate_rework_task_start(db, disposition['rework_task_id'])
+        transition_status(
+            db, 'task', disposition['rework_task_id'], 1,
+            session.get('user_id'), '启动质量处置返工任务',
+        )
+        updated = db.execute(
+            '''UPDATE prod_quality_disposition SET status='task_started'
+               WHERE id=? AND status='approved' ''', (record_id,),
+        ).rowcount
+        if updated != 1:
+            raise ValueError('处置单状态已变化，不能启动返工任务')
+        db.commit()
+        return jsonify({'code': 0, 'message': '返工任务已启动'})
+    except (ValueError, BusinessError) as exc:
+        db.rollback()
+        status = getattr(exc, 'status', 409)
+        return jsonify({'code': status, 'message': str(exc)}), status
 
 
 @site_bp.route('/api/site/rework/add', methods=['POST'])

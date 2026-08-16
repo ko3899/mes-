@@ -1,4 +1,6 @@
 """SN-level quality disposition and rework persistence."""
+from contextlib import contextmanager
+from uuid import uuid4
 
 
 QUALITY_NORMAL = 'normal'
@@ -73,6 +75,11 @@ def create_quality_disposition_tables(db):
     db.execute(
         '''CREATE INDEX IF NOT EXISTS idx_quality_disposition_source_task
            ON prod_quality_disposition(source_task_id, status)'''
+    )
+    db.execute(
+        '''CREATE UNIQUE INDEX IF NOT EXISTS idx_station_record_disposition
+           ON prod_station_record(quality_disposition_id)
+           WHERE quality_disposition_id IS NOT NULL'''
     )
 
     required = (
@@ -206,3 +213,182 @@ def access_context(db, sn, route_step_id):
         'disposition': _dict(disposition),
         'rework_task': _dict(rework_task),
     }
+
+
+@contextmanager
+def _atomic(db):
+    nested = db.in_transaction
+    if nested:
+        db.execute('SAVEPOINT quality_disposition')
+    else:
+        db.execute('BEGIN IMMEDIATE')
+    try:
+        yield
+        if nested:
+            db.execute('RELEASE SAVEPOINT quality_disposition')
+        else:
+            db.commit()
+    except Exception:
+        if nested:
+            db.execute('ROLLBACK TO SAVEPOINT quality_disposition')
+            db.execute('RELEASE SAVEPOINT quality_disposition')
+        else:
+            db.rollback()
+        raise
+
+
+def _load_disposition(db, disposition_id):
+    row = db.execute(
+        'SELECT * FROM prod_quality_disposition WHERE id=?', (disposition_id,)
+    ).fetchone()
+    if not row:
+        raise ValueError('质量处置单不存在')
+    return row
+
+
+def approve_disposition(db, disposition_id, action, user_id, reason=''):
+    """Approve rework, scrap, or concession exactly once."""
+    action = str(action or '').strip().lower()
+    if action not in ('rework', 'scrap', 'concession'):
+        raise ValueError('处置方式只能是返工、报废或让步接收')
+    with _atomic(db):
+        row = _load_disposition(db, disposition_id)
+        if row['action'] == action and row['status'] in ('approved', 'task_started', 'completed'):
+            return _dict(row)
+        if row['status'] != 'pending_review':
+            raise ValueError('质量处置单已处理，不能重复变更')
+
+        rework_task_id = None
+        target_status = 'completed'
+        completed_at = 'CURRENT_TIMESTAMP'
+        if action == 'rework':
+            source_task = db.execute(
+                'SELECT * FROM prod_task WHERE id=?', (row['source_task_id'],)
+            ).fetchone()
+            if not source_task:
+                raise ValueError('原生产任务不存在')
+            task_no = 'RW-%s' % row['disposition_no']
+            db.execute(
+                '''INSERT OR IGNORE INTO prod_task
+                   (task_no,workorder_id,process_id,route_step_id,planned_qty,
+                    completed_qty,defect_qty,status,remark,task_type,source_task_id,
+                    quality_disposition_id,target_sn)
+                   VALUES(?,?,?,?,1,0,0,0,?,'rework',?,?,?)''',
+                (task_no, row['workorder_id'], source_task['process_id'],
+                 row['route_step_id'], '质量处置返工：%s' % (reason or ''),
+                 row['source_task_id'], row['id'], row['sn']),
+            )
+            task = db.execute(
+                'SELECT * FROM prod_task WHERE task_no=?', (task_no,)
+            ).fetchone()
+            if not task or int(task['quality_disposition_id'] or 0) != int(row['id']):
+                raise ValueError('返工任务编号冲突')
+            rework_task_id = task['id']
+            target_status = 'approved'
+            completed_at = 'NULL'
+            db.execute(
+                'UPDATE prod_serial SET quality_status=? WHERE serial_no=?',
+                (QUALITY_REWORK, row['sn']),
+            )
+        elif action == 'scrap':
+            db.execute(
+                'UPDATE prod_serial SET quality_status=? WHERE serial_no=?',
+                (QUALITY_SCRAPPED, row['sn']),
+            )
+        else:
+            request_row = db.execute(
+                'SELECT * FROM iot_machine_request WHERE id=?', (row['machine_request_id'],)
+            ).fetchone()
+            step = db.execute(
+                'SELECT * FROM prod_workorder_route_step WHERE id=?', (row['route_step_id'],)
+            ).fetchone()
+            serial = db.execute(
+                'SELECT * FROM prod_serial WHERE serial_no=?', (row['sn'],)
+            ).fetchone()
+            if not request_row or not step or not serial:
+                raise ValueError('让步接收缺少原机台请求、工序或SN')
+            flow = db.execute(
+                'SELECT * FROM prod_station_flow WHERE sn=? ORDER BY id DESC LIMIT 1',
+                (row['sn'],),
+            ).fetchone()
+            if not flow:
+                flow_id = db.execute(
+                    '''INSERT INTO prod_station_flow
+                       (flow_no,sn,product_id,workorder_id,current_station,current_process,status)
+                       VALUES(?,?,?,?,?,?,0)''',
+                    ('SF%s' % uuid4().hex[:16], row['sn'], serial['product_id'],
+                     row['workorder_id'], request_row['station_code'], step['process_name']),
+                ).lastrowid
+            else:
+                flow_id = flow['id']
+            db.execute(
+                '''INSERT OR IGNORE INTO prod_station_record
+                   (flow_id,sn,station,process_name,action,operator,result,remark,
+                    route_step_id,machine_request_id,quality_disposition_id)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?)''',
+                (flow_id, row['sn'], request_row['station_code'], step['process_name'],
+                 '让步接收', user_id, 'PASS', reason, row['route_step_id'],
+                 row['machine_request_id'], row['id']),
+            )
+            db.execute(
+                'UPDATE prod_serial SET quality_status=? WHERE serial_no=?',
+                (QUALITY_CONCESSION, row['sn']),
+            )
+
+        completed_sql = 'CURRENT_TIMESTAMP' if completed_at == 'CURRENT_TIMESTAMP' else 'NULL'
+        cursor = db.execute(
+            '''UPDATE prod_quality_disposition
+               SET action=?,status=?,rework_task_id=?,reason=?,reviewer_id=?,
+                   reviewed_at=CURRENT_TIMESTAMP,completed_at=%s
+               WHERE id=? AND status='pending_review' ''' % completed_sql,
+            (action, target_status, rework_task_id, reason, user_id, row['id']),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError('质量处置单已被其他用户处理')
+    return _dict(db.execute(
+        'SELECT * FROM prod_quality_disposition WHERE id=?', (disposition_id,)
+    ).fetchone())
+
+
+def reject_disposition(db, disposition_id, user_id, reason):
+    reason = str(reason or '').strip()
+    if not reason:
+        raise ValueError('驳回原因不能为空')
+    with _atomic(db):
+        row = _load_disposition(db, disposition_id)
+        if row['status'] == 'rejected':
+            return _dict(row)
+        if row['status'] != 'pending_review':
+            raise ValueError('质量处置单已处理，不能驳回')
+        cursor = db.execute(
+            '''UPDATE prod_quality_disposition
+               SET status='rejected',reason=?,reviewer_id=?,reviewed_at=CURRENT_TIMESTAMP
+               WHERE id=? AND status='pending_review' ''',
+            (reason, user_id, disposition_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError('质量处置单已被其他用户处理')
+    return _dict(db.execute(
+        'SELECT * FROM prod_quality_disposition WHERE id=?', (disposition_id,)
+    ).fetchone())
+
+
+def validate_rework_task_start(db, task_id):
+    task = db.execute(
+        '''SELECT t.*,d.status AS disposition_status,d.action AS disposition_action,
+                  s.quality_status
+           FROM prod_task t
+           JOIN prod_quality_disposition d ON d.id=t.quality_disposition_id
+           JOIN prod_serial s ON s.serial_no=t.target_sn
+           WHERE t.id=?''',
+        (task_id,),
+    ).fetchone()
+    if not task or task['task_type'] != 'rework':
+        raise ValueError('返工任务不存在')
+    if int(task['status']) != 0:
+        raise ValueError('只有草稿返工任务可以启动')
+    if task['disposition_status'] != 'approved' or task['disposition_action'] != 'rework':
+        raise ValueError('质量处置单尚未批准返工')
+    if task['quality_status'] != QUALITY_REWORK:
+        raise ValueError('SN当前不处于返工状态')
+    return _dict(task)
