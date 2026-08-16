@@ -122,10 +122,11 @@ function machineReportLoad(body) {
         var list = response && response.data ? response.data.list || [] : [];
         body.innerHTML = '<div class="toolbar"><input type="number" id="machineUploadEndpoint" placeholder="端点ID">'
             + '<input type="file" id="machineUploadFile" accept=".csv"><button class="btn btn-blue btn-sm" onclick="machineReportUpload()">上传CSV</button></div>'
-            + machineTable(['时间','设备','SN','结果','文件','导入状态','失败原因','操作'], list.map(function(row) {
+            + machineTable(['时间','设备','SN','结果','文件','导入状态','处置单','失败原因','操作'], list.map(function(row) {
                 return '<tr><td>' + machineEscape(row.inspected_at) + '</td><td>' + machineEscape(row.device_code)
                     + '</td><td>' + machineEscape(row.sn) + '</td><td>' + machineEscape(row.result)
                     + '</td><td>' + machineEscape(row.original_filename) + '</td><td>' + machineEscape(row.import_status)
+                    + '</td><td>' + machineEscape(row.disposition_no || '-') + ' ' + machineEscape(row.disposition_status || '')
                     + '</td><td>' + machineEscape(row.failure_reason) + '</td><td>'
                     + (row.import_status === 'failed' ? '<button class="btn btn-blue btn-sm machine-report-retry" data-id="' + Number(row.id) + '">重试</button>' : '-')
                     + '</td></tr>';

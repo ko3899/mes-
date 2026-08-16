@@ -203,10 +203,16 @@ function serialLoad(page) {
         var list = r.data && r.data.list ? r.data.list : [];
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>'; return; }
+        var qualityMap = {
+            normal:['正常','tag-ok'], quality_hold:['质量冻结','tag-hold'],
+            rework:['返工中','tag-rework'], scrapped:['已报废','tag-scrap'],
+            concession:['让步接收','tag-concession']
+        };
         tb.innerHTML = list.map(function(s) {
+            var quality = qualityMap[s.quality_status || 'normal'] || [s.quality_status || '正常','tag-wait'];
             return '<tr><td>'+s.id+'</td><td><b>'+s.serial_no+'</b></td><td>'+(s.product_name||'-')+'</td>'
                 +'<td>'+(s.workorder_id||'-')+'</td>'
-                +'<td><span class="tag '+(s.status?'tag-ok':'tag-wait')+'">'+(s.status?'已使用':'可用')+'</span></td>'
+                +'<td><span class="tag '+quality[1]+'">'+quality[0]+'</span></td>'
                 +'<td>'+(s.created_at||'')+'</td></tr>';
         }).join('');
     });

@@ -276,8 +276,10 @@ def request_list():
 def report_list():
     data = _log_list(
         'iot_inspection_report',
-        'LEFT JOIN iot_machine_endpoint e ON e.id=t.endpoint_id LEFT JOIN eqp_ledger q ON q.id=e.equipment_id',
-        't.*,q.code AS device_code',
+        '''LEFT JOIN iot_machine_endpoint e ON e.id=t.endpoint_id
+           LEFT JOIN eqp_ledger q ON q.id=e.equipment_id
+           LEFT JOIN prod_quality_disposition d ON d.inspection_report_id=t.id''',
+        't.*,q.code AS device_code,d.disposition_no,d.status AS disposition_status',
         (('result', 't.result'), ('import_status', 't.import_status'), ('sn', 't.sn')),
     )
     if session.get('username') != 'admin':

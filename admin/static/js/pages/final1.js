@@ -99,10 +99,9 @@ function andonResolve(id) { api('/api/site/andon/resolve',{method:'POST',body:{i
 
 // 返工报废
 function renderRework(el) {
-    el.innerHTML = '<div class="card"><div class="card-title"><span>返工报废</span><button class="btn btn-blue" id="rwAddBtn">+ 新增</button></div>'
-        + '<table><thead><tr><th>ID</th><th>单号</th><th>工单</th><th>数量</th><th>类型</th><th>原因</th><th>状态</th></tr></thead>'
-        + '<tbody id="tb"><tr><td colspan="7" class="empty">加载中...</td></tr></tbody></table></div>';
-    document.getElementById('rwAddBtn').onclick = rwAdd;
+    el.innerHTML = '<div class="card"><div class="card-title"><span>SN质量处置 / 返工报废</span></div>'
+        + '<table><thead><tr><th>处置单号</th><th>SN</th><th>检测报告</th><th>工单</th><th>工序/工站</th><th>返工周期</th><th>原因</th><th>处置状态</th><th>返工任务</th><th>操作</th></tr></thead>'
+        + '<tbody id="tb"><tr><td colspan="10" class="empty">加载中...</td></tr></tbody></table></div>';
     rwLoad();
 }
 function rwLoad() {
@@ -110,41 +109,44 @@ function rwLoad() {
         if(!r) return;
         var list = r.data?.list||[];
         var tb = document.getElementById('tb');
-        if(!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>'; return; }
+        if(!list.length) { tb.innerHTML = '<tr><td colspan="10" class="empty">暂无数据</td></tr>'; return; }
+        var statusText = {pending_review:'待质量审核',approved:'返工待启动',task_started:'返工中',completed:'已完成',rejected:'已驳回'};
+        var actionText = {pending:'待定',rework:'返工',scrap:'报废',concession:'让步接收'};
         tb.innerHTML = list.map(function(rw) {
-            return '<tr><td>'+MESUI.escapeHtml(rw.id)+'</td><td>'+MESUI.escapeHtml(rw.rework_no)+'</td><td>'+MESUI.escapeHtml(rw.workorder_no||'-')+'</td><td>'+MESUI.escapeHtml(rw.quantity)+'</td>'
-                +'<td>'+MESUI.escapeHtml(rw.disposition||'-')+'</td><td>'+MESUI.escapeHtml(rw.reason||'-')+'</td>'
-                +'<td><span class="tag '+(rw.status?'tag-ok':'tag-wait')+'">'+(rw.status?'已处理':'待处理')+'</span>'
-                +(rw.status?'':' <button class="btn btn-green btn-sm" onclick="rwComplete('+rw.id+')">完成</button>')+'</td></tr>';
+            var controls = '-';
+            if(rw.status === 'pending_review') controls = '<button class="btn btn-blue btn-sm rw-review" data-id="'+Number(rw.id)+'">审核</button> '
+                + '<button class="btn btn-red btn-sm rw-reject" data-id="'+Number(rw.id)+'">驳回</button>';
+            if(rw.status === 'approved' && rw.action === 'rework' && Number(rw.rework_task_status) === 0) controls = '<button class="btn btn-green btn-sm rw-start" data-id="'+Number(rw.id)+'">启动返工</button>';
+            var stateClass = rw.status === 'completed' ? 'tag-ok' : (rw.status === 'rejected' ? 'tag-no' : 'tag-wait');
+            return '<tr><td>'+MESUI.escapeHtml(rw.disposition_no)+'</td><td><b>'+MESUI.escapeHtml(rw.sn)+'</b></td>'
+                +'<td>#'+MESUI.escapeHtml(rw.inspection_report_id||'-')+' '+MESUI.escapeHtml(rw.inspection_result||'')+'</td>'
+                +'<td>'+MESUI.escapeHtml(rw.workorder_no||'-')+'</td><td>'+MESUI.escapeHtml(rw.process_name||'-')+' / '+MESUI.escapeHtml(rw.station_code||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(rw.cycle_no)+'</td><td>'+MESUI.escapeHtml(rw.reason||'-')+'</td>'
+                +'<td><span class="tag '+stateClass+'">'+MESUI.escapeHtml(actionText[rw.action]||rw.action)+' · '+MESUI.escapeHtml(statusText[rw.status]||rw.status)+'</span></td>'
+                +'<td>'+MESUI.escapeHtml(rw.rework_task_no||'-')+'</td><td>'+controls+'</td></tr>';
         }).join('');
+        tb.querySelectorAll('.rw-review').forEach(function(button){button.onclick=function(){rwReview(Number(button.dataset.id));};});
+        tb.querySelectorAll('.rw-reject').forEach(function(button){button.onclick=function(){rwReject(Number(button.dataset.id));};});
+        tb.querySelectorAll('.rw-start').forEach(function(button){button.onclick=function(){rwStart(Number(button.dataset.id));};});
     });
 }
-function rwAdd() {
-    api('/api/prod/workorder/list?size=500').then(function(r) {
-        var opts = '<option value="">选择工单</option>';
-        (r?.data?.list||[]).filter(function(w) { return Number(w.status) < 3; }).forEach(function(w) { opts += '<option value="'+MESUI.escapeHtml(w.id)+'">'+MESUI.escapeHtml(w.order_no)+'</option>'; });
-        document.getElementById('mTitle').textContent = '新增返工/报废';
-        document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>工单</label><select id="f_wo">'+opts+'</select></div>'
-            + '<div class="form-item"><label>类型</label><select id="f_type"><option value="返工">返工</option><option value="报废">报废</option></select></div></div>'
-            + '<div class="form-row"><div class="form-item"><label>数量<span style="color:red">*</span></label><input id="f_qty" type="number"></div></div>'
-            + '<div class="form-row"><div class="form-item" style="flex:1"><label>原因</label><textarea id="f_reason"></textarea></div></div>';
-        modalSaveHandler = function() {
-            var d = {workorder_id:document.getElementById('f_wo').value, disposition:document.getElementById('f_type').value,
-                quantity:document.getElementById('f_qty').value, reason:document.getElementById('f_reason').value.trim()};
-            if(!d.workorder_id) { alert('请选择工单'); return; }
-            if(!d.quantity || Number(d.quantity) <= 0) { alert('数量必须大于0'); return; }
-            if(!d.reason) { alert('请填写原因'); return; }
-            api('/api/site/rework/add',{method:'POST',body:d}).then(function(r2) {
-                if(r2&&r2.code===0) { closeModal(); rwLoad(); } else alert(r2?r2.message:'保存失败');
-            });
-        };
-        document.getElementById('modal').classList.add('show');
-    });
+function rwReview(id) {
+    document.getElementById('mTitle').textContent = '质量处置审核';
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>处置方式</label><select id="rwAction">'
+        +'<option value="rework">返工</option><option value="scrap">报废</option><option value="concession">让步接收</option></select></div></div>'
+        +'<div class="form-row"><div class="form-item" style="flex:1"><label>审核说明</label><textarea id="rwReason"></textarea></div></div>';
+    modalSaveHandler = function(){
+        var body={action:document.getElementById('rwAction').value,reason:document.getElementById('rwReason').value.trim()};
+        api('/api/site/rework/'+id+'/approve',{method:'POST',body:body}).then(function(r){if(r&&r.code===0){closeModal();rwLoad();}else alert(r?r.message:'审核失败');});
+    };
+    document.getElementById('modal').classList.add('show');
 }
-function rwComplete(id) {
-    api('/api/site/rework/'+id+'/complete',{method:'POST',body:{}}).then(function(r) {
-        if(r&&r.code===0) rwLoad(); else alert(r?r.message:'操作失败');
-    });
+function rwReject(id) {
+    var reason=prompt('请输入驳回原因'); if(!reason) return;
+    api('/api/site/rework/'+id+'/reject',{method:'POST',body:{reason:reason}}).then(function(r){if(r&&r.code===0)rwLoad();else alert(r?r.message:'驳回失败');});
+}
+function rwStart(id) {
+    api('/api/site/rework/'+id+'/start-task',{method:'POST',body:{}}).then(function(r){if(r&&r.code===0)rwLoad();else alert(r?r.message:'启动失败');});
 }
 
 // CAPA
