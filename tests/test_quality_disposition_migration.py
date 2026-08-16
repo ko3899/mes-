@@ -105,3 +105,12 @@ def test_migration_is_idempotent_and_backfills_existing_ng():
                (disposition_no,sn,workorder_id,source_task_id,route_step_id,status)
                VALUES('QD-DUP','NG-SN-001',40,10,30,'approved')'''
         )
+
+
+def test_migration_supports_default_sqlite_tuple_rows():
+    from services.quality_disposition import create_quality_disposition_tables
+
+    db = _legacy_database()
+    db.row_factory = None
+    create_quality_disposition_tables(db)
+    assert db.execute('SELECT COUNT(*) FROM prod_quality_disposition').fetchone()[0] == 1

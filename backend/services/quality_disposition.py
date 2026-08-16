@@ -89,7 +89,7 @@ def create_quality_disposition_tables(db):
     if not all(_table_exists(db, table) for table in required):
         return
 
-    rows = db.execute(
+    cursor = db.execute(
         '''SELECT ir.id AS inspection_report_id, ir.request_id AS machine_request_id,
                   ir.prod_report_id, ir.sn, req.workorder_id,
                   req.task_id AS source_task_id, req.route_step_id
@@ -104,7 +104,9 @@ def create_quality_disposition_tables(db):
                                   AND report.task_id=req.task_id
                                   AND report.workorder_id=req.workorder_id
            WHERE UPPER(ir.result)='NG' AND ir.import_status='imported' '''
-    ).fetchall()
+    )
+    columns = [item[0] for item in cursor.description]
+    rows = [dict(zip(columns, values)) for values in cursor.fetchall()]
     for row in rows:
         cursor = db.execute(
             '''INSERT OR IGNORE INTO prod_quality_disposition
