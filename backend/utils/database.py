@@ -801,6 +801,10 @@ def init_db():
     )''')
 
     # ==================== 初始化数据 ====================
+    # Legacy databases predate tenant isolation; CREATE TABLE IF NOT EXISTS
+    # does not add new columns to an existing sys_user table.
+    _add_column_if_missing(db, 'sys_user', 'tenant_id', 'INTEGER DEFAULT 1')
+
     # 使用安全的密码哈希（PBKDF2 + SHA256 + 盐值）
     import secrets
     salt = secrets.token_hex(16)

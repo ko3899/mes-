@@ -430,11 +430,20 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
         report_task = db.execute(
             'SELECT task_type FROM prod_task WHERE id=?', (request_row['task_id'],)
         ).fetchone()
-        if result == 'NG' and (not report_task or report_task['task_type'] != 'rework'):
-            create_ng_disposition(
-                db, endpoint, request_row, report_id, prod_report_id,
-                reason='AIM机台检测NG',
-            )
+        if result == 'NG':
+            if report_task and report_task['task_type'] == 'rework':
+                # Fail closed immediately. The next disposition cycle is created
+                # when this approved NG report is posted, but the SN must not be
+                # admitted again during the approval window.
+                db.execute(
+                    "UPDATE prod_serial SET quality_status='quality_hold' WHERE serial_no=?",
+                    (sn,),
+                )
+            else:
+                create_ng_disposition(
+                    db, endpoint, request_row, report_id, prod_report_id,
+                    reason='AIM机台检测NG',
+                )
         os.replace(temporary, target)
         db.commit()
     except Exception:

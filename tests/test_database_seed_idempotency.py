@@ -36,3 +36,29 @@ def test_default_departments_and_menus_are_idempotent(tmp_path, monkeypatch):
     ).fetchone()
     assert child[0] == parent[0]
     db.close()
+
+
+def test_legacy_user_table_gets_tenant_and_admin_role(tmp_path, monkeypatch):
+    db_path = tmp_path / 'legacy-user.db'
+    db = sqlite3.connect(db_path)
+    db.execute(
+        '''CREATE TABLE sys_user (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT UNIQUE,password TEXT,
+            real_name TEXT,phone TEXT,email TEXT,dept_id INTEGER,role_id INTEGER,
+            status INTEGER DEFAULT 1,avatar TEXT,created_at TEXT,updated_at TEXT
+        )'''
+    )
+    db.execute("INSERT INTO sys_user(username,password,real_name) VALUES('admin','x','admin')")
+    db.commit()
+    db.close()
+    monkeypatch.setattr(database, 'DB_PATH', str(db_path))
+
+    database.init_db()
+
+    db = sqlite3.connect(db_path)
+    assert 'tenant_id' in {row[1] for row in db.execute('PRAGMA table_info(sys_user)')}
+    assert db.execute(
+        '''SELECT r.role_key,u.tenant_id FROM sys_user u
+           JOIN sys_role r ON r.id=u.role_id WHERE u.username='admin' '''
+    ).fetchone() == ('admin', 1)
+    db.close()

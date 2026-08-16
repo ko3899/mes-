@@ -227,6 +227,25 @@ def test_rework_sn_requires_started_linked_task_then_uses_it():
     ).fetchone()[0] == approved['rework_task_id']
 
 
+def test_rework_ng_immediately_holds_sn_until_report_is_posted(tmp_path):
+    db = build_db()
+    db.execute("UPDATE prod_serial SET quality_status='quality_hold' WHERE serial_no='SN001'")
+    disposition_id = db.execute(
+        '''INSERT INTO prod_quality_disposition
+           (disposition_no,sn,workorder_id,source_task_id,route_step_id,status)
+           VALUES('QD-RW-NG','SN001',1,201,101,'pending_review')'''
+    ).lastrowid
+    db.commit()
+    approved = approve_disposition(db, disposition_id, 'rework', 1, '返工')
+    db.execute('UPDATE prod_task SET status=1 WHERE id=?', (approved['rework_task_id'],))
+    db.execute("UPDATE prod_quality_disposition SET status='task_started' WHERE id=?", (disposition_id,))
+    db.commit()
+    assert evaluate_access(db, endpoint(), request('RW-NG-1')).decision == 'L1'
+    import_inspection_report(db, endpoint(), make_csv(result='NG'), 'rw-ng.csv', tmp_path)
+    assert db.execute("SELECT quality_status FROM prod_serial WHERE serial_no='SN001'").fetchone()[0] == 'quality_hold'
+    assert evaluate_access(db, endpoint(), request('RW-NG-2')).reason_code == 'QUALITY_HOLD'
+
+
 def test_report_rejects_missing_l1_sn_mismatch_bad_header_and_duplicate(tmp_path):
     db = build_db()
     for payload, message in [
