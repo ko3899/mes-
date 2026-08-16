@@ -67,13 +67,13 @@ def _set_runtime(db_path, endpoint_id, status, error=None, listening=False):
 
 
 def _session_open(db, endpoint_id, address):
-    row = db.execute(
+    cursor = db.execute(
         '''INSERT INTO iot_machine_session(endpoint_id,remote_address,status,last_heartbeat_at)
-           VALUES(?,?,'online',CURRENT_TIMESTAMP) RETURNING id''',
+           VALUES(?,?,'online',CURRENT_TIMESTAMP)''',
         (endpoint_id, address),
-    ).fetchone()
+    )
     db.commit()
-    return int(row[0])
+    return int(cursor.lastrowid)
 
 
 def _protocol_failure(endpoint, frame, error):
