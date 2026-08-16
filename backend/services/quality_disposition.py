@@ -392,3 +392,116 @@ def validate_rework_task_start(db, task_id):
     if task['quality_status'] != QUALITY_REWORK:
         raise ValueError('SN当前不处于返工状态')
     return _dict(task)
+
+
+def record_rework_ng_cycle(db, report, task, disposition):
+    """Close one failed rework cycle and create the next pending review."""
+    db.execute(
+        '''UPDATE prod_task SET defect_qty=defect_qty+?,status=1
+           WHERE id=? AND status=1''',
+        (report['defect_qty'] or 0, task['id']),
+    )
+    db.execute(
+        '''UPDATE prod_quality_disposition
+           SET status='completed',completed_at=CURRENT_TIMESTAMP
+           WHERE id=? AND status='task_started' ''',
+        (disposition['id'],),
+    )
+    inspection = db.execute(
+        '''SELECT ir.*,req.id AS machine_request_id
+           FROM iot_inspection_report ir
+           JOIN iot_machine_request req ON req.id=ir.request_id
+           WHERE ir.prod_report_id=? ORDER BY ir.id DESC LIMIT 1''',
+        (report['id'],),
+    ).fetchone()
+    inspection_id = inspection['id'] if inspection else None
+    machine_request_id = inspection['machine_request_id'] if inspection else None
+    disposition_no = (
+        'QD-%s' % inspection_id if inspection_id
+        else 'QD-RW-%s-%s-%s' % (
+            disposition['id'], int(disposition['cycle_no']) + 1, report['id']
+        )
+    )
+    cursor = db.execute(
+        '''INSERT OR IGNORE INTO prod_quality_disposition
+           (disposition_no,sn,inspection_report_id,machine_request_id,prod_report_id,
+            workorder_id,source_task_id,route_step_id,action,status,cycle_no,reason)
+           VALUES(?,?,?,?,?,?,?,?,?,'pending_review',?,?)''',
+        (disposition_no, disposition['sn'], inspection_id, machine_request_id,
+         report['id'], disposition['workorder_id'], disposition['source_task_id'],
+         disposition['route_step_id'], 'pending', int(disposition['cycle_no']) + 1,
+         '返工复检NG'),
+    )
+    db.execute(
+        'UPDATE prod_serial SET quality_status=? WHERE serial_no=?',
+        (QUALITY_HOLD, disposition['sn']),
+    )
+    return _dict(db.execute(
+        'SELECT * FROM prod_quality_disposition WHERE disposition_no=?',
+        (disposition_no,),
+    ).fetchone())
+
+
+def apply_posted_rework_result(db, report, task):
+    """Apply an approved single-SN rework result inside post_report's transaction."""
+    disposition = db.execute(
+        '''SELECT * FROM prod_quality_disposition
+           WHERE id=? AND rework_task_id=?''',
+        (task['quality_disposition_id'], task['id']),
+    ).fetchone()
+    if not disposition or disposition['status'] != 'task_started':
+        raise ValueError('返工处置单未启动或已完成')
+    qualified = float(report['qualified_qty'] or 0)
+    defect = float(report['defect_qty'] or 0)
+    if qualified + defect != 1 or (qualified and defect):
+        raise ValueError('单件返工报工必须且只能提交一个OK或NG结果')
+    if int(task['status']) != 1:
+        raise ValueError('返工任务不在进行中')
+
+    if defect:
+        return record_rework_ng_cycle(db, report, task, disposition)
+
+    updated = db.execute(
+        '''UPDATE prod_task SET completed_qty=completed_qty+1,status=3,
+                  end_time=CURRENT_TIMESTAMP
+           WHERE id=? AND status=1 AND completed_qty=0''',
+        (task['id'],),
+    ).rowcount
+    if updated != 1:
+        raise ValueError('返工任务已记账或状态冲突')
+    db.execute(
+        '''UPDATE prod_task SET completed_qty=completed_qty+1,
+                  status=CASE WHEN completed_qty+1>=planned_qty THEN 3 ELSE 1 END,
+                  end_time=CASE WHEN completed_qty+1>=planned_qty THEN CURRENT_TIMESTAMP ELSE end_time END
+           WHERE id=?''',
+        (disposition['source_task_id'],),
+    )
+    db.execute(
+        '''UPDATE prod_workorder SET completed_qty=completed_qty+1,
+                  status=CASE WHEN completed_qty+1>=planned_qty THEN 3
+                              WHEN status=1 THEN 2 ELSE status END,
+                  updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+        (disposition['workorder_id'],),
+    )
+    db.execute(
+        'UPDATE prod_serial SET quality_status=? WHERE serial_no=?',
+        (QUALITY_NORMAL, disposition['sn']),
+    )
+    db.execute(
+        '''UPDATE prod_quality_disposition
+           SET status='completed',completed_at=CURRENT_TIMESTAMP
+           WHERE id=? AND status='task_started' ''',
+        (disposition['id'],),
+    )
+    inspection = db.execute(
+        'SELECT request_id FROM iot_inspection_report WHERE prod_report_id=?',
+        (report['id'],),
+    ).fetchone()
+    if inspection:
+        db.execute(
+            '''UPDATE prod_station_record SET quality_disposition_id=?
+               WHERE machine_request_id=? AND result='PASS'
+                 AND quality_disposition_id IS NULL''',
+            (disposition['id'], inspection['request_id']),
+        )
+    return _dict(disposition)

@@ -18,6 +18,7 @@ from services.machine_access import (  # noqa: E402
 )
 from services.machine_protocol import MachineRequest  # noqa: E402
 from services.quality_disposition import create_quality_disposition_tables  # noqa: E402
+from services.quality_disposition import approve_disposition  # noqa: E402
 
 
 def build_db():
@@ -29,7 +30,7 @@ def build_db():
     CREATE TABLE prod_workorder(id INTEGER PRIMARY KEY, order_no TEXT, product_id INTEGER, status INTEGER, planned_qty REAL);
     CREATE TABLE prod_workorder_route_snapshot(id INTEGER PRIMARY KEY, workorder_id INTEGER, product_id INTEGER);
     CREATE TABLE prod_workorder_route_step(id INTEGER PRIMARY KEY, snapshot_id INTEGER, process_id INTEGER, process_name TEXT, step_no INTEGER);
-    CREATE TABLE prod_task(id INTEGER PRIMARY KEY, task_no TEXT, workorder_id INTEGER, process_id INTEGER, route_step_id INTEGER, planned_qty REAL, completed_qty REAL DEFAULT 0, defect_qty REAL DEFAULT 0, status INTEGER DEFAULT 0);
+    CREATE TABLE prod_task(id INTEGER PRIMARY KEY, task_no TEXT, workorder_id INTEGER, process_id INTEGER, route_step_id INTEGER, planned_qty REAL, completed_qty REAL DEFAULT 0, defect_qty REAL DEFAULT 0, status INTEGER DEFAULT 0, start_time TEXT, end_time TEXT, remark TEXT);
     CREATE TABLE prod_transfer(id INTEGER PRIMARY KEY, workorder_id INTEGER, to_route_step_id INTEGER, quantity REAL, status INTEGER);
     CREATE TABLE prod_station_flow(id INTEGER PRIMARY KEY, flow_no TEXT, sn TEXT, product_id INTEGER, workorder_id INTEGER, current_station TEXT, current_process TEXT, status INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE prod_station_record(id INTEGER PRIMARY KEY, flow_id INTEGER, sn TEXT, station TEXT, process_name TEXT, action TEXT, operator INTEGER, result TEXT, remark TEXT, route_step_id INTEGER, machine_request_id INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
@@ -203,6 +204,27 @@ def test_quality_held_sn_is_rejected_before_ordinary_task_selection():
     decision = evaluate_access(db, endpoint(), request('HELD'))
     assert decision.decision == 'L3'
     assert decision.reason_code == 'QUALITY_HOLD'
+
+
+def test_rework_sn_requires_started_linked_task_then_uses_it():
+    db = build_db()
+    db.execute("UPDATE prod_serial SET quality_status='quality_hold' WHERE serial_no='SN001'")
+    disposition_id = db.execute(
+        '''INSERT INTO prod_quality_disposition
+           (disposition_no,sn,workorder_id,source_task_id,route_step_id,status)
+           VALUES('QD-RW','SN001',1,201,101,'pending_review')'''
+    ).lastrowid
+    db.commit()
+    approved = approve_disposition(db, disposition_id, 'rework', 1, '返工')
+    assert evaluate_access(db, endpoint(), request('RW-DRAFT')).reason_code == 'REWORK_TASK_NOT_STARTED'
+    db.execute('UPDATE prod_task SET status=1 WHERE id=?', (approved['rework_task_id'],))
+    db.execute("UPDATE prod_quality_disposition SET status='task_started' WHERE id=?", (disposition_id,))
+    db.commit()
+    decision = evaluate_access(db, endpoint(), request('RW-RUN'))
+    assert decision.decision == 'L1'
+    assert db.execute(
+        "SELECT task_id FROM iot_machine_request WHERE request_no='RW-RUN'"
+    ).fetchone()[0] == approved['rework_task_id']
 
 
 def test_report_rejects_missing_l1_sn_mismatch_bad_header_and_duplicate(tmp_path):

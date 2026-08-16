@@ -487,22 +487,33 @@ def post_report(db, report_id, user_id, remark=''):
         report = db.execute('SELECT * FROM prod_report WHERE id=?', (report_id,)).fetchone()
         if not report:
             raise BusinessError('报工记录不存在', 404)
+        if report['approval_status'] == REPORT['posted']:
+            return _dict(report)
         if report['approval_status'] != REPORT['approved']:
             raise BusinessError('只有审核通过的报工才能记账')
-        total = float(report['qualified_qty']) + float(report['defect_qty'] or 0)
         task = db.execute('SELECT * FROM prod_task WHERE id=?', (report['task_id'],)).fetchone()
-        if not task or float(task['completed_qty'] or 0) + float(task['defect_qty'] or 0) + total > float(task['planned_qty']):
+        if not task:
+            raise BusinessError('报工任务不存在')
+        if task['task_type'] == 'rework':
+            from services.quality_disposition import apply_posted_rework_result
+            try:
+                apply_posted_rework_result(db, report, task)
+            except ValueError as exc:
+                raise BusinessError(str(exc), 409)
+        elif float(task['completed_qty'] or 0) + float(report['qualified_qty'] or 0) > float(task['planned_qty']):
             raise BusinessError('报工数量超过任务剩余数量')
-        db.execute(
-            '''UPDATE prod_task SET completed_qty=completed_qty+?,defect_qty=defect_qty+?,
-               status=CASE WHEN completed_qty+defect_qty+?>=planned_qty THEN 3 ELSE 1 END WHERE id=?''',
-            (report['qualified_qty'], report['defect_qty'] or 0, total, task['id']),
-        )
-        db.execute(
-            '''UPDATE prod_workorder SET completed_qty=completed_qty+?,defect_qty=defect_qty+?,
-               status=CASE WHEN status=1 THEN 2 ELSE status END,updated_at=CURRENT_TIMESTAMP WHERE id=?''',
-            (report['qualified_qty'], report['defect_qty'] or 0, report['workorder_id']),
-        )
+        else:
+            db.execute(
+                '''UPDATE prod_task SET completed_qty=completed_qty+?,defect_qty=defect_qty+?,
+                   status=CASE WHEN completed_qty+?>=planned_qty THEN 3 ELSE 1 END WHERE id=?''',
+                (report['qualified_qty'], report['defect_qty'] or 0,
+                 report['qualified_qty'], task['id']),
+            )
+            db.execute(
+                '''UPDATE prod_workorder SET completed_qty=completed_qty+?,defect_qty=defect_qty+?,
+                   status=CASE WHEN status=1 THEN 2 ELSE status END,updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+                (report['qualified_qty'], report['defect_qty'] or 0, report['workorder_id']),
+            )
         db.execute('UPDATE prod_report SET approval_status=2,posted_at=CURRENT_TIMESTAMP WHERE id=?', (report_id,))
         _log_status(db, 'report', report_id, report['approval_status'], REPORT['posted'], user_id, 'post', remark)
     return _dict(db.execute('SELECT * FROM prod_report WHERE id=?', (report_id,)).fetchone())

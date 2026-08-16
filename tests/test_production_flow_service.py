@@ -15,6 +15,7 @@ from services.production_flow import (  # noqa: E402
     BusinessError,
     generate_material_requirements,
     generate_tasks,
+    post_report,
     release_workorder,
     save_batch,
     save_sales_order,
@@ -159,3 +160,24 @@ def test_invalid_status_transition_rolls_back_and_does_not_log(db):
         'SELECT status FROM prod_workorder WHERE id=?', (ids['workorder_id'],)
     ).fetchone()[0] == 0
     assert db.execute('SELECT COUNT(*) FROM sys_business_status_log').fetchone()[0] == 0
+
+
+def test_defect_quantity_does_not_complete_an_ordinary_task(db):
+    ids = seed_flow(db)
+    release_workorder(db, ids['workorder_id'], 1)
+    task = generate_tasks(db, ids['workorder_id'], 1)[0]
+    db.execute(
+        'UPDATE prod_task SET planned_qty=2,completed_qty=1,defect_qty=0,status=1 WHERE id=?',
+        (task['id'],),
+    )
+    report_id = db.execute(
+        '''INSERT INTO prod_report
+           (report_no,task_id,workorder_id,process_id,user_id,qualified_qty,
+            defect_qty,approval_status)
+           VALUES('R-DEFECT',?,?,?,?,0,1,1)''',
+        (task['id'], ids['workorder_id'], task['process_id'], 1),
+    ).lastrowid
+    db.commit()
+    post_report(db, report_id, 1)
+    row = db.execute('SELECT completed_qty,defect_qty,status FROM prod_task WHERE id=?', (task['id'],)).fetchone()
+    assert tuple(row) == (1, 1, 1)

@@ -427,7 +427,10 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
             "UPDATE iot_machine_request SET report_status='received' WHERE id=?",
             (request_row['id'],),
         )
-        if result == 'NG':
+        report_task = db.execute(
+            'SELECT task_type FROM prod_task WHERE id=?', (request_row['task_id'],)
+        ).fetchone()
+        if result == 'NG' and (not report_task or report_task['task_type'] != 'rework'):
             create_ng_disposition(
                 db, endpoint, request_row, report_id, prod_report_id,
                 reason='AIM机台检测NG',
