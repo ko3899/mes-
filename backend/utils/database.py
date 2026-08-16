@@ -823,16 +823,23 @@ def init_db():
     db.execute("""UPDATE sys_user SET role_id=(SELECT id FROM sys_role WHERE role_key='user')
                   WHERE role_id IS NULL OR role_id=0""")
 
-    db.execute("INSERT OR IGNORE INTO sys_dept (dept_name, parent_id, sort_order) VALUES (?, ?, ?)",
-               ('总经办', 0, 1))
-    db.execute("INSERT OR IGNORE INTO sys_dept (dept_name, parent_id, sort_order) VALUES (?, ?, ?)",
-               ('生产部', 0, 2))
-    db.execute("INSERT OR IGNORE INTO sys_dept (dept_name, parent_id, sort_order) VALUES (?, ?, ?)",
-               ('品质部', 0, 3))
-    db.execute("INSERT OR IGNORE INTO sys_dept (dept_name, parent_id, sort_order) VALUES (?, ?, ?)",
-               ('仓库部', 0, 4))
-    db.execute("INSERT OR IGNORE INTO sys_dept (dept_name, parent_id, sort_order) VALUES (?, ?, ?)",
-               ('设备部', 0, 5))
+    default_departments = [
+        ('总经办', 0, 1),
+        ('生产部', 0, 2),
+        ('品质部', 0, 3),
+        ('仓库部', 0, 4),
+        ('设备部', 0, 5),
+    ]
+    for dept_name, parent_id, sort_order in default_departments:
+        exists = db.execute(
+            "SELECT id FROM sys_dept WHERE dept_name=? AND parent_id=? ORDER BY id LIMIT 1",
+            (dept_name, parent_id),
+        ).fetchone()
+        if not exists:
+            db.execute(
+                "INSERT INTO sys_dept (dept_name, parent_id, sort_order) VALUES (?, ?, ?)",
+                (dept_name, parent_id, sort_order),
+            )
 
     menus = [
         ('基础数据', 0, '/base', '', 'database', 1, 'M', ''),
@@ -876,8 +883,33 @@ def init_db():
         ('数据字典', 34, '/sys/dict', '', 'dict', 5, 'C', 'sys:dict:list'),
         ('系统日志', 34, '/sys/log', '', 'log', 6, 'C', 'sys:log:list'),
     ]
-    for m in menus:
-        db.execute("INSERT OR IGNORE INTO sys_menu (menu_name, parent_id, path, component, icon, sort_order, menu_type, perms) VALUES (?,?,?,?,?,?,?,?)", m)
+    # Legacy menu definitions refer to parents by their 1-based position in the
+    # seed list. Resolve those positions to actual IDs so existing databases do
+    # not attach children to unrelated rows.
+    seeded_menu_ids = {}
+    for seed_position, menu in enumerate(menus, start=1):
+        menu_name, legacy_parent, path, component, icon, sort_order, menu_type, perms = menu
+        parent_id = seeded_menu_ids.get(legacy_parent, 0)
+        existing = db.execute(
+            "SELECT id FROM sys_menu WHERE path=? ORDER BY id LIMIT 1", (path,)
+        ).fetchone()
+        if existing:
+            menu_id = existing[0]
+            db.execute(
+                """UPDATE sys_menu
+                   SET menu_name=?, parent_id=?, component=?, icon=?, sort_order=?,
+                       menu_type=?, perms=? WHERE id=?""",
+                (menu_name, parent_id, component, icon, sort_order, menu_type, perms, menu_id),
+            )
+        else:
+            cursor = db.execute(
+                """INSERT INTO sys_menu
+                   (menu_name, parent_id, path, component, icon, sort_order, menu_type, perms)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (menu_name, parent_id, path, component, icon, sort_order, menu_type, perms),
+            )
+            menu_id = cursor.lastrowid
+        seeded_menu_ids[seed_position] = menu_id
 
     units = [('个', '个'), ('件', '件'), ('台', '台'), ('套', '套'), ('米', 'm'), ('千克', 'kg'), ('升', 'L'), ('箱', '箱')]
     for u in units:
