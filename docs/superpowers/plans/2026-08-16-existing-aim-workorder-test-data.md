@@ -27,15 +27,15 @@
 - Consumes: `prod_workorder.id=13`, its `product_id`, released route and active task.
 - Produces: two `prod_serial` rows with serial numbers `SIM-AIM-20260816-001` and `SIM-AIM-20260816-002`.
 
-- [ ] **Step 1: Validate the existing workorder chain**
+- [x] **Step 1: Validate the existing workorder chain**
 
 Run a read-only query that asserts workorder 13 is status 1 or 2, has one frozen route step matching endpoint process 12, and has an active task with status 1.
 
-- [ ] **Step 2: Insert serial numbers transactionally**
+- [x] **Step 2: Insert serial numbers transactionally**
 
 Within `BEGIN IMMEDIATE`, read the workorder product ID and execute `INSERT OR IGNORE INTO prod_serial(serial_no,product_id,workorder_id,status) VALUES(?,?,13,0)` for both serial numbers. Roll back if either existing row is bound to another workorder/product or has a nonzero status.
 
-- [ ] **Step 3: Verify persisted bindings**
+- [x] **Step 3: Verify persisted bindings**
 
 Query both rows and require exactly two results, `workorder_id=13`, the workorder product ID, and `status=0`.
 
@@ -50,18 +50,18 @@ Query both rows and require exactly two results, `workorder_id=13`, the workorde
 - Consumes: the two serial numbers from Task 1 and endpoint ID 1 configuration.
 - Produces: persisted `iot_machine_request` audit rows and captured AIM ACK responses.
 
-- [ ] **Step 1: Start an isolated in-process socket listener**
+- [x] **Step 1: Start an isolated in-process socket listener**
 
 Create `MachineSocketServer(('127.0.0.1', 0), endpoint_id=1, db_path='database/mes.db')` so Windows assigns a temporary test port; stop it in a `finally` block.
 
-- [ ] **Step 2: Send signed V2 requests**
+- [x] **Step 2: Send signed V2 requests**
 
 Run `machine_simulator.py` once per SN using endpoint device code, station, cavity and shared secret. Use request numbers `SOFT-SIM-20260816-001` and `SOFT-SIM-20260816-002`.
 
-- [ ] **Step 3: Verify responses and audit rows**
+- [x] **Step 3: Verify responses and audit rows**
 
 Require both simulator processes to exit 0, capture their ACK responses, and query the matching `iot_machine_request` rows. A result other than L1 must be reported with its exact business reason before any CSV result is generated.
 
-- [ ] **Step 4: Record the checkpoint**
+- [x] **Step 4: Record the checkpoint**
 
 Report the two SN bindings, ACK decisions and database request IDs. Do not generate OK/NG CSV until both requests return L1.
