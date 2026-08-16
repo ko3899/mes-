@@ -1,6 +1,8 @@
 /* 审批流程和 SPC 分析模块 */
 
 // 流程定义
+var flowDefinitionsById = {};
+
 function renderFlowDef(el) {
     el.innerHTML = '<div class="card"><div class="card-title"><span>流程定义</span><button class="btn btn-blue" id="flowDefAddBtn">+ 新增</button></div>'
         + '<table><thead><tr><th>ID</th><th>流程名称</th><th>标识</th><th>描述</th><th>状态</th><th>操作</th></tr></thead>'
@@ -12,30 +14,98 @@ function flowDefLoad() {
     api('/api/flow/definition/list?size=100').then(function(r) {
         if(!r) return;
         var list = r.data && r.data.list ? r.data.list : [];
+        flowDefinitionsById = {};
+        list.forEach(function(item) { flowDefinitionsById[String(item.id)] = item; });
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(r2) {
-            return '<tr><td>'+r2.id+'</td><td>'+r2.flow_name+'</td><td>'+r2.flow_key+'</td><td>'+(r2.description||'-')+'</td>'
+            return '<tr><td>'+MESUI.escapeHtml(r2.id)+'</td><td>'+MESUI.escapeHtml(r2.flow_name)+'</td><td>'+MESUI.escapeHtml(r2.flow_key)+'</td><td>'+MESUI.escapeHtml(r2.description||'-')+'</td>'
                 +'<td><span class="tag '+(r2.status?'tag-ok':'tag-draft')+'">'+(r2.status?'启用':'停用')+'</span></td>'
-                +'<td><button class="btn btn-red btn-sm" onclick="flowDefDel('+r2.id+')">删除</button></td></tr>';
+                +'<td><button class="btn btn-blue btn-sm" onclick="flowDefEdit('+r2.id+')">编辑</button> '
+                +'<button class="btn btn-red btn-sm" onclick="flowDefDel('+r2.id+')">删除</button></td></tr>';
         }).join('');
     });
 }
 function flowDefAdd() {
-    document.getElementById('mTitle').textContent = '新增流程定义';
-    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>流程名称<span style="color:red">*</span></label><input id="f_fn"></div>'
-        + '<div class="form-item"><label>标识<span style="color:red">*</span></label><input id="f_fk" placeholder="如: workorder_approval"></div></div>'
-        + '<div class="form-row"><div class="form-item" style="flex:1"><label>描述</label><textarea id="f_desc"></textarea></div></div>';
-    modalSaveHandler = function() {
-        var d = {flow_name:document.getElementById('f_fn').value, flow_key:document.getElementById('f_fk').value, description:document.getElementById('f_desc').value, steps:'[{"step":1,"name":"审批","assignee":1}]'};
-        if(!d.flow_name||!d.flow_key) { alert('请填写必填项'); return; }
-        api('/api/flow/definition/add',{method:'POST',body:d}).then(function(r) {
-            if(r&&r.code===0) { closeModal(); flowDefLoad(); } else alert(r?r.message:'保存失败');
-        });
-    };
-    document.getElementById('modal').classList.add('show');
+    flowDefOpen(null);
 }
-function flowDefDel(id) { if(!confirm('确定删除？')) return; api('/api/flow/definition/delete',{method:'POST',body:{id:id}}).then(function(){flowDefLoad()}); }
+function flowDefEdit(id) {
+    var row = flowDefinitionsById[String(id)];
+    if(!row) { alert('流程数据已刷新，请重新打开'); return; }
+    flowDefOpen(row);
+}
+function flowDefParseSteps(raw) {
+    if(Array.isArray(raw)) return raw;
+    try { return JSON.parse(raw || '[]'); } catch(error) { return []; }
+}
+function flowDefStepAdd(step) {
+    var users = window.flowDefActiveUsers || [];
+    var userOptions = '<option value="">请选择审批人</option>';
+    users.forEach(function(user) {
+        var selected = step && String(step.assignee) === String(user.id) ? ' selected' : '';
+        userOptions += '<option value="' + MESUI.escapeHtml(user.id) + '"' + selected + '>'
+            + MESUI.escapeHtml((user.real_name || user.username || '-') + ' (' + user.username + ')') + '</option>';
+    });
+    var row = document.createElement('div');
+    row.className = 'form-row flow-step-row';
+    row.innerHTML = '<div class="form-item"><label>步骤名称<span style="color:red">*</span></label><input class="flow-step-name" value="'
+        + MESUI.escapeHtml(step && step.name ? step.name : '审批') + '"></div>'
+        + '<div class="form-item"><label>审批人<span style="color:red">*</span></label><select class="flow-step-assignee">' + userOptions + '</select></div>'
+        + '<div class="form-item" style="flex:0 0 auto;align-self:end"><button type="button" class="btn btn-red btn-sm" onclick="flowDefStepRemove(this)">删除步骤</button></div>';
+    document.getElementById('flowSteps').appendChild(row);
+}
+function flowDefStepRemove(button) {
+    var rows = document.querySelectorAll('#flowSteps .flow-step-row');
+    if(rows.length <= 1) { alert('流程至少需要一个审批步骤'); return; }
+    button.closest('.flow-step-row').remove();
+}
+function flowDefOpen(row) {
+    api('/api/sys/user/list?size=100').then(function(response) {
+        window.flowDefActiveUsers = response && response.data ? (response.data.list || []).filter(function(user) {
+            return Number(user.status) === 1;
+        }) : [];
+        document.getElementById('mTitle').textContent = row ? '编辑流程定义' : '新增流程定义';
+        document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>流程名称<span style="color:red">*</span></label><input id="f_fn" value="'
+            + MESUI.escapeHtml(row ? row.flow_name : '') + '"></div><div class="form-item"><label>标识<span style="color:red">*</span></label><input id="f_fk" value="'
+            + MESUI.escapeHtml(row ? row.flow_key : '') + '" placeholder="如: workorder_approval"' + (row ? ' disabled' : '') + '></div></div>'
+            + '<div class="form-row"><div class="form-item" style="flex:1"><label>描述</label><textarea id="f_desc">' + MESUI.escapeHtml(row ? row.description || '' : '') + '</textarea></div>'
+            + '<div class="form-item"><label>状态</label><select id="f_status"><option value="1">启用</option><option value="0">停用</option></select></div></div>'
+            + '<div class="card-title"><span>审批步骤</span><button type="button" class="btn btn-blue btn-sm" id="flowStepAddBtn">+ 添加步骤</button></div>'
+            + '<div id="flowSteps"></div>'
+            + (!window.flowDefActiveUsers.length ? '<div class="empty">暂无启用用户，无法配置审批人。</div>' : '');
+        document.getElementById('f_status').value = String(row ? row.status : 1);
+        var steps = row ? flowDefParseSteps(row.steps) : [];
+        if(!steps.length) steps = [{name:'审批', assignee:''}];
+        steps.forEach(flowDefStepAdd);
+        document.getElementById('flowStepAddBtn').onclick = function() { flowDefStepAdd(null); };
+        modalSaveHandler = function() {
+            var stepRows = document.querySelectorAll('#flowSteps .flow-step-row');
+            var stepsPayload = [];
+            for(var index = 0; index < stepRows.length; index++) {
+                var name = stepRows[index].querySelector('.flow-step-name').value.trim();
+                var assignee = stepRows[index].querySelector('.flow-step-assignee').value;
+                if(!name || !assignee) { alert('请完整填写第' + (index + 1) + '个审批步骤'); return; }
+                stepsPayload.push({step:index + 1, name:name, assignee:Number(assignee)});
+            }
+            var data = {flow_name:document.getElementById('f_fn').value.trim(), description:document.getElementById('f_desc').value.trim(),
+                status:Number(document.getElementById('f_status').value), steps:stepsPayload};
+            if(row) data.id = row.id;
+            else data.flow_key = document.getElementById('f_fk').value.trim();
+            if(!data.flow_name || (!row && !data.flow_key)) { alert('请填写流程名称和标识'); return; }
+            api('/api/flow/definition/' + (row ? 'update' : 'add'), {method:'POST', body:data}).then(function(result) {
+                if(result && result.code === 0) { closeModal(); flowDefLoad(); } else alert(result ? result.message : '保存失败');
+            });
+        };
+        document.getElementById('modal').classList.add('show');
+    });
+}
+function flowDefDel(id) {
+    if(!confirm('确定删除？')) return;
+    api('/api/flow/definition/delete',{method:'POST',body:{id:id}}).then(function(r) {
+        if(r&&r.code===0) flowDefLoad();
+        else alert(r?r.message:'删除失败');
+    });
+}
 
 // 我的审批
 function renderFlowInstance(el) {
@@ -52,25 +122,40 @@ function flowInstLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(r2) {
             var st = {0:'<span class="tag tag-wait">审批中</span>',1:'<span class="tag tag-ok">已通过</span>',2:'<span class="tag tag-no">已驳回</span>'};
-            return '<tr><td>'+r2.id+'</td><td>'+(r2.flow_name||'-')+'</td><td>'+(r2.title||'-')+'</td><td>第'+r2.current_step+'步</td>'
-                +'<td>'+(st[r2.status]||'未知')+'</td><td>'+(r2.created_at||'')+'</td></tr>';
+            return '<tr><td>'+MESUI.escapeHtml(r2.id)+'</td><td>'+MESUI.escapeHtml(r2.flow_name||'-')+'</td><td>'+MESUI.escapeHtml(r2.title||'-')+'</td><td>第'+MESUI.escapeHtml(r2.current_step)+'步</td>'
+                +'<td>'+(st[r2.status]||'未知')+'</td><td>'+MESUI.escapeHtml(r2.created_at||'')+'</td></tr>';
         }).join('');
     });
 }
 function flowSubmit() {
-    api('/api/flow/definition/list?size=100').then(function(r) {
+    Promise.all([api('/api/flow/definition/list?size=100'), api('/api/prod/workorder/list?size=100')]).then(function(responses) {
+        var r = responses[0];
         var flows = (r && r.data) ? (r.data.list||[]) : [];
         var opts = '<option value="">请选择流程</option>';
         flows.forEach(function(f) { if(f.status) opts += '<option value="'+f.id+'">'+f.flow_name+'</option>'; });
+        var workorders = responses[1] && responses[1].data ? (responses[1].data.list || []).filter(function(workorder) {
+            return Number(workorder.status) === 0;
+        }) : [];
+        var workorderOptions = '<option value="">请选择待审批工单</option>';
+        workorders.forEach(function(workorder) {
+            workorderOptions += '<option value="' + MESUI.escapeHtml(workorder.id) + '">'
+                + MESUI.escapeHtml((workorder.order_no || '-') + ' / ' + (workorder.product_name || '-')) + '</option>';
+        });
         document.getElementById('mTitle').textContent = '提交审批';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>流程<span style="color:red">*</span></label><select id="f_fid">'+opts+'</select></div></div>'
             + '<div class="form-row"><div class="form-item"><label>标题<span style="color:red">*</span></label><input id="f_ttl"></div></div>'
-            + '<div class="form-row"><div class="form-item"><label>关联类型</label><select id="f_bt"><option value="">无</option><option value="workorder">工单</option><option value="inbound">入库</option><option value="outbound">出库</option></select></div>'
-            + '<div class="form-item"><label>关联ID</label><input id="f_bid" type="number"></div></div>';
+            + '<div class="form-row"><div class="form-item"><label>关联类型</label><select id="f_bt"><option value="">无</option><option value="workorder">工单</option></select></div>'
+            + '<div class="form-item"><label>关联工单</label><select id="f_bid" disabled>'+workorderOptions+'</select></div></div>';
+        document.getElementById('f_bt').onchange = function() {
+            var linked = this.value === 'workorder';
+            document.getElementById('f_bid').disabled = !linked;
+            if(!linked) document.getElementById('f_bid').value = '';
+        };
         modalSaveHandler = function() {
             var d = {flow_id:document.getElementById('f_fid').value, title:document.getElementById('f_ttl').value,
                 biz_type:document.getElementById('f_bt').value, biz_id:document.getElementById('f_bid').value||0};
             if(!d.flow_id||!d.title) { alert('请填写必填项'); return; }
+            if(d.biz_type === 'workorder' && !d.biz_id) { alert('请选择关联工单'); return; }
             api('/api/flow/instance/submit',{method:'POST',body:d}).then(function(r2) {
                 if(r2&&r2.code===0) { closeModal(); flowInstLoad(); } else alert(r2?r2.message:'提交失败');
             });
@@ -93,10 +178,10 @@ function flowPendingLoad() {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">暂无待审批</td></tr>'; return; }
         tb.innerHTML = list.map(function(r2) {
-            return '<tr><td>'+r2.id+'</td><td>'+(r2.flow_name||'-')+'</td><td>'+(r2.title||'-')+'</td><td>第'+r2.current_step+'步</td>'
-                +'<td>'+(r2.created_at||'')+'</td>'
-                +'<td><button class="btn btn-green btn-sm" onclick="flowApprove('+r2.id+')">通过</button> '
-                +'<button class="btn btn-red btn-sm" onclick="flowReject('+r2.id+')">驳回</button></td></tr>';
+            return '<tr><td>'+MESUI.escapeHtml(r2.id)+'</td><td>'+MESUI.escapeHtml(r2.flow_name||'-')+'</td><td>'+MESUI.escapeHtml(r2.title||'-')+'</td><td>第'+MESUI.escapeHtml(r2.current_step)+'步</td>'
+                +'<td>'+MESUI.escapeHtml(r2.created_at||'')+'</td>'
+                +'<td><button class="btn btn-green btn-sm" onclick="flowApprove('+r2.task_id+')">通过</button> '
+                +'<button class="btn btn-red btn-sm" onclick="flowReject('+r2.task_id+')">驳回</button></td></tr>';
         }).join('');
     });
 }

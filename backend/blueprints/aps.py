@@ -89,7 +89,7 @@ def aps_gantt():
         w.start_date, w.end_date, w.status
         FROM prod_workorder w
         LEFT JOIN base_product p ON w.product_id=p.id
-        WHERE w.status IN (0,1)
+        WHERE w.status IN (0,1,2,4)
         ORDER BY w.priority DESC LIMIT 20''').fetchall()
     
     return jsonify({'code': 0, 'data': [dict(w) for w in workorders]})

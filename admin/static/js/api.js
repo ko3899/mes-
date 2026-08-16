@@ -21,7 +21,7 @@ function api(url, opts) {
     }
 
     return fetch(url, o).then(function(response) {
-        if(response.status === 401) doLogout();
+        if(response.status === 401 && !opts.skipAuthRedirect && typeof doLogout === 'function') doLogout(true);
         var contentType = response.headers && response.headers.get
             ? response.headers.get('content-type') || ''
             : '';
@@ -42,7 +42,7 @@ function api(url, opts) {
                     data.message = '请求失败（HTTP ' + response.status + '）';
                 }
             }
-            if(response.status !== 401 && data.code === 401) doLogout();
+            if(response.status !== 401 && data.code === 401 && !opts.skipAuthRedirect && typeof doLogout === 'function') doLogout(true);
 
             if(isGet && response.ok && data.code === 0) {
                 apiCache[cacheKey] = {data: data, time: Date.now()};

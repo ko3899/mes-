@@ -104,7 +104,45 @@ def stage_record_list():
 @stage_bp.route('/api/stage/record/add', methods=['POST'])
 @login_required
 def stage_record_add():
-    d = request.json
+    d = request.get_json(silent=True)
+    if not isinstance(d, dict):
+        return jsonify({'code': 400, 'message': '请求数据必须是JSON对象'}), 400
+    try:
+        quantity = float(d.get('quantity') or 0)
+    except (TypeError, ValueError):
+        return jsonify({'code': 400, 'message': '数量必须是数字'}), 400
+    if quantity <= 0:
+        return jsonify({'code': 400, 'message': '阶段数量必须大于0'}), 400
+    db = get_db()
+    if not db.execute(
+        'SELECT 1 FROM base_stage_code WHERE code=? AND status=1',
+        (d.get('stage_code'),),
+    ).fetchone():
+        return jsonify({'code': 400, 'message': '阶段码不存在或未启用'}), 400
+    workorder_id = d.get('workorder_id')
+    product_id = d.get('product_id')
+    if workorder_id:
+        workorder = db.execute(
+            'SELECT product_id,planned_qty FROM prod_workorder WHERE id=?',
+            (workorder_id,),
+        ).fetchone()
+        if not workorder:
+            return jsonify({'code': 404, 'message': '工单不存在'}), 404
+        if product_id and int(product_id) != workorder['product_id']:
+            return jsonify({'code': 409, 'message': '所选产品与工单产品不一致'}), 409
+        product_id = workorder['product_id']
+        if quantity > float(workorder['planned_qty']) + 1e-9:
+            return jsonify({'code': 409, 'message': '阶段数量不能超过工单计划数量'}), 409
+    elif product_id:
+        if not db.execute(
+            'SELECT 1 FROM base_product WHERE id=? AND status=1',
+            (product_id,),
+        ).fetchone():
+            return jsonify({'code': 404, 'message': '产品不存在或未启用'}), 404
+    else:
+        return jsonify({'code': 400, 'message': '工单和产品至少选择一个'}), 400
+    d['quantity'] = quantity
+    d['product_id'] = product_id
     d['operator'] = session.get('user_id')
     return jsonify(crud_add('prod_stage_record', d))
 
@@ -120,12 +158,14 @@ def stage_record_update():
 def stage_record_complete():
     """完成阶段"""
     import datetime
-    d = request.json
+    d = request.get_json(silent=True) or {}
     record_id = d.get('id')
     db = get_db()
     record = db.execute("SELECT * FROM prod_stage_record WHERE id=?", (record_id,)).fetchone()
     if not record:
-        return jsonify({'code': 404, 'message': '记录不存在'})
+        return jsonify({'code': 404, 'message': '记录不存在'}), 404
+    if record['end_time']:
+        return jsonify({'code': 409, 'message': '阶段已经完成，不能重复完成'}), 409
     
     now = datetime.datetime.now()
     start = record['start_time']
@@ -138,8 +178,11 @@ def stage_record_complete():
     else:
         duration = 0
     
-    db.execute("UPDATE prod_stage_record SET end_time=?, duration=?, remark=? WHERE id=?",
+    cursor = db.execute("UPDATE prod_stage_record SET end_time=?, duration=?, remark=? WHERE id=? AND end_time IS NULL",
                (now, round(duration, 2), d.get('remark', ''), record_id))
+    if cursor.rowcount != 1:
+        db.rollback()
+        return jsonify({'code': 409, 'message': '阶段状态已变化，请刷新后重试'}), 409
     db.commit()
     return jsonify({'code': 0, 'message': '阶段完成'})
 

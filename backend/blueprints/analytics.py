@@ -55,13 +55,11 @@ def capacity_analysis():
     
     # 各车间产能
     workshops = db.execute('''SELECT ws.id, ws.workshop_name,
-        COUNT(DISTINCT p.id) as process_count,
-        COALESCE(SUM(CASE WHEN w.status IN (0,1) THEN w.planned_qty ELSE 0 END), 0) as pending_qty,
-        COALESCE(SUM(CASE WHEN w.status=2 THEN w.completed_qty ELSE 0 END), 0) as completed_qty
+        (SELECT COUNT(*) FROM base_process p WHERE p.workshop_id=ws.id) as process_count,
+        COALESCE(SUM(CASE WHEN w.status IN (0,1,2,4) THEN w.planned_qty ELSE 0 END), 0) as pending_qty,
+        COALESCE(SUM(CASE WHEN w.status=3 THEN w.completed_qty ELSE 0 END), 0) as completed_qty
         FROM base_workshop ws
-        LEFT JOIN base_process p ON ws.id=p.workshop_id
-        LEFT JOIN prod_task t ON p.id=t.process_id
-        LEFT JOIN prod_workorder w ON t.workorder_id=w.id
+        LEFT JOIN prod_workorder w ON w.workshop_id=ws.id
         GROUP BY ws.id ORDER BY pending_qty DESC''').fetchall()
     
     # 员工效率
@@ -92,7 +90,7 @@ def delivery_alert():
         FROM prod_workorder w
         LEFT JOIN base_product p ON w.product_id=p.id
         LEFT JOIN base_workshop ws ON w.workshop_id=ws.id
-        WHERE w.end_date IS NOT NULL AND w.end_date < ? AND w.status IN (0,1)
+        WHERE w.end_date IS NOT NULL AND w.end_date < ? AND w.status IN (0,1,2,4)
         ORDER BY w.end_date ASC''', (today,)).fetchall()
     
     # 即将到期（3天内）
@@ -102,7 +100,7 @@ def delivery_alert():
         FROM prod_workorder w
         LEFT JOIN base_product p ON w.product_id=p.id
         LEFT JOIN base_workshop ws ON w.workshop_id=ws.id
-        WHERE w.end_date IS NOT NULL AND w.end_date BETWEEN ? AND ? AND w.status IN (0,1)
+        WHERE w.end_date IS NOT NULL AND w.end_date BETWEEN ? AND ? AND w.status IN (0,1,2,4)
         ORDER BY w.end_date ASC''', (today, soon)).fetchall()
     
     return jsonify({'code': 0, 'data': {
@@ -169,7 +167,7 @@ def mobile_dashboard():
         COALESCE(SUM(defect_qty),0) as defect
         FROM prod_report WHERE DATE(report_time)=?''', (today,)).fetchone()
     
-    active_orders = db.execute("SELECT COUNT(*) as c FROM prod_workorder WHERE status IN (0,1)").fetchone()['c']
+    active_orders = db.execute("SELECT COUNT(*) as c FROM prod_workorder WHERE status IN (0,1,2,4)").fetchone()['c']
     pending_tasks = db.execute("SELECT COUNT(*) as c FROM prod_task WHERE status=0").fetchone()['c']
     
     total_eqp = db.execute("SELECT COUNT(*) as c FROM eqp_ledger").fetchone()['c']
@@ -284,7 +282,7 @@ def data_dashboard():
     
     # 工单状态
     wo_stats = []
-    for st, label in [(0,'待处理'),(1,'进行中'),(2,'已完成'),(3,'已关闭')]:
+    for st, label in [(0,'草稿'),(1,'已下达'),(2,'生产中'),(3,'已完工'),(4,'已暂停'),(5,'已关闭'),(6,'已取消')]:
         cnt = db.execute("SELECT COUNT(*) as c FROM prod_workorder WHERE status=?", (st,)).fetchone()['c']
         wo_stats.append({'name': label, 'value': cnt})
     

@@ -13,7 +13,7 @@ def dashboard():
     db = get_db()
     stats = {
         'products': db.execute("SELECT COUNT(*) as cnt FROM base_product WHERE status=1").fetchone()['cnt'],
-        'workorders': db.execute("SELECT COUNT(*) as cnt FROM prod_workorder WHERE status IN (0,1)").fetchone()['cnt'],
+        'workorders': db.execute("SELECT COUNT(*) as cnt FROM prod_workorder WHERE status IN (0,1,2,4)").fetchone()['cnt'],
         'inventory': db.execute("SELECT COUNT(*) as cnt FROM inv_balance").fetchone()['cnt'],
         'equipment': db.execute("SELECT COUNT(*) as cnt FROM eqp_ledger WHERE status=1").fetchone()['cnt'],
         'users': db.execute("SELECT COUNT(*) as cnt FROM sys_user WHERE status=1").fetchone()['cnt'],
@@ -36,7 +36,7 @@ def dashboard_charts():
         daily_output.append({'date': ds, 'qualified': row['qty'], 'defect': row['defect']})
 
     wo_stats = []
-    for st, label in [(0,'待处理'),(1,'进行中'),(2,'已完成'),(3,'已关闭')]:
+    for st, label in [(0,'草稿'),(1,'已下达'),(2,'生产中'),(3,'已完工'),(4,'已暂停'),(5,'已关闭'),(6,'已取消')]:
         cnt = db.execute("SELECT COUNT(*) as c FROM prod_workorder WHERE status=?", (st,)).fetchone()['c']
         if cnt > 0:
             wo_stats.append({'name': label, 'value': cnt})

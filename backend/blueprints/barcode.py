@@ -1,7 +1,7 @@
 """条码管理蓝图 - 生成/打印/扫描/查询"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, gen_no
+from utils.helpers import crud_list, login_required, gen_no
 
 barcode_bp = Blueprint('barcode', __name__)
 

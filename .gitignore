@@ -52,3 +52,6 @@ reports/
 
 # Local browser-validation audit store
 /ko.db
+
+# Runtime lock files
+database/*.lock

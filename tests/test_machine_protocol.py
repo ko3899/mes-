@@ -16,6 +16,7 @@ from services.machine_protocol import (  # noqa: E402
     ProtocolError,
     format_response,
     parse_request,
+    parse_reader_frame,
 )
 
 
@@ -129,3 +130,10 @@ def test_endpoint_protocol_cannot_be_downgraded_and_v2_requires_secret():
             b'REQ|2|AIM001|LASER01|CAVITY1|1|SN001\r\n',
             ENDPOINT,
         )
+
+
+def test_hikrobot_reader_frame_accepts_idle_payload_and_strips_optional_fields():
+    endpoint = dict(ENDPOINT)
+    request = parse_reader_frame(b'SN001;ISO15415=A\x00', endpoint)
+    assert request.sn == 'SN001'
+    assert format_response(request, AccessDecision.allow(), b'') == b'<L1>'

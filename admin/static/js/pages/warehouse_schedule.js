@@ -92,7 +92,7 @@ function renderTransactionPage(el) {
         t: '库存事务',
         apiBase: '/api/transaction',
         dataTable: 'inv_transaction_log',
-        actions: {edit: false, delete: false, import: false},
+        actions: {add: false, edit: false, delete: false, import: false},
         f: [
             {
                 k: 'trans_type',

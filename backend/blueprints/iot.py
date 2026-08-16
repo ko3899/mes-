@@ -19,15 +19,20 @@ def iot_device_list():
 @login_required
 def iot_data_push():
     """接收IoT设备数据"""
-    d = request.json
+    d = request.get_json(silent=True) or {}
     db = get_db()
     device_id = d.get('device_id')
     metric = d.get('metric', '')
-    value = d.get('value', 0)
+    if not device_id or not metric:
+        return jsonify({'code': 400, 'message': '设备和指标不能为空'}), 400
+    try:
+        value = float(d.get('value'))
+    except (TypeError, ValueError):
+        return jsonify({'code': 400, 'message': '指标值必须是数字'}), 400
     
     # 存储到SPC数据表
-    db.execute("INSERT INTO spc_data (process_id, measure_value, operator) VALUES (?,?,?)",
-               (device_id, value, session.get('user_id')))
+    db.execute("INSERT INTO spc_data (equipment_id, process_id, item_name, value, unit) VALUES (?,?,?,?,?)",
+               (device_id, d.get('process_id'), metric, value, d.get('unit', '')))
     db.commit()
     return jsonify({'code': 0, 'message': '数据已接收'})
 

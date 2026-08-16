@@ -78,9 +78,60 @@ def test_endpoint_crud_enriches_equipment_and_process_and_validates_port(client)
     assert toggled.get_json()['data']['enabled'] == 0
 
 
+def test_reader_client_endpoint_requires_reader_ip_and_accepts_hikrobot_defaults(client):
+    assert save_endpoint(client, transport_mode='reader_client', protocol_version=2,
+                         reader_ip='192.168.0.23').status_code == 400
+    missing = save_endpoint(client, transport_mode='reader_client', reader_ip='')
+    assert missing.status_code == 400
+    saved = save_endpoint(
+        client, transport_mode='reader_client', protocol_version=1, reader_ip='192.168.0.23',
+        reader_port=2002, reader_frame_idle_ms=80, allowed_remote_ip='',
+    )
+    assert saved.status_code == 200
+    data = saved.get_json()['data']
+    assert data['transport_mode'] == 'reader_client'
+    assert data['reader_ip'] == '192.168.0.23'
+    assert data['reader_port'] == 2002
+
+
 def test_v1_requires_remote_ip_and_v2_requires_shared_secret(client):
     assert save_endpoint(client, protocol_version=1, allowed_remote_ip='').status_code == 400
     assert save_endpoint(client, protocol_version=2, shared_secret='').status_code == 400
+    assert save_endpoint(client, protocol_version=2, laser_template='').status_code == 400
+    assert save_endpoint(client, protocol_version=2, inspection_template='').status_code == 400
+
+
+def test_toggle_revalidates_disabled_endpoint_security_configuration(client):
+    v1 = save_endpoint(
+        client, protocol_version=1, allowed_remote_ip='', enabled=0,
+    ).get_json()['data']
+    assert client.post(
+        f"/api/iot/machine/endpoints/{v1['id']}/toggle", json={'enabled': 1}
+    ).status_code == 400
+    v2 = save_endpoint(
+        client, bind_ip='127.0.0.2', listen_port=2005, station_code='ST02',
+        cavity_code='C2', protocol_version=2, shared_secret='', laser_template='',
+        inspection_template='', enabled=0,
+    ).get_json()['data']
+    assert client.post(
+        f"/api/iot/machine/endpoints/{v2['id']}/toggle", json={'enabled': 1}
+    ).status_code == 400
+
+
+def test_editing_missing_endpoint_returns_not_found(client):
+    response = save_endpoint(client, id=99999, shared_secret='')
+    assert response.status_code == 404
+    assert save_endpoint(client, id=99999, shared_secret='replacement').status_code == 404
+
+
+def test_machine_log_paging_and_toggle_reject_bad_values_without_server_error(client):
+    endpoint_id = save_endpoint(client).get_json()['data']['id']
+    response = client.get('/api/iot/machine/sessions?page=bad&size=bad')
+    assert response.status_code == 200
+    response = client.post(
+        f'/api/iot/machine/endpoints/{endpoint_id}/toggle', json={'enabled': 'bad'}
+    )
+    assert response.status_code == 400
 
 
 def test_csv_directory_must_be_absolute_unique_and_stable_seconds_bounded(client, tmp_path):

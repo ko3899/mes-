@@ -6,6 +6,7 @@ import csv
 import io
 import datetime
 import secrets
+import sqlite3
 
 # 确保可以导入模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -14,7 +15,7 @@ from flask import Flask, request, jsonify, send_from_directory, make_response, s
 from openpyxl import Workbook, load_workbook
 
 from utils.database import close_db, init_db, _init_extra_tables, DB_PATH, BASE_DIR, get_db
-from utils.helpers import login_required, gen_no
+from utils.helpers import login_required, gen_no, _load_session_user
 from blueprints.auth import auth_bp
 from blueprints.system import system_bp
 from blueprints.base_data import base_data_bp
@@ -73,7 +74,13 @@ ADMIN_DIR = os.path.join(BASE_DIR, 'admin')
 
 def create_app():
     app = Flask(__name__, static_folder=None)
-    app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
+    secret_key = os.environ.get('FLASK_SECRET_KEY') or os.environ.get('SECRET_KEY')
+    if not secret_key and os.environ.get('MES_ENV', '').lower() == 'production':
+        raise RuntimeError('FLASK_SECRET_KEY is required in production')
+    app.secret_key = secret_key or secrets.token_hex(32)
+    app.config['SESSION_COOKIE_NAME'] = os.environ.get(
+        'SESSION_COOKIE_NAME', 'mes_main_session'
+    )
 
     # 注册 teardown
     app.teardown_appcontext(close_db)
@@ -423,7 +430,10 @@ def create_app():
     @app.route('/api/import/<table>', methods=['POST'])
     @login_required
     def import_data(table):
-        if table.startswith('sys_') and session.get('username') != 'admin':
+        current_user, auth_error = _load_session_user()
+        if auth_error:
+            return auth_error
+        if table.startswith('sys_') and (current_user['role_key'] != 'admin' or not current_user['role_status']):
             return jsonify({
                 'code': 403,
                 'message': '仅管理员可导入系统管理数据',
@@ -553,8 +563,11 @@ def create_app():
     @login_required
     def trace_batch_list():
         db = get_db()
-        page = int(request.args.get('page', 1))
-        size = int(request.args.get('size', 15))
+        try:
+            page = max(1, int(request.args.get('page', 1)))
+            size = min(500, max(1, int(request.args.get('size', 15))))
+        except (TypeError, ValueError):
+            return jsonify({'code': 400, 'message': '分页参数必须是整数'}), 400
         keyword = request.args.get('keyword', '')
         if keyword:
             total = db.execute("SELECT COUNT(*) as c FROM inv_batch WHERE batch_no LIKE ?", (f'%{keyword}%',)).fetchone()['c']
@@ -572,21 +585,47 @@ def create_app():
     @app.route('/api/trace/batch/add', methods=['POST'])
     @login_required
     def trace_batch_add():
-        d = request.json
+        d = request.get_json(silent=True)
+        if not isinstance(d, dict):
+            return jsonify({'code': 400, 'message': '请求数据必须是JSON对象'}), 400
+        batch_no = str(d.get('batch_no') or '').strip()
+        try:
+            product_id = int(d.get('product_id'))
+            quantity = float(d.get('quantity') or 0)
+        except (TypeError, ValueError):
+            return jsonify({'code': 400, 'message': '产品或数量格式错误'}), 400
+        if not batch_no:
+            return jsonify({'code': 400, 'message': '批次号不能为空'}), 400
+        if quantity <= 0:
+            return jsonify({'code': 400, 'message': '批次数量必须大于0'}), 400
         db = get_db()
-        db.execute("INSERT INTO inv_batch (batch_no,product_id,supplier,quantity,production_date,expiry_date,status) VALUES (?,?,?,?,?,?,?)",
-                   (d['batch_no'], d['product_id'], d.get('supplier',''), d.get('quantity',0),
-                    d.get('production_date',''), d.get('expiry_date',''), d.get('status',1)))
-        db.commit()
-        return jsonify({'code': 0})
+        if not db.execute('SELECT 1 FROM base_product WHERE id=?', (product_id,)).fetchone():
+            return jsonify({'code': 404, 'message': '产品不存在'}), 404
+        try:
+            cursor = db.execute("INSERT INTO inv_batch (batch_no,product_id,supplier,quantity,production_date,expiry_date,status) VALUES (?,?,?,?,?,?,?)",
+                       (batch_no, product_id, str(d.get('supplier') or '').strip(), quantity,
+                        d.get('production_date',''), d.get('expiry_date',''), d.get('status',1)))
+            db.commit()
+            return jsonify({'code': 0, 'message': '批次新增成功', 'data': {'id': cursor.lastrowid}})
+        except sqlite3.IntegrityError:
+            db.rollback()
+            return jsonify({'code': 409, 'message': '批次号已存在'}), 409
 
     @app.route('/api/trace/batch/delete', methods=['POST'])
     @login_required
     def trace_batch_delete():
+        d = request.get_json(silent=True) or {}
+        if not d.get('id'):
+            return jsonify({'code': 400, 'message': '缺少批次ID'}), 400
         db = get_db()
-        db.execute("DELETE FROM inv_batch WHERE id=?", (request.json['id'],))
+        if db.execute('SELECT 1 FROM inv_trace WHERE batch_id=? LIMIT 1', (d['id'],)).fetchone():
+            return jsonify({'code': 409, 'message': '批次已有追溯记录，不能删除'}), 409
+        cursor = db.execute("DELETE FROM inv_batch WHERE id=?", (d['id'],))
+        if cursor.rowcount == 0:
+            db.rollback()
+            return jsonify({'code': 404, 'message': '批次不存在'}), 404
         db.commit()
-        return jsonify({'code': 0})
+        return jsonify({'code': 0, 'message': '删除成功'})
 
     @app.route('/api/trace/chain/<int:batch_id>')
     @login_required
@@ -595,21 +634,34 @@ def create_app():
         batch = db.execute('''SELECT b.*, p.product_name FROM inv_batch b
             LEFT JOIN base_product p ON b.product_id=p.id WHERE b.id=?''', (batch_id,)).fetchone()
         if not batch:
-            return jsonify({'code': 404, 'message': '批次不存在'})
+            return jsonify({'code': 404, 'message': '批次不存在'}), 404
         traces = db.execute("SELECT * FROM inv_trace WHERE batch_id=? ORDER BY created_at", (batch_id,)).fetchall()
         return jsonify({'code': 0, 'data': {'batch': dict(batch), 'traces': [dict(r) for r in traces]}})
 
     @app.route('/api/trace/add', methods=['POST'])
     @login_required
     def trace_add():
-        d = request.json
+        d = request.get_json(silent=True)
+        if not isinstance(d, dict):
+            return jsonify({'code': 400, 'message': '请求数据必须是JSON对象'}), 400
         from flask import session
         db = get_db()
-        db.execute("INSERT INTO inv_trace (batch_id,trace_type,ref_no,ref_id,quantity,operator,remark) VALUES (?,?,?,?,?,?,?)",
-                   (d['batch_id'], d['trace_type'], d.get('ref_no',''), d.get('ref_id',0),
-                    d.get('quantity',0), session.get('user_id'), d.get('remark','')))
+        try:
+            batch_id = int(d.get('batch_id'))
+            quantity = float(d.get('quantity') or 0)
+        except (TypeError, ValueError):
+            return jsonify({'code': 400, 'message': '批次或数量格式错误'}), 400
+        trace_type = str(d.get('trace_type') or '').strip()
+        if not trace_type:
+            return jsonify({'code': 400, 'message': '追溯类型不能为空'}), 400
+        if not db.execute('SELECT 1 FROM inv_batch WHERE id=?', (batch_id,)).fetchone():
+            return jsonify({'code': 404, 'message': '批次不存在'}), 404
+        ref_no = str(d.get('ref_no') or '').strip()
+        cursor = db.execute("INSERT INTO inv_trace (batch_id,trace_type,biz_no,operation,ref_no,ref_id,quantity,operator,remark) VALUES (?,?,?,?,?,?,?,?,?)",
+                   (batch_id, trace_type, ref_no, trace_type, ref_no, d.get('ref_id',0),
+                    quantity, session.get('user_id'), d.get('remark','')))
         db.commit()
-        return jsonify({'code': 0})
+        return jsonify({'code': 0, 'message': '追溯记录新增成功', 'data': {'id': cursor.lastrowid}})
 
     @app.route('/api/trace/query')
     @login_required
@@ -636,9 +688,15 @@ app = create_app()
 if __name__ == '__main__':
     init_db()
     _init_extra_tables()
+    from machine_runtime import MachineCommunicationRuntime
+    machine_runtime = MachineCommunicationRuntime()
+    machine_runtime.start()
     print("=" * 50)
     print("  MES工厂管家 启动成功!")
     print("  访问地址: http://localhost:8080")
     print("  默认账号: admin / admin123")
     print("=" * 50)
-    app.run(host='0.0.0.0', port=8080, debug=False)
+    try:
+        app.run(host='0.0.0.0', port=8080, debug=False)
+    finally:
+        machine_runtime.stop()

@@ -55,13 +55,15 @@ def change_password():
 def reset_password():
     d = request.json
     target_id = d.get('user_id')
-    new_pwd = d.get('new_password', '123456')
+    new_pwd = d.get('new_password', '')
+    if not target_id or len(new_pwd) < 6:
+        return jsonify({'code': 400, 'message': '用户ID和至少6位新密码不能为空'}), 400
     
     db = get_db()
     new_hash = hash_password(new_pwd)
     db.execute("UPDATE sys_user SET password=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", (new_hash, target_id))
     db.commit()
-    return jsonify({'code': 0, 'message': f'密码已重置为: {new_pwd}'})
+    return jsonify({'code': 0, 'message': '密码重置成功'})
 
 
 # ==================== 权限管理 ====================
@@ -96,7 +98,7 @@ def online_list():
     now = datetime.datetime.now()
     # 清理超过30分钟的用户
     expired = [uid for uid, info in _online_users.items() 
-               if (now - info['last_active']).seconds > 1800]
+               if (now - info['last_active']).total_seconds() > 1800]
     for uid in expired:
         del _online_users[uid]
     
@@ -126,6 +128,23 @@ def record_online_user(user_id, username, ip):
         'last_active': datetime.datetime.now(),
         'login_time': _online_users.get(str(user_id), {}).get('login_time', datetime.datetime.now())
     }
+
+
+def touch_online_user(user_id, username, ip=None):
+    """Refresh activity on an authenticated request without resetting login time."""
+    key = str(user_id)
+    current = _online_users.get(key)
+    if current is None:
+        record_online_user(user_id, username, ip)
+        return
+    current['username'] = username
+    if ip:
+        current['login_ip'] = ip
+    current['last_active'] = datetime.datetime.now()
+
+
+def remove_online_user(user_id):
+    _online_users.pop(str(user_id), None)
 
 
 # ==================== 登录日志 ====================

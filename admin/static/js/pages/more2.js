@@ -43,12 +43,13 @@ function tbLoad() {
         var h = '';
         list.forEach(function(r2) {
             h += '<tr><td>' + r2.id + '</td><td>' + (r2.borrow_no||'') + '</td><td>' + (r2.tool_name||r2.tool_id) + '</td>';
-            h += '<td>' + (r2.borrower_name||'') + '</td><td>' + r2.borrow_qty + '</td>';
+            h += '<td>' + (r2.borrower_name||'') + '</td><td>' + r2.borrow_qty + '（未还 ' + Number(r2.outstanding_qty || 0) + '）</td>';
             h += '<td><span class="tag ' + (r2.status ? 'tag-ok' : 'tag-wait') + '">' + (r2.status ? '已还' : '借出') + '</span></td>';
             h += '<td>' + (r2.borrow_time||'') + '</td>';
             h += '<td class="actions">';
-            if(!r2.status) h += '<button class="btn btn-green btn-sm" onclick="tbReturn(' + r2.id + ',' + r2.borrow_qty + ')">归还</button>';
-            h += '<button class="btn btn-red btn-sm" onclick="tbDel(' + r2.id + ')">删除</button></td></tr>';
+            if(!r2.status) h += '<button class="btn btn-green btn-sm" onclick="tbReturn(' + r2.id + ',' + Number(r2.outstanding_qty || 0) + ')">归还</button>';
+            else h += '<button class="btn btn-red btn-sm" onclick="tbDel(' + r2.id + ')">删除</button>';
+            h += '</td></tr>';
         });
         tb.innerHTML = h;
     });
@@ -57,14 +58,16 @@ function tbAdd() {
     api('/api/tool/ledger/list?size=1000').then(function(r) {
         var tools = (r && r.data) ? (Array.isArray(r.data) ? r.data : (r.data.list || [])) : [];
         var opts = '<option value="">请选择工具</option>';
-        tools.forEach(function(t) { opts += '<option value="' + t.id + '">' + t.tool_name + ' (' + t.code + ')</option>'; });
+        tools.filter(function(t) { return Number(t.available_qty) > 0 && Number(t.status) === 1; }).forEach(function(t) {
+            opts += '<option value="' + t.id + '">' + MESUI.escapeHtml(t.tool_name + ' (' + t.code + ')，可借 ' + t.available_qty) + '</option>';
+        });
         document.getElementById('mTitle').textContent = '新增领用';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>工具<span style="color:red">*</span></label><select id="f_tid">' + opts + '</select></div>'
             + '<div class="form-item"><label>数量<span style="color:red">*</span></label><input id="f_qty" type="number" step="0.01"></div></div>'
             + '<div class="form-row"><div class="form-item" style="flex:1"><label>备注</label><textarea id="f_remark"></textarea></div></div>';
         modalSaveHandler = function() {
             var d = {tool_id:document.getElementById('f_tid').value, borrow_qty:document.getElementById('f_qty').value, remark:document.getElementById('f_remark').value};
-            if(!d.tool_id || !d.borrow_qty) { alert('请填写必填项'); return; }
+            if(!d.tool_id || Number(d.borrow_qty) <= 0) { alert('请选择工具，数量必须大于0'); return; }
             api('/api/tool/borrow/add', {method:'POST', body:d}).then(function(r2) {
                 if(r2 && r2.code === 0) { closeModal(); tbLoad(); } else alert(r2 ? r2.message : '保存失败');
             });
@@ -77,14 +80,20 @@ function tbReturn(id, maxQty) {
     document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>归还数量<span style="color:red">*</span></label><input id="f_rqty" type="number" step="0.01" value="' + maxQty + '"></div></div>';
     modalSaveHandler = function() {
         var qty = document.getElementById('f_rqty').value;
-        if(!qty || qty <= 0) { alert('请输入归还数量'); return; }
+        if(!qty || Number(qty) <= 0 || Number(qty) > Number(maxQty)) { alert('归还数量必须大于0且不能超过未还数量'); return; }
         api('/api/tool/borrow/return', {method:'POST', body:{id:id, return_qty:Number(qty)}}).then(function(r) {
             if(r && r.code === 0) { closeModal(); tbLoad(); } else alert(r ? r.message : '归还失败');
         });
     };
     document.getElementById('modal').classList.add('show');
 }
-function tbDel(id) { if(!confirm('确定删除？')) return; api('/api/tool/borrow/delete', {method:'POST', body:{id:id}}).then(function(){tbLoad()}); }
+function tbDel(id) {
+    if(!confirm('确定删除已归还记录？')) return;
+    api('/api/tool/borrow/delete', {method:'POST', body:{id:id}}).then(function(r) {
+        if(r && r.code === 0) tbLoad();
+        else alert(r ? r.message : '删除失败');
+    });
+}
 
 // 过程检验
 function renderQMProcess(el) {

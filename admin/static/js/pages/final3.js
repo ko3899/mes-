@@ -266,10 +266,10 @@ function renderReturn(el) {
     el.innerHTML = '<div class="card"><div class="card-title"><span>退换货</span><button class="btn btn-blue" id="srAddBtn">+ 新增</button></div>'
         + '<table><thead><tr><th>ID</th><th>编号</th><th>客诉</th><th>客户</th><th>产品</th><th>数量</th><th>原因</th><th>状态</th></tr></thead>'
         + '<tbody id="tb"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody></table></div>';
-    document.getElementById('srAddBtn').onclick = srAdd;
-    srLoad();
+    document.getElementById('srAddBtn').onclick = serviceReturnAdd;
+    serviceReturnLoad();
 }
-function srLoad() {
+function serviceReturnLoad() {
     api('/api/svc/return/list?size=50').then(function(r) {
         if(!r) return;
         var list = r.data?.list||[];
@@ -279,12 +279,12 @@ function srLoad() {
         tb.innerHTML = list.map(function(sr) {
             return '<tr><td>'+sr.id+'</td><td>'+sr.return_no+'</td><td>'+(sr.complaint_id||'-')+'</td>'
                 +'<td>'+(sr.customer_name||'-')+'</td><td>'+(sr.product_name||'-')+'</td><td>'+sr.quantity+'</td>'
-                +'<td>'+(sr.reason||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(sr.return_reason||'-')+'</td>'
                 +'<td><span class="tag '+(sr.status>=2?'tag-ok':sr.status?'tag-run':'tag-wait')+'">'+(st[sr.status]||'待处理')+'</span></td></tr>';
         }).join('');
     });
 }
-function srAdd() {
+function serviceReturnAdd() {
     Promise.all([api('/api/base/customer/all'), api('/api/base/product/all')]).then(function(r) {
         var custOpts = '<option value="">选择客户</option>';
         (r[0]?.data||[]).forEach(function(c) { custOpts += '<option value="'+c.id+'">'+c.customer_name+'</option>'; });
@@ -297,9 +297,12 @@ function srAdd() {
             + '<div class="form-row"><div class="form-item" style="flex:1"><label>原因</label><textarea id="f_reason"></textarea></div></div>';
         modalSaveHandler = function() {
             var d = {customer_id:document.getElementById('f_cust').value||null, product_id:document.getElementById('f_prod').value||null,
-                quantity:document.getElementById('f_qty').value, reason:document.getElementById('f_reason').value};
+                quantity:document.getElementById('f_qty').value, return_reason:document.getElementById('f_reason').value};
+            if(!d.customer_id || !d.product_id || Number(d.quantity) <= 0 || !d.return_reason.trim()) {
+                alert('请选择客户和产品，数量必须大于0，原因不能为空'); return;
+            }
             api('/api/svc/return/add',{method:'POST',body:d}).then(function(r2) {
-                if(r2&&r2.code===0) { closeModal(); srLoad(); } else alert(r2?r2.message:'保存失败');
+                if(r2&&r2.code===0) { closeModal(); serviceReturnLoad(); } else alert(r2?r2.message:'保存失败');
             });
         };
         document.getElementById('modal').classList.add('show');

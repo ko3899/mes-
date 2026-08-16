@@ -36,9 +36,11 @@ function machineIotHealth() {
         if(!response || response.code !== 0) return;
         var data = response.data;
         document.getElementById('machineHealth').innerHTML = '启用端点 <b>' + machineEscape(data.enabled_endpoints)
-            + '</b>　在线会话 <b>' + machineEscape(data.online_sessions) + '</b>　待报告 <b>'
+            + '</b>　监听在线 <b>' + machineEscape(data.listening_endpoints) + '</b>　监听异常 <b>'
+            + machineEscape(data.listener_errors) + '</b>　机台会话 <b>' + machineEscape(data.online_sessions) + '</b>　待报告 <b>'
             + machineEscape(data.pending_reports) + '</b>　失败报告 <b>' + machineEscape(data.failed_reports) + '</b>';
-        document.getElementById('machineHealth').innerHTML += '　采集目录 <b>' + machineEscape(data.collector_directories)
+        document.getElementById('machineHealth').innerHTML += '　CSV采集 <b>' + machineEscape(data.collector_status)
+            + '</b>　采集目录 <b>' + machineEscape(data.collector_directories)
             + '</b>　目录缺失 <b>' + machineEscape(data.missing_directories) + '</b>　待稳定文件 <b>'
             + machineEscape(data.unstable_files) + '</b>　最后扫描 <b>' + machineEscape(data.last_collection_at) + '</b>';
     });
@@ -68,14 +70,17 @@ function machineEndpointLoad(body) {
             var encoded = encodeURIComponent(JSON.stringify(row));
             return '<tr><td>' + machineEscape(row.id) + '</td><td>' + machineEscape(row.device_code)
                 + '</td><td>' + machineEscape(row.station_code) + '</td><td>' + machineEscape(row.process_name)
-                + '</td><td>' + machineEscape(row.cavity_code) + '</td><td>' + machineEscape(row.bind_ip + ':' + row.listen_port)
-                + '</td><td>V' + machineEscape(row.protocol_version) + '</td><td>'
+                + '</td><td>' + machineEscape(row.cavity_code) + '</td><td>'
+                + machineEscape(row.transport_mode === 'reader_client' ? (row.reader_ip + ':' + row.reader_port) : (row.bind_ip + ':' + row.listen_port))
+                + '</td><td>' + machineEscape(row.transport_mode === 'reader_client' ? '海康直连' : ('V' + row.protocol_version)) + '</td><td>'
                 + (row.enabled ? '<span class="tag tag-ok">启用</span>' : '<span class="tag tag-draft">停用</span>')
+                + '</td><td>' + machineEscape(row.listener_status)
+                + (row.last_error ? '<br><span class="tag tag-no">' + machineEscape(row.last_error) + '</span>' : '')
                 + '</td><td><button class="btn btn-blue btn-sm machine-endpoint-edit" data-endpoint="' + machineEscape(encoded) + '">编辑</button> '
                 + '<button class="btn btn-gray btn-sm machine-endpoint-toggle" data-id="' + Number(row.id) + '" data-enabled="' + (row.enabled ? 0 : 1) + '">'
                 + (row.enabled ? '停用' : '启用') + '</button></td></tr>';
         });
-        body.innerHTML = machineTable(['ID','设备','工站','工序','穴位','监听地址','协议','状态','操作'], rows);
+        body.innerHTML = machineTable(['ID','设备','工站','工序','穴位','监听地址','协议','配置','运行','操作'], rows);
         body.querySelectorAll('.machine-endpoint-edit').forEach(function(button) {
             button.onclick = function() { machineEndpointEditJson(button.getAttribute('data-endpoint')); };
         });
@@ -147,31 +152,46 @@ function machineEndpointEdit(row) {
             + option(machineIotProcesses, 'id', 'process_name', row && row.process_id) + '</select></div></div>'
             + '<div class="form-row"><div class="form-item"><label>工站 *</label><input id="miStation" value="' + machineEscape(row && row.station_code || '') + '"></div>'
             + '<div class="form-item"><label>穴位 *</label><input id="miCavity" value="' + machineEscape(row && row.cavity_code || 'C1') + '"></div></div>'
-            + '<div class="form-row"><div class="form-item"><label>监听IP *</label><input id="miIp" value="' + machineEscape(row && row.bind_ip || '0.0.0.0') + '"></div>'
-            + '<div class="form-item"><label>端口 *</label><input type="number" id="miPort" value="' + machineEscape(row && row.listen_port || 2004) + '"></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>通讯方向</label><select id="miTransport"><option value="server">MES监听机台</option><option value="reader_client"' + (row && row.transport_mode === 'reader_client' ? ' selected' : '') + '>MES直连海康读码器</option></select></div>'
+            + '<div class="form-item"><label>MES监听IP *</label><input id="miIp" value="' + machineEscape(row && row.bind_ip || '0.0.0.0') + '"></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>MES监听端口 *</label><input type="number" id="miPort" value="' + machineEscape(row && row.listen_port || 2004) + '"></div>'
+            + '<div class="form-item"><label>读码器IP（直连）</label><input id="miReaderIp" value="' + machineEscape(row && row.reader_ip || '') + '" placeholder="例如 192.168.0.23"></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>读码器端口</label><input type="number" id="miReaderPort" value="' + machineEscape(row && row.reader_port || 2002) + '"></div>'
+            + '<div class="form-item"><label>无结束符切帧空闲(ms)</label><input type="number" min="20" max="2000" id="miReaderIdle" value="' + machineEscape(row && row.reader_frame_idle_ms || 80) + '"></div></div>'
             + '<div class="form-row"><div class="form-item"><label>机台来源IP</label><input id="miRemoteIp" value="' + machineEscape(row && row.allowed_remote_ip || '') + '" placeholder="V1正式生产建议必填"></div></div>'
             + '<div class="form-row"><div class="form-item"><label>CSV输入目录</label><input id="miCsvDir" value="' + machineEscape(row && row.csv_input_dir || '') + '" placeholder="例如 D:\\AIM\\Result"></div>'
             + '<div class="form-item"><label>文件稳定秒数</label><input type="number" min="1" max="60" id="miStableSeconds" value="' + machineEscape(row && row.csv_stable_seconds || 2) + '"></div></div>'
             + '<div class="form-row"><div class="form-item"><label>协议</label><select id="miProtocol"><option value="1">V1 原协议</option><option value="2"' + (row && Number(row.protocol_version) === 2 ? ' selected' : '') + '>V2 增强协议</option></select></div>'
             + '<div class="form-item"><label>编码</label><select id="miEncoding"><option value="utf-8">UTF-8</option><option value="gbk"' + (row && row.encoding === 'gbk' ? ' selected' : '') + '>GBK</option></select></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>请求超时(ms)</label><input type="number" min="500" max="5000" id="miTimeout" value="' + machineEscape(row && row.timeout_ms || 1000) + '"></div>'
+            + '<div class="form-item"><label>心跳周期(s)</label><input type="number" min="5" max="3600" id="miHeartbeat" value="' + machineEscape(row && row.heartbeat_seconds || 30) + '"></div></div>'
             + '<div class="form-row"><div class="form-item"><label>V2共享密钥</label><input type="password" id="miSecret" placeholder="' + (row && row.shared_secret_configured ? '已配置，留空保持不变' : '可选') + '"></div>'
-            + '<div class="form-item"><label>检测模板</label><input id="miTemplate" value="' + machineEscape(row && row.inspection_template || '') + '" placeholder="CCD模板编号"></div></div>';
-        modalSaveHandler = function(){ machineEndpointSave(row && row.id); };
+            + '<div class="form-item"><label>加工模板</label><input id="miLaserTemplate" value="' + machineEscape(row && row.laser_template || '') + '" placeholder="镭雕/加工模板编号"></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>检测模板</label><input id="miInspectionTemplate" value="' + machineEscape(row && row.inspection_template || '') + '" placeholder="CCD模板编号"></div></div>';
+        modalSaveHandler = function(){ machineEndpointSave(row); };
         document.getElementById('modal').classList.add('show');
     });
 }
 
-function machineEndpointSave(id) {
-    var payload = {id:id, equipment_id:document.getElementById('miEquipment').value,
+function machineEndpointSave(row) {
+    var payload = {id:row && row.id, equipment_id:document.getElementById('miEquipment').value,
         process_id:document.getElementById('miProcess').value, station_code:document.getElementById('miStation').value,
         cavity_code:document.getElementById('miCavity').value, bind_ip:document.getElementById('miIp').value,
+        transport_mode:document.getElementById('miTransport').value,
+        reader_ip:document.getElementById('miReaderIp').value,
+        reader_port:Number(document.getElementById('miReaderPort').value),
+        reader_frame_idle_ms:Number(document.getElementById('miReaderIdle').value),
         allowed_remote_ip:document.getElementById('miRemoteIp').value,
         csv_input_dir:document.getElementById('miCsvDir').value,
         csv_stable_seconds:Number(document.getElementById('miStableSeconds').value),
         listen_port:Number(document.getElementById('miPort').value), protocol_version:Number(document.getElementById('miProtocol').value),
-        encoding:document.getElementById('miEncoding').value, timeout_ms:1000, heartbeat_seconds:30, enabled:1,
+        encoding:document.getElementById('miEncoding').value,
+        timeout_ms:Number(document.getElementById('miTimeout').value),
+        heartbeat_seconds:Number(document.getElementById('miHeartbeat').value),
+        enabled:row ? Number(row.enabled) : 1,
         shared_secret:document.getElementById('miSecret').value,
-        inspection_template:document.getElementById('miTemplate').value};
+        laser_template:document.getElementById('miLaserTemplate').value,
+        inspection_template:document.getElementById('miInspectionTemplate').value};
     api('/api/iot/machine/endpoints/save', {method:'POST', body:payload}).then(function(response) {
         if(response && response.code === 0) { closeModal(); machineIotLoad(); machineIotHealth(); }
         else alert(response ? response.message : '保存失败');

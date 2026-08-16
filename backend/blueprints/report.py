@@ -13,8 +13,8 @@ report_bp = Blueprint('report', __name__)
 def report_production():
     db = get_db()
     total_orders = db.execute("SELECT COUNT(*) as cnt FROM prod_workorder").fetchone()['cnt']
-    completed = db.execute("SELECT COUNT(*) as cnt FROM prod_workorder WHERE status=2").fetchone()['cnt']
-    in_progress = db.execute("SELECT COUNT(*) as cnt FROM prod_workorder WHERE status=1").fetchone()['cnt']
+    completed = db.execute("SELECT COUNT(*) as cnt FROM prod_workorder WHERE status=3").fetchone()['cnt']
+    in_progress = db.execute("SELECT COUNT(*) as cnt FROM prod_workorder WHERE status IN (1,2)").fetchone()['cnt']
     pending = db.execute("SELECT COUNT(*) as cnt FROM prod_workorder WHERE status=0").fetchone()['cnt']
     total_qty = db.execute("SELECT COALESCE(SUM(completed_qty),0) as total FROM prod_workorder").fetchone()['total']
     defect_qty = db.execute("SELECT COALESCE(SUM(defect_qty),0) as total FROM prod_workorder").fetchone()['total']
@@ -176,7 +176,7 @@ def kanban_production():
         FROM prod_workorder w
         LEFT JOIN base_product p ON w.product_id=p.id
         LEFT JOIN base_workshop ws ON w.workshop_id=ws.id
-        WHERE w.status IN (0,1)
+        WHERE w.status IN (0,1,2,4)
         ORDER BY w.priority DESC, w.id ASC LIMIT 20''').fetchall()
 
     process_stats = db.execute('''SELECT pr.process_name,
@@ -201,8 +201,8 @@ def export_production_pdf():
     """导出生产报表"""
     db = get_db()
     total_orders = db.execute("SELECT COUNT(*) as cnt FROM prod_workorder").fetchone()['cnt']
-    completed = db.execute("SELECT COUNT(*) as cnt FROM prod_workorder WHERE status=2").fetchone()['cnt']
-    in_progress = db.execute("SELECT COUNT(*) as cnt FROM prod_workorder WHERE status=1").fetchone()['cnt']
+    completed = db.execute("SELECT COUNT(*) as cnt FROM prod_workorder WHERE status=3").fetchone()['cnt']
+    in_progress = db.execute("SELECT COUNT(*) as cnt FROM prod_workorder WHERE status IN (1,2)").fetchone()['cnt']
     total_qty = db.execute("SELECT COALESCE(SUM(completed_qty),0) as total FROM prod_workorder").fetchone()['total']
     defect_qty = db.execute("SELECT COALESCE(SUM(defect_qty),0) as total FROM prod_workorder").fetchone()['total']
     workshop_stats = db.execute('''SELECT ws.workshop_name, COALESCE(SUM(w.completed_qty),0) as qty

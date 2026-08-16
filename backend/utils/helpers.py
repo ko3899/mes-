@@ -46,7 +46,8 @@ def _get_table_columns(table):
         return set()
 
 
-def login_required(f):
+def _legacy_login_required(f):
+    # Session claims are only a pointer; authorization uses the live database row.
     """登录验证装饰器"""
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -56,7 +57,7 @@ def login_required(f):
     return decorated
 
 
-def admin_required(f):
+def _legacy_admin_required(f):
     """仅允许管理员执行操作。"""
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -68,7 +69,7 @@ def admin_required(f):
     return decorated
 
 
-def permission_required(*perms):
+def _legacy_permission_required(*perms):
     """权限验证装饰器"""
     def decorator(f):
         @wraps(f)
@@ -106,6 +107,106 @@ def permission_required(*perms):
                 for permission in parsed_permissions
                 if str(permission).strip()
             }
+            if required.isdisjoint(granted):
+                return jsonify({'code': 403, 'message': '无权限'}), 403
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
+
+# Authorization is intentionally defined again here to keep all existing imports
+# compatible while replacing the old session-only checks.
+def _remove_online_user(user_id):
+    try:
+        from blueprints.sys_ext import remove_online_user
+        remove_online_user(user_id)
+    except Exception:
+        pass
+
+
+def _load_session_user():
+    """Load the live user and role so stale sessions cannot bypass status changes."""
+    user_id = session.get('user_id')
+    if not user_id:
+        return None, (jsonify({'code': 401, 'message': '请先登录'}), 401)
+    db = get_db()
+    user = db.execute(
+        """SELECT u.*, r.role_key, r.menu_ids,
+                  COALESCE(r.status, 0) AS role_status
+           FROM sys_user u LEFT JOIN sys_role r ON r.id=u.role_id
+           WHERE u.id=?""",
+        (user_id,),
+    ).fetchone()
+    if not user:
+        session.clear()
+        _remove_online_user(user_id)
+        return None, (jsonify({'code': 401, 'message': '用户不存在'}), 401)
+    if not user['status']:
+        session.clear()
+        _remove_online_user(user_id)
+        return None, (jsonify({'code': 403, 'message': '账号已停用'}), 403)
+    if session.get('username') is None:
+        session['username'] = user['username']
+    try:
+        from blueprints.sys_ext import touch_online_user
+        touch_online_user(user['id'], user['username'], request.remote_addr)
+    except Exception:
+        pass
+    return user, None
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        _, error = _load_session_user()
+        if error:
+            return error
+        return f(*args, **kwargs)
+    return decorated
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user, error = _load_session_user()
+        if error:
+            return error
+        # A tampered/stale username claim must not gain an administrative view.
+        if session.get('username') not in (None, user['username']):
+            return jsonify({'code': 403, 'message': '会话用户信息已失效，请重新登录'}), 403
+        if user['role_key'] != 'admin' or not user['role_status']:
+            return jsonify({'code': 403, 'message': '仅管理员可执行此操作'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+
+def permission_required(*perms):
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            user, error = _load_session_user()
+            if error:
+                return error
+            required = {str(perm).strip() for perm in perms if str(perm).strip()}
+            if not required:
+                return jsonify({'code': 403, 'message': '无权限'}), 403
+            if user['role_key'] == 'admin' and user['role_status']:
+                return f(*args, **kwargs)
+            if not user['role_id'] or not user['role_status']:
+                return jsonify({'code': 403, 'message': '无权限'}), 403
+            raw_permissions = user['menu_ids']
+            if not isinstance(raw_permissions, str) or not raw_permissions.strip():
+                return jsonify({'code': 403, 'message': '无权限'}), 403
+            raw_permissions = raw_permissions.strip()
+            try:
+                parsed_permissions = json.loads(raw_permissions)
+                if not isinstance(parsed_permissions, list):
+                    return jsonify({'code': 403, 'message': '无权限'}), 403
+            except (json.JSONDecodeError, TypeError):
+                if raw_permissions.startswith(('[', '{')):
+                    return jsonify({'code': 403, 'message': '无权限'}), 403
+                parsed_permissions = raw_permissions.split(',')
+            granted = {str(p).strip() for p in parsed_permissions if str(p).strip()}
             if required.isdisjoint(granted):
                 return jsonify({'code': 403, 'message': '无权限'}), 403
             return f(*args, **kwargs)
@@ -155,8 +256,11 @@ def gen_no(prefix):
 def crud_list(table, params):
     """通用列表查询（带列名验证）"""
     db = get_db()
-    page = int(params.get('page', 1))
-    size = int(params.get('size', 20))
+    try:
+        page = max(1, int(params.get('page', 1)))
+        size = min(500, max(1, int(params.get('size', 20))))
+    except (TypeError, ValueError):
+        return {'code': 400, 'message': '分页参数必须是整数'}
     offset = (page - 1) * size
 
     # 获取表的列名
@@ -227,6 +331,8 @@ def crud_list(table, params):
 
 def crud_add(table, data):
     """通用添加（带列名验证）"""
+    if not isinstance(data, dict):
+        return {'code': 400, 'message': '请求数据必须是JSON对象'}
     db = get_db()
     valid_columns = _get_table_columns(table)
     
@@ -253,6 +359,8 @@ def crud_add(table, data):
 
 def crud_update(table, data):
     """通用更新（带列名验证）"""
+    if not isinstance(data, dict):
+        return {'code': 400, 'message': '请求数据必须是JSON对象'}
     db = get_db()
     id = data.get('id')
     if not id:
@@ -269,7 +377,10 @@ def crud_update(table, data):
     sets = ','.join([f"{k}=?" for k in keys])
 
     try:
-        db.execute(f"UPDATE {table} SET {sets} WHERE id=?", vals + [id])
+        cursor = db.execute(f"UPDATE {table} SET {sets} WHERE id=?", vals + [id])
+        if cursor.rowcount == 0:
+            db.rollback()
+            return {'code': 404, 'message': '记录不存在'}
         db.commit()
         return {'code': 0, 'message': '修改成功'}
     except sqlite3.IntegrityError as e:
@@ -282,9 +393,14 @@ def crud_update(table, data):
 
 def crud_delete(table, id):
     """通用删除"""
+    if id in (None, ''):
+        return {'code': 400, 'message': '缺少id'}
     db = get_db()
     try:
-        db.execute(f"DELETE FROM {table} WHERE id=?", (id,))
+        cursor = db.execute(f"DELETE FROM {table} WHERE id=?", (id,))
+        if cursor.rowcount == 0:
+            db.rollback()
+            return {'code': 404, 'message': '记录不存在'}
         db.commit()
         return {'code': 0, 'message': '删除成功'}
     except Exception as e:

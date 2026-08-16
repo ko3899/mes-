@@ -218,10 +218,10 @@ function renderProductionBatch(el) {
         + '<div class="table-wrap"><table><thead><tr><th>ID</th><th>批次号</th><th>计划</th><th>销售订单</th><th>产品</th><th>车间</th><th>计划数</th><th>完成数</th><th>状态</th><th>备注</th></tr></thead>'
         + '<tbody id="tb"><tr><td colspan="10" class="empty">加载中...</td></tr></tbody></table></div></div>';
     document.getElementById('batchAddBtn').onclick = batchOpenEditor;
-    batchLoad();
+    productionBatchLoad();
 }
 
-function batchLoad() {
+function productionBatchLoad() {
     api('/api/prod/batch/list?size=1000').then(function(response) {
         var rows = chainList(response), tb = document.getElementById('tb');
         if(!tb) return;
@@ -255,7 +255,7 @@ function batchOpenEditor() {
                 planned_qty:document.getElementById('batchQty').value, remark:document.getElementById('batchRemark').value};
             if(!payload.plan_item_id || Number(payload.planned_qty) <= 0) { alert('请选择计划明细并填写批次数量'); return; }
             api('/api/prod/batch/save', {method:'POST', body:payload}).then(function(result) {
-                if(result && result.code === 0) { closeModal(); batchLoad(); }
+                if(result && result.code === 0) { closeModal(); productionBatchLoad(); }
                 else alert(result ? result.message : '保存失败');
             });
         };
