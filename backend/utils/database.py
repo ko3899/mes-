@@ -1105,6 +1105,428 @@ def _add_column_if_missing(db, table, column, definition):
         db.execute(f'ALTER TABLE "{table}" ADD COLUMN "{column}" {definition}')
 
 
+_PROCUREMENT_INDEX_STATEMENTS = (
+    '''CREATE UNIQUE INDEX IF NOT EXISTS uq_inv_stock_balance_identity
+       ON inv_stock_balance(product_id, warehouse_id, area_id, location_id, batch_no)''',
+    '''CREATE UNIQUE INDEX IF NOT EXISTS uq_inv_receipt_action_operation
+       ON inv_receipt_action(operator_id, client_operation_id)
+       WHERE client_operation_id IS NOT NULL''',
+    '''CREATE UNIQUE INDEX IF NOT EXISTS uq_inv_receipt_posting_operation
+       ON inv_receipt_posting(operator_id, client_operation_id)
+       WHERE client_operation_id IS NOT NULL''',
+    '''CREATE UNIQUE INDEX IF NOT EXISTS uq_qm_incoming_inspection_no
+       ON qm_incoming_inspection(inspection_no)
+       WHERE inspection_no IS NOT NULL''',
+    'CREATE INDEX IF NOT EXISTS idx_purchase_order_supplier ON scm_purchase_order(supplier_id)',
+    'CREATE INDEX IF NOT EXISTS idx_purchase_item_order ON scm_purchase_order_item(order_id)',
+    'CREATE INDEX IF NOT EXISTS idx_arrival_purchase_order ON inv_arrival_notice(purchase_order_id)',
+    'CREATE INDEX IF NOT EXISTS idx_arrival_item_notice ON inv_arrival_notice_item(notice_id)',
+    'CREATE INDEX IF NOT EXISTS idx_inspection_arrival_item ON qm_incoming_inspection(arrival_item_id)',
+    'CREATE INDEX IF NOT EXISTS idx_procurement_status_entity ON scm_procurement_status_log(entity_type, entity_id)',
+)
+
+
+def _rebuild_procurement_tables_with_missing_fks(db):
+    """Atomically upgrade Task-1 FKs and indexes without losing rows."""
+    specs = {
+        'scm_purchase_order': {
+            'columns': [
+                'id', 'order_no', 'supplier_id', 'status', 'expected_date', 'currency',
+                'remark', 'created_by', 'submitted_by', 'submitted_at', 'approved_by',
+                'approved_at', 'rejected_reason', 'closed_reason', 'created_at', 'updated_at',
+            ],
+            'foreign_keys': {('supplier_id', 'base_supplier', 'id')},
+            'create': '''CREATE TABLE "{table}" (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_no TEXT NOT NULL UNIQUE,
+                supplier_id INTEGER NOT NULL,
+                status INTEGER NOT NULL DEFAULT 0,
+                expected_date TEXT,
+                currency TEXT,
+                remark TEXT,
+                created_by INTEGER NOT NULL,
+                submitted_by INTEGER,
+                submitted_at TIMESTAMP,
+                approved_by INTEGER,
+                approved_at TIMESTAMP,
+                rejected_reason TEXT,
+                closed_reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (supplier_id) REFERENCES base_supplier(id)
+            )''',
+        },
+        'scm_purchase_order_item': {
+            'columns': [
+                'id', 'order_id', 'product_id', 'ordered_qty', 'unit_price', 'tax_rate',
+                'arrived_qty', 'accepted_qty', 'returned_qty', 'posted_qty', 'created_at',
+            ],
+            'foreign_keys': {
+                ('order_id', 'scm_purchase_order', 'id'),
+                ('product_id', 'base_product', 'id'),
+            },
+            'create': '''CREATE TABLE "{table}" (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                ordered_qty REAL NOT NULL,
+                unit_price REAL DEFAULT 0,
+                tax_rate REAL DEFAULT 0,
+                arrived_qty REAL DEFAULT 0,
+                accepted_qty REAL DEFAULT 0,
+                returned_qty REAL DEFAULT 0,
+                posted_qty REAL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (order_id) REFERENCES scm_purchase_order(id),
+                FOREIGN KEY (product_id) REFERENCES base_product(id)
+            )''',
+        },
+        'inv_receipt_posting': {
+            'columns': [
+                'id', 'posting_no', 'arrival_item_id', 'inspection_id', 'product_id',
+                'warehouse_id', 'area_id', 'location_id', 'batch_no', 'quantity',
+                'operator_id', 'client_operation_id', 'created_at',
+            ],
+            'foreign_keys': {
+                ('arrival_item_id', 'inv_arrival_notice_item', 'id'),
+                ('inspection_id', 'qm_incoming_inspection', 'id'),
+                ('product_id', 'base_product', 'id'),
+                ('warehouse_id', 'inv_warehouse', 'id'),
+                ('area_id', 'inv_area', 'id'),
+                ('location_id', 'inv_location', 'id'),
+            },
+            'create': '''CREATE TABLE "{table}" (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                posting_no TEXT NOT NULL UNIQUE,
+                arrival_item_id INTEGER NOT NULL,
+                inspection_id INTEGER,
+                product_id INTEGER NOT NULL,
+                warehouse_id INTEGER NOT NULL,
+                area_id INTEGER NOT NULL,
+                location_id INTEGER NOT NULL,
+                batch_no TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                operator_id INTEGER NOT NULL,
+                client_operation_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (arrival_item_id) REFERENCES inv_arrival_notice_item(id),
+                FOREIGN KEY (inspection_id) REFERENCES qm_incoming_inspection(id),
+                FOREIGN KEY (product_id) REFERENCES base_product(id),
+                FOREIGN KEY (warehouse_id) REFERENCES inv_warehouse(id),
+                FOREIGN KEY (area_id) REFERENCES inv_area(id),
+                FOREIGN KEY (location_id) REFERENCES inv_location(id)
+            )''',
+        },
+        'inv_stock_balance': {
+            'columns': [
+                'id', 'product_id', 'warehouse_id', 'area_id', 'location_id', 'batch_no',
+                'quantity', 'updated_at',
+            ],
+            'foreign_keys': {
+                ('product_id', 'base_product', 'id'),
+                ('warehouse_id', 'inv_warehouse', 'id'),
+                ('area_id', 'inv_area', 'id'),
+                ('location_id', 'inv_location', 'id'),
+            },
+            'create': '''CREATE TABLE "{table}" (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_id INTEGER NOT NULL,
+                warehouse_id INTEGER NOT NULL,
+                area_id INTEGER NOT NULL,
+                location_id INTEGER NOT NULL,
+                batch_no TEXT NOT NULL,
+                quantity REAL NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (product_id) REFERENCES base_product(id),
+                FOREIGN KEY (warehouse_id) REFERENCES inv_warehouse(id),
+                FOREIGN KEY (area_id) REFERENCES inv_area(id),
+                FOREIGN KEY (location_id) REFERENCES inv_location(id)
+            )''',
+        },
+    }
+
+    rebuild = []
+    for table, spec in specs.items():
+        actual_fks = {
+            (row[3], row[2], row[4])
+            for row in db.execute(f'PRAGMA foreign_key_list("{table}")')
+        }
+        if not spec['foreign_keys'] <= actual_fks:
+            actual_columns = [
+                row[1] for row in db.execute(f'PRAGMA table_info("{table}")')
+            ]
+            if actual_columns != spec['columns']:
+                raise sqlite3.OperationalError(
+                    f'unsafe procurement migration for {table}: unexpected columns'
+                )
+            rebuild.append(table)
+
+    foreign_keys_enabled = bool(db.execute('PRAGMA foreign_keys').fetchone()[0])
+    db.commit()
+    db.execute('PRAGMA foreign_keys = OFF')
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        for table in rebuild:
+            spec = specs[table]
+            replacement = f'__procurement_new_{table}'
+            db.execute(f'DROP TABLE IF EXISTS "{replacement}"')
+            db.execute(spec['create'].format(table=replacement))
+            columns = ','.join(f'"{column}"' for column in spec['columns'])
+            old_count = db.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
+            db.execute(
+                f'INSERT INTO "{replacement}" ({columns}) '
+                f'SELECT {columns} FROM "{table}"'
+            )
+            new_count = db.execute(
+                f'SELECT COUNT(*) FROM "{replacement}"'
+            ).fetchone()[0]
+            if new_count != old_count:
+                raise sqlite3.IntegrityError(
+                    f'procurement migration row-count mismatch for {table}'
+                )
+            db.execute(f'DROP TABLE "{table}"')
+            db.execute(f'ALTER TABLE "{replacement}" RENAME TO "{table}"')
+
+        violations = []
+        for table in rebuild:
+            violations.extend(db.execute(
+                f'PRAGMA foreign_key_check("{table}")'
+            ).fetchall())
+        if violations:
+            raise sqlite3.IntegrityError(
+                f'procurement migration foreign-key violations: {violations}'
+            )
+        for sql in _PROCUREMENT_INDEX_STATEMENTS:
+            db.execute(sql)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.execute(f'PRAGMA foreign_keys = {1 if foreign_keys_enabled else 0}')
+
+
+def _init_procurement_schema(db):
+    """Add the controlled procurement workflow without rebuilding legacy tables."""
+    db.executescript('''
+        CREATE TABLE IF NOT EXISTS inv_arrival_notice (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            notice_no TEXT NOT NULL UNIQUE,
+            supplier_id INTEGER,
+            status INTEGER DEFAULT 0,
+            expected_date TEXT,
+            remark TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            purchase_order_id INTEGER,
+            delivery_note_no TEXT,
+            arrived_at TIMESTAMP,
+            exception_code TEXT,
+            exception_reason TEXT,
+            created_by INTEGER,
+            updated_at TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS inv_arrival_notice_item (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            notice_id INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            quantity REAL NOT NULL,
+            purchase_order_item_id INTEGER,
+            arrived_qty REAL,
+            normal_qty REAL,
+            excess_qty REAL,
+            accepted_qty REAL,
+            returned_qty REAL,
+            pending_qty REAL,
+            inspection_mode TEXT,
+            created_at TIMESTAMP,
+            FOREIGN KEY (notice_id) REFERENCES inv_arrival_notice(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS qm_incoming_inspection (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            inspect_no TEXT NOT NULL UNIQUE,
+            inbound_id INTEGER,
+            supplier TEXT,
+            template_id INTEGER,
+            result TEXT,
+            status INTEGER DEFAULT 0,
+            inspector INTEGER,
+            inspect_time TIMESTAMP,
+            remark TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            inspection_no TEXT,
+            arrival_item_id INTEGER,
+            mode TEXT,
+            sampled_qty REAL,
+            passed_qty REAL,
+            failed_qty REAL,
+            pending_qty REAL,
+            conclusion TEXT,
+            inspector_id INTEGER,
+            inspected_at TIMESTAMP,
+            concession_approved_by INTEGER,
+            concession_reason TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS scm_purchase_order (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_no TEXT NOT NULL UNIQUE,
+            supplier_id INTEGER NOT NULL,
+            status INTEGER NOT NULL DEFAULT 0,
+            expected_date TEXT,
+            currency TEXT,
+            remark TEXT,
+            created_by INTEGER NOT NULL,
+            submitted_by INTEGER,
+            submitted_at TIMESTAMP,
+            approved_by INTEGER,
+            approved_at TIMESTAMP,
+            rejected_reason TEXT,
+            closed_reason TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (supplier_id) REFERENCES base_supplier(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS scm_purchase_order_item (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            ordered_qty REAL NOT NULL,
+            unit_price REAL DEFAULT 0,
+            tax_rate REAL DEFAULT 0,
+            arrived_qty REAL DEFAULT 0,
+            accepted_qty REAL DEFAULT 0,
+            returned_qty REAL DEFAULT 0,
+            posted_qty REAL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (order_id) REFERENCES scm_purchase_order(id),
+            FOREIGN KEY (product_id) REFERENCES base_product(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS inv_receipt_action (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            arrival_item_id INTEGER NOT NULL,
+            action_type TEXT NOT NULL,
+            quantity REAL NOT NULL,
+            reason TEXT,
+            operator_id INTEGER NOT NULL,
+            client_operation_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (arrival_item_id) REFERENCES inv_arrival_notice_item(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS qm_incoming_inspection_item (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            inspection_id INTEGER NOT NULL,
+            item_name TEXT,
+            standard TEXT,
+            measured_value TEXT,
+            result TEXT,
+            defect_id INTEGER,
+            defect_qty REAL DEFAULT 0,
+            remark TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (inspection_id) REFERENCES qm_incoming_inspection(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS inv_receipt_posting (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            posting_no TEXT NOT NULL UNIQUE,
+            arrival_item_id INTEGER NOT NULL,
+            inspection_id INTEGER,
+            product_id INTEGER NOT NULL,
+            warehouse_id INTEGER NOT NULL,
+            area_id INTEGER NOT NULL,
+            location_id INTEGER NOT NULL,
+            batch_no TEXT NOT NULL,
+            quantity REAL NOT NULL,
+            operator_id INTEGER NOT NULL,
+            client_operation_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (arrival_item_id) REFERENCES inv_arrival_notice_item(id),
+            FOREIGN KEY (inspection_id) REFERENCES qm_incoming_inspection(id),
+            FOREIGN KEY (product_id) REFERENCES base_product(id),
+            FOREIGN KEY (warehouse_id) REFERENCES inv_warehouse(id),
+            FOREIGN KEY (area_id) REFERENCES inv_area(id),
+            FOREIGN KEY (location_id) REFERENCES inv_location(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS inv_stock_balance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id INTEGER NOT NULL,
+            warehouse_id INTEGER NOT NULL,
+            area_id INTEGER NOT NULL,
+            location_id INTEGER NOT NULL,
+            batch_no TEXT NOT NULL,
+            quantity REAL NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (product_id) REFERENCES base_product(id),
+            FOREIGN KEY (warehouse_id) REFERENCES inv_warehouse(id),
+            FOREIGN KEY (area_id) REFERENCES inv_area(id),
+            FOREIGN KEY (location_id) REFERENCES inv_location(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS scm_procurement_status_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_type TEXT NOT NULL,
+            entity_id INTEGER NOT NULL,
+            from_status TEXT,
+            to_status TEXT,
+            action TEXT NOT NULL,
+            operator_id INTEGER NOT NULL,
+            reason TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    ''')
+
+    arrival_columns = {
+        'purchase_order_id': 'INTEGER',
+        'delivery_note_no': 'TEXT',
+        'arrived_at': 'TIMESTAMP',
+        'exception_code': 'TEXT',
+        'exception_reason': 'TEXT',
+        'created_by': 'INTEGER',
+        'updated_at': 'TIMESTAMP',
+    }
+    for column, definition in arrival_columns.items():
+        _add_column_if_missing(db, 'inv_arrival_notice', column, definition)
+
+    arrival_item_columns = {
+        'purchase_order_item_id': 'INTEGER',
+        'arrived_qty': 'REAL',
+        'normal_qty': 'REAL',
+        'excess_qty': 'REAL',
+        'accepted_qty': 'REAL',
+        'returned_qty': 'REAL',
+        'pending_qty': 'REAL',
+        'inspection_mode': 'TEXT',
+        'created_at': 'TIMESTAMP',
+    }
+    for column, definition in arrival_item_columns.items():
+        _add_column_if_missing(db, 'inv_arrival_notice_item', column, definition)
+
+    inspection_columns = {
+        'inspection_no': 'TEXT',
+        'arrival_item_id': 'INTEGER',
+        'mode': 'TEXT',
+        'sampled_qty': 'REAL',
+        'passed_qty': 'REAL',
+        'failed_qty': 'REAL',
+        'pending_qty': 'REAL',
+        'conclusion': 'TEXT',
+        'inspector_id': 'INTEGER',
+        'inspected_at': 'TIMESTAMP',
+        'concession_approved_by': 'INTEGER',
+        'concession_reason': 'TEXT',
+    }
+    for column, definition in inspection_columns.items():
+        _add_column_if_missing(db, 'qm_incoming_inspection', column, definition)
+
+    _rebuild_procurement_tables_with_missing_fks(db)
+
+
 def _init_extra_tables():
     """初始化新增功能的表"""
     db = sqlite3.connect(DB_PATH)
@@ -1231,6 +1653,7 @@ def _init_extra_tables():
     create_device_event_tables(db)
     create_aim_event_outbox(db)
     create_gateway_auth_tables(db)
+    _init_procurement_schema(db)
     _add_column_if_missing(db, 'base_process', 'sort_order', 'INTEGER DEFAULT 0')
     for col in ['required_sn', 'required_material', 'check_sequence', 'prev_station']:
         try:
