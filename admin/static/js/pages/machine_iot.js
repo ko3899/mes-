@@ -168,7 +168,9 @@ function machineEndpointEdit(row) {
             + '<div class="form-item"><label>心跳周期(s)</label><input type="number" min="5" max="3600" id="miHeartbeat" value="' + machineEscape(row && row.heartbeat_seconds || 30) + '"></div></div>'
             + '<div class="form-row"><div class="form-item"><label>V2共享密钥</label><input type="password" id="miSecret" placeholder="' + (row && row.shared_secret_configured ? '已配置，留空保持不变' : '可选') + '"></div>'
             + '<div class="form-item"><label>加工模板</label><input id="miLaserTemplate" value="' + machineEscape(row && row.laser_template || '') + '" placeholder="镭雕/加工模板编号"></div></div>'
-            + '<div class="form-row"><div class="form-item"><label>检测模板</label><input id="miInspectionTemplate" value="' + machineEscape(row && row.inspection_template || '') + '" placeholder="CCD模板编号"></div></div>';
+            + '<div class="form-row"><div class="form-item"><label>检测模板</label><input id="miInspectionTemplate" value="' + machineEscape(row && row.inspection_template || '') + '" placeholder="CCD模板编号"></div></div>'
+            + '<div class="form-row"><div class="form-item"><label>设备生命周期ID</label><input id="miLifecycle" value="' + machineEscape(row && row.lifecycle_id || 'legacy') + '" placeholder="设备重启/换机时变更"></div>'
+            + '<div class="form-item"><label><input type="checkbox" id="miNonce"' + ((!row || Number(row.require_request_nonce) === 1) ? ' checked' : '') + '> V2启用时间戳/nonce防重放</label></div></div>';
         modalSaveHandler = function(){ machineEndpointSave(row); };
         document.getElementById('modal').classList.add('show');
     });
@@ -192,7 +194,9 @@ function machineEndpointSave(row) {
         enabled:row ? Number(row.enabled) : 1,
         shared_secret:document.getElementById('miSecret').value,
         laser_template:document.getElementById('miLaserTemplate').value,
-        inspection_template:document.getElementById('miInspectionTemplate').value};
+         inspection_template:document.getElementById('miInspectionTemplate').value,
+         lifecycle_id:document.getElementById('miLifecycle').value,
+         require_request_nonce:document.getElementById('miNonce').checked ? 1 : 0};
     api('/api/iot/machine/endpoints/save', {method:'POST', body:payload}).then(function(response) {
         if(response && response.code === 0) { closeModal(); machineIotLoad(); machineIotHealth(); }
         else alert(response ? response.message : '保存失败');

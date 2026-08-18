@@ -136,10 +136,9 @@ function matReqAdd() {
 // 委外加工
 function renderOutsource(el) {
     el.innerHTML = '<div class="card"><div class="card-title"><span>委外加工</span>'
-        + '<button class="btn btn-blue" id="osAddBtn">+ 新增</button></div></div>'
+        + '<span class="muted">当前页面仅供查询，请通过受控委外业务服务创建</span></div></div>'
         + '<div class="card"><table><thead><tr><th>ID</th><th>委外单号</th><th>供应商</th><th>产品</th><th>数量</th><th>单价</th><th>交期</th><th>状态</th></tr></thead>'
         + '<tbody id="tb"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody></table></div>';
-    document.getElementById('osAddBtn').onclick = osAdd;
     osLoad();
 }
 function osLoad() {
@@ -275,10 +274,9 @@ function laborSummaryLoad() {
 // 包装管理
 function renderPacking(el) {
     el.innerHTML = '<div class="card"><div class="card-title"><span>包装管理</span>'
-        + '<button class="btn btn-blue" id="packAddBtn">+ 新增</button></div></div>'
+        + '<span class="muted">当前页面仅供查询，请通过受控包装业务服务创建</span></div></div>'
         + '<div class="card"><table><thead><tr><th>ID</th><th>包装单号</th><th>工单</th><th>箱数</th><th>每箱数量</th><th>总数量</th><th>状态</th></tr></thead>'
         + '<tbody id="tb"><tr><td colspan="7" class="empty">加载中...</td></tr></tbody></table></div>';
-    document.getElementById('packAddBtn').onclick = packAdd;
     packLoad();
 }
 function packLoad() {

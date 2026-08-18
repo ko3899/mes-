@@ -12,14 +12,15 @@ from edge_gateway.delivery import DeliveryPump, DeliveryReceipt  # noqa: E402
 from edge_gateway.event_store import EdgeEventStore  # noqa: E402
 
 
-def event(device, sequence):
+def event(device, sequence, lifecycle=None):
     return DeviceEvent.from_dict({
-        'schema_version': '1.0', 'event_id': f'{device}-{sequence}',
+        'schema_version': '1.0', 'event_id': f'{device}-{sequence}' if lifecycle is None else f'{device}-{lifecycle}-{sequence}',
         'customer_code': 'C', 'factory_code': 'F', 'gateway_code': 'GW',
         'device_code': device, 'event_type': 'device.connected',
         'occurred_at': '2026-08-13T10:30:18+08:00', 'received_at': None,
         'sequence': sequence, 'correlation_id': None, 'payload': {},
         'raw_reference': None,
+        **({'lifecycle_id': lifecycle} if lifecycle else {}),
     })
 
 
@@ -89,3 +90,26 @@ def test_permanent_rejection_is_dead_lettered_and_transport_closes(tmp_path):
     assert store.stats()['dead_letter'] == 1
     pump.close()
     assert transport.closed is True
+
+
+def test_dead_letter_can_be_replayed_after_manual_fix(tmp_path):
+    store = EdgeEventStore(tmp_path / 'edge.db')
+    store.append(event('D1', 1))
+    store.release('D1-1', 'worker', store.claim_pending('worker')[0].lease_token,
+                  'bad payload', permanent=True)
+    assert store.stats()['dead_letter'] == 1
+    assert store.replay_dead_letters(['D1-1']) == 1
+    assert store.stats()['dead_letter'] == 0
+    assert [item.event_id for item in store.pending()] == ['D1-1']
+
+
+def test_device_restart_lifecycle_does_not_block_new_sequence(tmp_path):
+    store = EdgeEventStore(tmp_path / 'edge.db')
+    store.append(event('D1', 1, 'old'))
+    store.append(event('D1', 2, 'old'))
+    store.append(event('D1', 1, 'new'))
+    store.append(event('D1', 2, 'new'))
+    first = store.claim_pending('worker', limit=10)
+    assert [(item.device_code, item.lifecycle_id, item.sequence) for item in first] == [
+        ('D1', 'new', 1), ('D1', 'old', 1)
+    ]

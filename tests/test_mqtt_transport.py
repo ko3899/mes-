@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 
 import pytest
 
@@ -32,11 +33,21 @@ class Info:
 
 
 class Client:
-    def __init__(self, info=None): self.info = info or Info(); self.calls = []
+    def __init__(self, info=None): self.info = info or Info(); self.calls = []; self.on_message = None
     def tls_set(self, **kwargs): self.calls.append(('tls', kwargs))
     def connect(self, host, port, keepalive): self.calls.append(('connect', host, port, keepalive)); return 0
+    def subscribe(self, topic, qos): self.calls.append(('subscribe', topic, qos))
     def loop_start(self): self.calls.append(('start',))
-    def publish(self, topic, payload, qos, retain): self.calls.append(('publish', topic, payload, qos, retain)); return self.info
+    def publish(self, topic, payload, qos, retain):
+        self.calls.append(('publish', topic, payload, qos, retain))
+        if '/events/' in topic and self.on_message:
+            event_id = json.loads(payload)['event_id']
+            message = type('AckMessage', (), {
+                'topic': topic.replace('/events/', '/acks/'),
+                'payload': json.dumps({'event_id': event_id, 'accepted': True}).encode(),
+            })()
+            self.on_message(self, None, message)
+        return self.info
     def loop_stop(self): self.calls.append(('stop',))
     def disconnect(self): self.calls.append(('disconnect',))
 
@@ -51,6 +62,7 @@ def mqtt_env(tmp_path, **overrides):
         'MES_EDGE_MQTT_CERT': str(tmp_path / 'client.pem'),
         'MES_EDGE_MQTT_KEY': str(tmp_path / 'client.key'),
         'MES_EDGE_CUSTOMER_CODE': 'C', 'MES_EDGE_FACTORY_CODE': 'F01',
+        'MES_EDGE_MQTT_CENTRAL_CONSUMER_CONFIRMED': '1',
     }
     values.update(overrides); return values
 
@@ -89,3 +101,10 @@ def test_mqtt_rejects_payload_identity_outside_configured_scope(tmp_path):
     receipt = transport.send(DeviceEvent.from_dict(item))
     assert not receipt.accepted and receipt.retryable is False
     assert not any(call[0] == 'publish' for call in client.calls)
+
+
+def test_mqtt_requires_central_consumer_confirmation(tmp_path):
+    values = mqtt_env(tmp_path)
+    values.pop('MES_EDGE_MQTT_CENTRAL_CONSUMER_CONFIRMED')
+    with pytest.raises(EdgeConfigError, match='consumer'):
+        EdgeConfig.from_env(values)

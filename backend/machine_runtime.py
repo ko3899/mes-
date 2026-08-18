@@ -1,10 +1,15 @@
 """Own the machine Socket supervisors and CSV collector as one process service."""
 import os
+import sqlite3
+import threading
+import time
 from pathlib import Path
 
 from machine_csv_collector import MachineCsvCollector
 from machine_gateway_manager import MachineGatewayManager
 from utils.database import BASE_DIR, DB_PATH
+from services.aim_event_bridge import dispatch_pending_aim_events
+from services.device_event_processor import process_pending_events, apply_standard_event
 
 
 class MachineCommunicationRuntime:
@@ -24,6 +29,8 @@ class MachineCommunicationRuntime:
         self.gateway_manager = None
         self.csv_collector = None
         self._lock_file = None
+        self._event_thread = None
+        self._event_stop = threading.Event()
 
     def _acquire_lock(self):
         lock_path = Path(self.db_path).resolve().with_suffix('.machine-runtime.lock')
@@ -73,12 +80,21 @@ class MachineCommunicationRuntime:
                 self.db_path, self.archive_root, interval=self.scan_interval
             )
             self.csv_collector.start()
+            self._event_stop.clear()
+            self._event_thread = threading.Thread(
+                target=self._dispatch_events, name='aim-event-dispatcher', daemon=True
+            )
+            self._event_thread.start()
             return True
         except Exception:
             self.stop()
             raise
 
     def stop(self):
+        self._event_stop.set()
+        if self._event_thread:
+            self._event_thread.join(timeout=max(1.0, self.scan_interval + 1.0))
+            self._event_thread = None
         if self.csv_collector:
             self.csv_collector.stop()
             self.csv_collector = None
@@ -86,6 +102,22 @@ class MachineCommunicationRuntime:
             self.gateway_manager.stop()
             self.gateway_manager = None
         self._release_lock()
+
+    def _dispatch_events(self):
+        while not self._event_stop.wait(max(0.2, self.scan_interval)):
+            db = sqlite3.connect(self.db_path, timeout=5)
+            db.row_factory = sqlite3.Row
+            try:
+                from services.machine_access import _default_event_sink
+                sink = _default_event_sink(db)
+                if sink is not None:
+                    dispatch_pending_aim_events(db, sink, limit=100)
+                process_pending_events(db, lambda event: apply_standard_event(db, event), limit=100)
+            except Exception:
+                # The outbox remains pending; the next cycle retries it.
+                pass
+            finally:
+                db.close()
 
     def __enter__(self):
         self.start()

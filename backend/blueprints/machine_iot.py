@@ -30,6 +30,17 @@ def _public_endpoint(row):
     return data
 
 
+def _validate_remote_allowlist(value):
+    for item in str(value or '').split(','):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            ipaddress.ip_network(item, strict=False)
+        except ValueError:
+            raise ValueError('机台来源IP白名单必须是IP、CIDR或逗号分隔列表')
+
+
 def _page():
     try:
         page = max(1, int(request.args.get('page', 1)))
@@ -89,13 +100,19 @@ def endpoint_save():
     station = str(data.get('station_code', '')).strip()
     cavity = str(data.get('cavity_code', '1')).strip()
     encoding = str(data.get('encoding', 'utf-8')).lower().strip()
+    lifecycle_id = str(data.get('lifecycle_id') or 'legacy').strip()
+    try:
+        default_nonce = 1 if (protocol == 2 and not endpoint_id) else 0
+        require_request_nonce = 1 if int(data.get('require_request_nonce', default_nonce)) else 0
+    except (TypeError, ValueError):
+        return jsonify({'code': 400, 'message': 'V2防重放配置不合法'}), 400
     raw_csv_dir = str(data.get('csv_input_dir', '')).strip()
     if raw_csv_dir and not Path(raw_csv_dir).is_absolute():
         return jsonify({'code': 400, 'message': 'CSV输入目录必须是绝对路径'}), 400
     csv_input_dir = str(Path(raw_csv_dir).resolve()) if raw_csv_dir else None
     if protocol not in (1, 2) or transport_mode not in ('server', 'reader_client') or not (1 <= port <= 65535):
         return jsonify({'code': 400, 'message': '协议版本或监听端口不合法'}), 400
-    if not bind_ip or not station or not cavity or encoding not in ('utf-8', 'gbk'):
+    if not bind_ip or not station or not cavity or not lifecycle_id or encoding not in ('utf-8', 'gbk'):
         return jsonify({'code': 400, 'message': 'IP、工站、穴位或编码不合法'}), 400
     if not (1 <= reader_port <= 65535) or not (20 <= reader_frame_idle_ms <= 2000):
         return jsonify({'code': 400, 'message': '读码器端口或无结束符切帧参数不合法'}), 400
@@ -115,7 +132,7 @@ def endpoint_save():
     try:
         ipaddress.ip_address(bind_ip)
         if allowed_remote_ip:
-            ipaddress.ip_address(allowed_remote_ip)
+            _validate_remote_allowlist(allowed_remote_ip)
     except ValueError:
         return jsonify({'code': 400, 'message': '监听IP或机台来源IP格式不合法'}), 400
     if transport_mode == 'server' and protocol == 1 and enabled and not allowed_remote_ip:
@@ -163,7 +180,7 @@ def endpoint_save():
               reader_ip, reader_port, reader_frame_idle_ms, station, process_id, cavity,
               encoding, timeout_ms, heartbeat, laser_template,
               inspection_template, shared_secret, csv_input_dir,
-              csv_stable_seconds, enabled)
+               csv_stable_seconds, enabled, lifecycle_id, require_request_nonce)
     try:
         if endpoint_id:
             db.execute(
@@ -171,8 +188,8 @@ def endpoint_save():
                    bind_ip=?,allowed_remote_ip=?,listen_port=?,reader_ip=?,reader_port=?,reader_frame_idle_ms=?,
                    station_code=?,process_id=?,cavity_code=?,
                    encoding=?,timeout_ms=?,heartbeat_seconds=?,laser_template=?,
-                   inspection_template=?,shared_secret=?,csv_input_dir=?,csv_stable_seconds=?,
-                   enabled=?,updated_at=CURRENT_TIMESTAMP
+                    inspection_template=?,shared_secret=?,csv_input_dir=?,csv_stable_seconds=?,
+                    enabled=?,lifecycle_id=?,require_request_nonce=?,updated_at=CURRENT_TIMESTAMP
                    WHERE id=?''', values + (endpoint_id,))
         else:
             endpoint_id = db.execute(
@@ -181,8 +198,8 @@ def endpoint_save():
                     reader_ip,reader_port,reader_frame_idle_ms,station_code,process_id,cavity_code,
                     encoding,timeout_ms,heartbeat_seconds,
                     laser_template,inspection_template,shared_secret,csv_input_dir,
-                   csv_stable_seconds,enabled)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', values
+                    csv_stable_seconds,enabled,lifecycle_id,require_request_nonce)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', values
             ).lastrowid
         db.commit()
     except sqlite3.IntegrityError:

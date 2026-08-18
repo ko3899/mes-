@@ -9,11 +9,10 @@ from utils.database import get_db
 from utils.helpers import (
     login_required,
     crud_list,
-    crud_add,
     crud_update,
     crud_delete,
-    gen_no,
     gen_no_in_transaction,
+    permission_required,
 )
 from services.production_flow import (
     BusinessError,
@@ -31,6 +30,21 @@ from services.production_flow import (
 
 production_bp = Blueprint('production', __name__)
 
+_sales_write = permission_required('prod:sales:write')
+_sales_read = permission_required('prod:sales:read')
+_plan_write = permission_required('prod:plan:write')
+_plan_read = permission_required('prod:plan:read')
+_batch_write = permission_required('prod:batch:write')
+_batch_read = permission_required('prod:batch:read')
+_workorder_write = permission_required('prod:workorder:write')
+_workorder_read = permission_required('prod:workorder:read')
+_task_write = permission_required('prod:task:write')
+_task_read = permission_required('prod:task:read')
+_report_create = permission_required('prod:report:create')
+_report_read = permission_required('prod:report:read')
+_report_review = permission_required('prod:report:review')
+_report_post = permission_required('prod:report:post')
+
 _QUANTITY_QUANTUM = Decimal('0.000001')
 
 
@@ -43,6 +57,39 @@ def _guard_legacy_mutation(table, record_id, allowed_statuses, message):
     if row['status'] not in allowed_statuses:
         return jsonify({'code': 400, 'message': message}), 400
     return None
+
+
+def _legacy_write_disabled(message):
+    return jsonify({
+        'code': 410,
+        'message': message,
+        'data': {'use': 'save'},
+    }), 410
+
+
+def _legacy_safe_update(table, data, allowed_fields, allowed_statuses, blocked_message):
+    blocked = _guard_legacy_mutation(table, data.get('id'), allowed_statuses, blocked_message)
+    if blocked:
+        return blocked
+    unknown = set(data) - ({'id'} | set(allowed_fields))
+    if unknown:
+        return jsonify({'code': 400, 'message': '旧接口禁止修改关联、数量或系统计算字段'}), 400
+    if not (set(data) & set(allowed_fields)):
+        return jsonify({'code': 400, 'message': '没有可修改的业务字段'}), 400
+    payload = {'id': data['id']}
+    payload.update({field: data[field] for field in allowed_fields if field in data})
+    return jsonify(crud_update(table, payload))
+
+
+def _legacy_safe_delete(table, record_id, allowed_statuses, blocked_message, dependencies=()):
+    blocked = _guard_legacy_mutation(table, record_id, allowed_statuses, blocked_message)
+    if blocked:
+        return blocked
+    db = get_db()
+    for sql, message in dependencies:
+        if db.execute(sql, (record_id,)).fetchone():
+            return jsonify({'code': 409, 'message': message}), 409
+    return jsonify(crud_delete(table, record_id))
 
 
 def _safe_sort(args, fields, default):
@@ -68,7 +115,7 @@ def _manual_or_field_sort(args, fields, alias, table_key):
 
 
 @production_bp.route('/api/prod/sales/list')
-@login_required
+@_sales_read
 def prod_sales_list():
     db = get_db()
     page, size = int(request.args.get('page', 1)), int(request.args.get('size', 20))
@@ -92,7 +139,7 @@ def prod_sales_list():
 
 
 @production_bp.route('/api/prod/sales/<int:order_id>')
-@login_required
+@_sales_read
 def prod_sales_detail(order_id):
     db = get_db()
     header = db.execute(
@@ -111,7 +158,7 @@ def prod_sales_detail(order_id):
 
 
 @production_bp.route('/api/prod/sales/save', methods=['POST'])
-@login_required
+@_sales_write
 def prod_sales_save():
     try:
         result = save_sales_order(get_db(), request.get_json(silent=True) or {}, session.get('user_id'))
@@ -121,16 +168,13 @@ def prod_sales_save():
 
 
 @production_bp.route('/api/prod/sales/add', methods=['POST'])
-@login_required
+@_sales_write
 def prod_sales_add():
-    data = request.json
-    data['order_no'] = gen_no('SO')
-    data['created_by'] = session.get('user_id')
-    return jsonify(crud_add('prod_sales_order', data))
+    return _legacy_write_disabled('旧销售订单新增接口已停用，请使用 /api/prod/sales/save 提交订单及明细')
 
 
 @production_bp.route('/api/prod/sales/update', methods=['POST'])
-@login_required
+@_sales_write
 def prod_sales_update():
     data = request.get_json(silent=True) or {}
     if 'status' in data:
@@ -138,24 +182,23 @@ def prod_sales_update():
             return jsonify({'code': 0, 'data': transition_status(get_db(), 'sales', data.get('id'), data.get('status'), session.get('user_id'))})
         except BusinessError as exc:
             return jsonify({'code': exc.status, 'message': str(exc)}), exc.status
-    blocked = _guard_legacy_mutation('prod_sales_order', data.get('id'), {0}, '已确认或已执行的销售订单不可修改')
-    if blocked:
-        return blocked
-    return jsonify(crud_update('prod_sales_order', data))
+    return _legacy_safe_update('prod_sales_order', data,
+        {'customer', 'contact', 'phone', 'delivery_date', 'remark'}, {0},
+        '已确认或已执行的销售订单不可修改')
 
 
 @production_bp.route('/api/prod/sales/delete', methods=['POST'])
-@login_required
+@_sales_write
 def prod_sales_delete():
     record_id = (request.get_json(silent=True) or {}).get('id')
-    blocked = _guard_legacy_mutation('prod_sales_order', record_id, {0}, '只有草稿销售订单可以删除')
-    if blocked:
-        return blocked
-    return jsonify(crud_delete('prod_sales_order', record_id))
+    return _legacy_safe_delete('prod_sales_order', record_id, {0}, '只有草稿销售订单可以删除', (
+        ('SELECT 1 FROM prod_sales_order_item WHERE order_id=? LIMIT 1', '销售订单已有明细，不能直接删除'),
+        ('SELECT 1 FROM prod_plan WHERE sales_order_id=? LIMIT 1', '销售订单已有生产计划，不能删除'),
+    ))
 
 
 @production_bp.route('/api/prod/plan/list')
-@login_required
+@_plan_read
 def prod_plan_list():
     db = get_db()
     page, size = int(request.args.get('page', 1)), int(request.args.get('size', 20))
@@ -176,7 +219,7 @@ def prod_plan_list():
 
 
 @production_bp.route('/api/prod/plan/<int:plan_id>')
-@login_required
+@_plan_read
 def prod_plan_detail(plan_id):
     db = get_db()
     header = db.execute(
@@ -195,7 +238,7 @@ def prod_plan_detail(plan_id):
 
 
 @production_bp.route('/api/prod/plan/source/<int:sales_order_id>')
-@login_required
+@_plan_read
 def prod_plan_source(sales_order_id):
     db = get_db()
     header = db.execute('SELECT * FROM prod_sales_order WHERE id=?', (sales_order_id,)).fetchone()
@@ -216,7 +259,7 @@ def prod_plan_source(sales_order_id):
 
 
 @production_bp.route('/api/prod/plan/save', methods=['POST'])
-@login_required
+@_plan_write
 def prod_plan_save():
     try:
         result = save_plan(get_db(), request.get_json(silent=True) or {}, session.get('user_id'))
@@ -226,7 +269,7 @@ def prod_plan_save():
 
 
 @production_bp.route('/api/prod/batch/list')
-@login_required
+@_batch_read
 def prod_batch_list():
     db = get_db()
     page, size = int(request.args.get('page', 1)), int(request.args.get('size', 20))
@@ -250,7 +293,7 @@ def prod_batch_list():
 
 
 @production_bp.route('/api/prod/batch/save', methods=['POST'])
-@login_required
+@_batch_write
 def prod_batch_save():
     try:
         result = save_batch(get_db(), request.get_json(silent=True) or {}, session.get('user_id'))
@@ -260,7 +303,7 @@ def prod_batch_save():
 
 
 @production_bp.route('/api/prod/batch/status', methods=['POST'])
-@login_required
+@_batch_write
 def prod_batch_status():
     data = request.get_json(silent=True) or {}
     try:
@@ -272,16 +315,13 @@ def prod_batch_status():
 
 
 @production_bp.route('/api/prod/plan/add', methods=['POST'])
-@login_required
+@_plan_write
 def prod_plan_add():
-    data = request.json
-    data['plan_no'] = gen_no('PP')
-    data['created_by'] = session.get('user_id')
-    return jsonify(crud_add('prod_plan', data))
+    return _legacy_write_disabled('旧生产计划新增接口已停用，请使用 /api/prod/plan/save 提交计划及明细')
 
 
 @production_bp.route('/api/prod/plan/update', methods=['POST'])
-@login_required
+@_plan_write
 def prod_plan_update():
     data = request.get_json(silent=True) or {}
     if 'status' in data:
@@ -289,24 +329,23 @@ def prod_plan_update():
             return jsonify({'code': 0, 'data': transition_status(get_db(), 'plan', data.get('id'), data.get('status'), session.get('user_id'))})
         except BusinessError as exc:
             return jsonify({'code': exc.status, 'message': str(exc)}), exc.status
-    blocked = _guard_legacy_mutation('prod_plan', data.get('id'), {0}, '已发布或已执行的生产计划不可修改')
-    if blocked:
-        return blocked
-    return jsonify(crud_update('prod_plan', data))
+    return _legacy_safe_update('prod_plan', data,
+        {'plan_type', 'start_date', 'end_date', 'remark'}, {0},
+        '已发布或已执行的生产计划不可修改')
 
 
 @production_bp.route('/api/prod/plan/delete', methods=['POST'])
-@login_required
+@_plan_write
 def prod_plan_delete():
     record_id = (request.get_json(silent=True) or {}).get('id')
-    blocked = _guard_legacy_mutation('prod_plan', record_id, {0}, '只有草稿生产计划可以删除')
-    if blocked:
-        return blocked
-    return jsonify(crud_delete('prod_plan', record_id))
+    return _legacy_safe_delete('prod_plan', record_id, {0}, '只有草稿生产计划可以删除', (
+        ('SELECT 1 FROM prod_plan_item WHERE plan_id=? LIMIT 1', '生产计划已有明细，不能直接删除'),
+        ('SELECT 1 FROM prod_batch WHERE plan_id=? LIMIT 1', '生产计划已有生产批次，不能删除'),
+    ))
 
 
 @production_bp.route('/api/prod/workorder/list')
-@login_required
+@_workorder_read
 def prod_workorder_list():
     db = get_db()
     page = int(request.args.get('page', 1))
@@ -354,7 +393,7 @@ def prod_workorder_list():
 
 
 @production_bp.route('/api/prod/workorder/options')
-@login_required
+@_workorder_read
 def prod_workorder_options():
     db = get_db()
     plan_item_id = request.args.get('plan_item_id')
@@ -387,7 +426,7 @@ def prod_workorder_options():
 
 
 @production_bp.route('/api/prod/workorder/save', methods=['POST'])
-@login_required
+@_workorder_write
 def prod_workorder_save():
     try:
         result = save_workorder(get_db(), request.get_json(silent=True) or {}, session.get('user_id'))
@@ -397,7 +436,7 @@ def prod_workorder_save():
 
 
 @production_bp.route('/api/prod/workorder/<int:workorder_id>/release', methods=['POST'])
-@login_required
+@_workorder_write
 def prod_workorder_release(workorder_id):
     data = request.get_json(silent=True) or {}
     try:
@@ -408,7 +447,7 @@ def prod_workorder_release(workorder_id):
 
 
 @production_bp.route('/api/prod/workorder/<int:workorder_id>/generate-tasks', methods=['POST'])
-@login_required
+@_workorder_write
 def prod_workorder_generate_tasks(workorder_id):
     try:
         result = generate_tasks(get_db(), workorder_id, session.get('user_id'))
@@ -418,7 +457,7 @@ def prod_workorder_generate_tasks(workorder_id):
 
 
 @production_bp.route('/api/prod/workorder/<int:workorder_id>/generate-materials', methods=['POST'])
-@login_required
+@_workorder_write
 def prod_workorder_generate_materials(workorder_id):
     try:
         result = generate_material_requirements(get_db(), workorder_id, session.get('user_id'))
@@ -428,7 +467,7 @@ def prod_workorder_generate_materials(workorder_id):
 
 
 @production_bp.route('/api/prod/workorder/<int:workorder_id>/executable-steps')
-@login_required
+@_workorder_read
 def prod_workorder_executable_steps(workorder_id):
     db = get_db()
     workorder = db.execute('SELECT planned_qty FROM prod_workorder WHERE id=?', (workorder_id,)).fetchone()
@@ -453,16 +492,13 @@ def prod_workorder_executable_steps(workorder_id):
 
 
 @production_bp.route('/api/prod/workorder/add', methods=['POST'])
-@login_required
+@_workorder_write
 def prod_workorder_add():
-    data = request.json
-    data['order_no'] = gen_no('WO')
-    data['created_by'] = session.get('user_id')
-    return jsonify(crud_add('prod_workorder', data))
+    return _legacy_write_disabled('旧工单新增接口已停用，请使用 /api/prod/workorder/save 创建冻结快照工单')
 
 
 @production_bp.route('/api/prod/workorder/update', methods=['POST'])
-@login_required
+@_workorder_write
 def prod_workorder_update():
     data = request.get_json(silent=True) or {}
     if 'status' in data:
@@ -470,24 +506,24 @@ def prod_workorder_update():
             return jsonify({'code': 0, 'data': transition_status(get_db(), 'workorder', data.get('id'), data.get('status'), session.get('user_id'))})
         except BusinessError as exc:
             return jsonify({'code': exc.status, 'message': str(exc)}), exc.status
-    blocked = _guard_legacy_mutation('prod_workorder', data.get('id'), {0}, '已下达工单不可修改，请新建工单')
-    if blocked:
-        return blocked
-    return jsonify(crud_update('prod_workorder', data))
+    return _legacy_safe_update('prod_workorder', data,
+        {'priority', 'start_date', 'end_date', 'remark'}, {0},
+        '已下达工单不可修改，请新建工单')
 
 
 @production_bp.route('/api/prod/workorder/delete', methods=['POST'])
-@login_required
+@_workorder_write
 def prod_workorder_delete():
     record_id = (request.get_json(silent=True) or {}).get('id')
-    blocked = _guard_legacy_mutation('prod_workorder', record_id, {0}, '只有草稿工单可以删除')
-    if blocked:
-        return blocked
-    return jsonify(crud_delete('prod_workorder', record_id))
+    return _legacy_safe_delete('prod_workorder', record_id, {0}, '只有草稿工单可以删除', (
+        ('SELECT 1 FROM prod_task WHERE workorder_id=? LIMIT 1', '工单已有任务，不能直接删除'),
+        ('SELECT 1 FROM prod_report WHERE workorder_id=? LIMIT 1', '工单已有报工，不能删除'),
+        ('SELECT 1 FROM prod_material_req WHERE workorder_id=? LIMIT 1', '工单已有领料需求，不能删除'),
+    ))
 
 
 @production_bp.route('/api/prod/task/list')
-@login_required
+@_task_read
 def prod_task_list():
     db = get_db()
     page = int(request.args.get('page', 1))
@@ -537,15 +573,13 @@ def prod_task_list():
 
 
 @production_bp.route('/api/prod/task/add', methods=['POST'])
-@login_required
+@_task_write
 def prod_task_add():
-    data = request.json
-    data['task_no'] = gen_no('TK')
-    return jsonify(crud_add('prod_task', data))
+    return _legacy_write_disabled('旧任务新增接口已停用，请使用工单生成任务接口')
 
 
 @production_bp.route('/api/prod/task/update', methods=['POST'])
-@login_required
+@_task_write
 def prod_task_update():
     data = request.get_json(silent=True) or {}
     if 'status' in data:
@@ -553,24 +587,22 @@ def prod_task_update():
             return jsonify({'code': 0, 'data': transition_status(get_db(), 'task', data.get('id'), data.get('status'), session.get('user_id'))})
         except BusinessError as exc:
             return jsonify({'code': exc.status, 'message': str(exc)}), exc.status
-    blocked = _guard_legacy_mutation('prod_task', data.get('id'), {0}, '已执行任务不可修改')
-    if blocked:
-        return blocked
-    return jsonify(crud_update('prod_task', data))
+    return _legacy_safe_update('prod_task', data,
+        {'assigned_to', 'start_time', 'end_time', 'remark'}, {0},
+        '已执行任务不可修改')
 
 
 @production_bp.route('/api/prod/task/delete', methods=['POST'])
-@login_required
+@_task_write
 def prod_task_delete():
     record_id = (request.get_json(silent=True) or {}).get('id')
-    blocked = _guard_legacy_mutation('prod_task', record_id, {0}, '只有待执行任务可以删除')
-    if blocked:
-        return blocked
-    return jsonify(crud_delete('prod_task', record_id))
+    return _legacy_safe_delete('prod_task', record_id, {0}, '只有待执行任务可以删除', (
+        ('SELECT 1 FROM prod_report WHERE task_id=? LIMIT 1', '任务已有报工，不能删除'),
+    ))
 
 
 @production_bp.route('/api/prod/report/list')
-@login_required
+@_report_read
 def prod_report_list():
     db = get_db()
     page = int(request.args.get('page', 1))
@@ -718,7 +750,7 @@ def collector_barcode(code):
 
 
 @production_bp.route('/api/prod/report/add', methods=['POST'])
-@login_required
+@_report_create
 def prod_report_add():
     result = _create_report(
         request.get_json(silent=True) or {},
@@ -729,7 +761,7 @@ def prod_report_add():
 
 
 @production_bp.route('/api/prod/report/gps', methods=['POST'])
-@login_required
+@_report_create
 def prod_report_gps():
     """GPS定位报工"""
     data = dict(request.get_json(silent=True) or {})
@@ -841,6 +873,8 @@ def _recalculate_task_and_workorder(db, task_id, workorder_id):
 
 def _create_report(data, user_id):
     db = get_db()
+    if data.get('controlled') is not True:
+        return {'code': 400, 'message': '报工必须通过受控流程提交（controlled=true）'}
     client_operation_id = data.get('client_operation_id')
     if client_operation_id is not None:
         if not isinstance(client_operation_id, str):
@@ -892,7 +926,7 @@ def _create_report(data, user_id):
             db.rollback()
             return {'code': 400, 'message': '任务与工序不匹配'}
 
-        controlled = data.get('controlled') is True
+        controlled = True
         if controlled:
             availability = task_availability(db, task_id)
             requested_total = float(qualified + defect)
@@ -985,7 +1019,7 @@ def _delete_report(report_id):
 
 
 @production_bp.route('/api/prod/report/delete', methods=['POST'])
-@login_required
+@_report_review
 def prod_report_delete():
     data = request.get_json(silent=True) or {}
     result = _delete_report(data.get('id'))
@@ -994,7 +1028,7 @@ def prod_report_delete():
 
 
 @production_bp.route('/api/prod/report/<int:report_id>/approve', methods=['POST'])
-@login_required
+@_report_review
 def prod_report_approve(report_id):
     try:
         result = transition_status(get_db(), 'report', report_id, 1, session.get('user_id'), '报工审核通过')
@@ -1004,7 +1038,7 @@ def prod_report_approve(report_id):
 
 
 @production_bp.route('/api/prod/report/<int:report_id>/post', methods=['POST'])
-@login_required
+@_report_post
 def prod_report_post(report_id):
     try:
         result = post_report(get_db(), report_id, session.get('user_id'), '报工记账')
@@ -1014,7 +1048,7 @@ def prod_report_post(report_id):
 
 
 @production_bp.route('/api/prod/report/<int:report_id>/reject', methods=['POST'])
-@login_required
+@_report_review
 def prod_report_reject(report_id):
     try:
         result = transition_status(get_db(), 'report', report_id, 3, session.get('user_id'),

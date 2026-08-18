@@ -1,13 +1,28 @@
 """生产增强蓝图 - 工序转移、领料、委外、序列号、工时、包装"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no, permission_required
 from services.production_flow import (
     BusinessError, create_transfer, issue_material, receive_material,
     request_material, return_material,
 )
 
 prod_ext_bp = Blueprint('prod_ext', __name__)
+_prod_ext_write = permission_required('prod:extension:write')
+_prod_ext_read = permission_required('prod:extension:read')
+
+
+def _legacy_ext_write_disabled():
+    """Reject the former generic CRUD endpoints until domain services exist.
+
+    These tables affect stock, supplier settlement and production traceability;
+    accepting arbitrary columns here would bypass the validated action APIs.
+    """
+    return jsonify({
+        'code': 410,
+        'message': '该写入入口已停用，请使用受控业务操作',
+        'data': {'use': 'domain_service'},
+    }), 410
 
 
 def _ext_order(args, fields, alias, table_key):
@@ -24,7 +39,7 @@ def _ext_order(args, fields, alias, table_key):
 
 # ==================== 工序转移单 ====================
 @prod_ext_bp.route('/api/prod/transfer/list')
-@login_required
+@_prod_ext_read
 def transfer_list():
     db = get_db()
     page = int(request.args.get('page', 1))
@@ -43,7 +58,7 @@ def transfer_list():
 
 
 @prod_ext_bp.route('/api/prod/transfer/add', methods=['POST'])
-@login_required
+@_prod_ext_write
 def transfer_add():
     try:
         result = create_transfer(get_db(), request.get_json(silent=True) or {}, session.get('user_id'))
@@ -54,7 +69,7 @@ def transfer_add():
 
 # ==================== 生产领料 ====================
 @prod_ext_bp.route('/api/prod/material/list')
-@login_required
+@_prod_ext_read
 def material_list():
     db = get_db()
     page = int(request.args.get('page', 1))
@@ -71,18 +86,15 @@ def material_list():
 
 
 @prod_ext_bp.route('/api/prod/material/add', methods=['POST'])
-@login_required
+@_prod_ext_write
 def material_add():
-    data = request.json
-    data['req_no'] = gen_no('MR')
-    data['operator'] = session.get('user_id')
-    return jsonify(crud_add('prod_material_req', data))
+    return _legacy_ext_write_disabled()
 
 
 @prod_ext_bp.route('/api/prod/material/update', methods=['POST'])
-@login_required
+@_prod_ext_write
 def material_update():
-    return jsonify(crud_update('prod_material_req', request.json))
+    return _legacy_ext_write_disabled()
 
 
 def _material_action_result(action):
@@ -93,7 +105,7 @@ def _material_action_result(action):
 
 
 @prod_ext_bp.route('/api/prod/material/<int:request_id>/request', methods=['POST'])
-@login_required
+@_prod_ext_write
 def material_request_action(request_id):
     data = request.get_json(silent=True) or {}
     return _material_action_result(lambda: request_material(
@@ -102,7 +114,7 @@ def material_request_action(request_id):
 
 
 @prod_ext_bp.route('/api/prod/material/<int:request_id>/issue', methods=['POST'])
-@login_required
+@_prod_ext_write
 def material_issue_action(request_id):
     data = request.get_json(silent=True) or {}
     return _material_action_result(lambda: issue_material(
@@ -112,7 +124,7 @@ def material_issue_action(request_id):
 
 
 @prod_ext_bp.route('/api/prod/material/<int:request_id>/receive', methods=['POST'])
-@login_required
+@_prod_ext_write
 def material_receive_action(request_id):
     data = request.get_json(silent=True) or {}
     return _material_action_result(lambda: receive_material(
@@ -121,7 +133,7 @@ def material_receive_action(request_id):
 
 
 @prod_ext_bp.route('/api/prod/material/<int:request_id>/return', methods=['POST'])
-@login_required
+@_prod_ext_write
 def material_return_action(request_id):
     data = request.get_json(silent=True) or {}
     return _material_action_result(lambda: return_material(
@@ -131,7 +143,7 @@ def material_return_action(request_id):
 
 # ==================== 委外加工 ====================
 @prod_ext_bp.route('/api/prod/outsource/list')
-@login_required
+@_prod_ext_read
 def outsource_list():
     db = get_db()
     page = int(request.args.get('page', 1))
@@ -148,22 +160,20 @@ def outsource_list():
 
 
 @prod_ext_bp.route('/api/prod/outsource/add', methods=['POST'])
-@login_required
+@_prod_ext_write
 def outsource_add():
-    data = request.json
-    data['outsource_no'] = gen_no('OS')
-    return jsonify(crud_add('prod_outsource', data))
+    return _legacy_ext_write_disabled()
 
 
 @prod_ext_bp.route('/api/prod/outsource/update', methods=['POST'])
-@login_required
+@_prod_ext_write
 def outsource_update():
-    return jsonify(crud_update('prod_outsource', request.json))
+    return _legacy_ext_write_disabled()
 
 
 # ==================== 产品序列号 ====================
 @prod_ext_bp.route('/api/prod/serial/list')
-@login_required
+@_prod_ext_read
 def serial_list():
     db = get_db()
     page = int(request.args.get('page', 1))
@@ -186,7 +196,7 @@ def serial_list():
 
 
 @prod_ext_bp.route('/api/prod/serial/generate', methods=['POST'])
-@login_required
+@_prod_ext_write
 def serial_generate():
     d = request.json
     product_id = d.get('product_id')
@@ -209,7 +219,7 @@ def serial_generate():
 
 # ==================== 工时记录 ====================
 @prod_ext_bp.route('/api/prod/labor/list')
-@login_required
+@_prod_ext_read
 def labor_list():
     db = get_db()
     page = int(request.args.get('page', 1))
@@ -227,15 +237,13 @@ def labor_list():
 
 
 @prod_ext_bp.route('/api/prod/labor/add', methods=['POST'])
-@login_required
+@_prod_ext_write
 def labor_add():
-    data = request.json
-    data['user_id'] = session.get('user_id')
-    return jsonify(crud_add('prod_labor_time', data))
+    return _legacy_ext_write_disabled()
 
 
 @prod_ext_bp.route('/api/prod/labor/summary')
-@login_required
+@_prod_ext_read
 def labor_summary():
     db = get_db()
     rows = db.execute('''SELECT u.real_name, SUM(l.duration) as total_hours,
@@ -248,7 +256,7 @@ def labor_summary():
 
 # ==================== 包装管理 ====================
 @prod_ext_bp.route('/api/prod/packing/list')
-@login_required
+@_prod_ext_read
 def packing_list():
     db = get_db()
     page = int(request.args.get('page', 1))
@@ -264,9 +272,6 @@ def packing_list():
 
 
 @prod_ext_bp.route('/api/prod/packing/add', methods=['POST'])
-@login_required
+@_prod_ext_write
 def packing_add():
-    data = request.json
-    data['packing_no'] = gen_no('PK')
-    data['total_quantity'] = float(data.get('box_count', 0)) * float(data.get('quantity_per_box', 0))
-    return jsonify(crud_add('prod_packing', data))
+    return _legacy_ext_write_disabled()

@@ -78,6 +78,7 @@ def create_app():
     if not secret_key and os.environ.get('MES_ENV', '').lower() == 'production':
         raise RuntimeError('FLASK_SECRET_KEY is required in production')
     app.secret_key = secret_key or secrets.token_hex(32)
+    app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MES_MAX_REQUEST_BYTES', 512 * 1024))
     app.config['SESSION_COOKIE_NAME'] = os.environ.get(
         'SESSION_COOKIE_NAME', 'mes_main_session'
     )
@@ -142,6 +143,17 @@ def create_app():
     @app.route('/')
     def index():
         return send_from_directory(FRONTEND_DIR, 'index.html')
+
+    @app.route('/healthz')
+    def healthz():
+        """Unauthenticated liveness/readiness probe for reverse proxies."""
+        try:
+            get_db().execute('SELECT 1').fetchone()
+            return jsonify({'status': 'ok', 'service': 'mes'}), 200
+        except Exception as exc:
+            app.logger.exception('health check failed')
+            return jsonify({'status': 'error', 'service': 'mes',
+                            'message': str(exc)[:200]}), 503
 
     @app.route('/manifest.json')
     def manifest():
@@ -697,6 +709,17 @@ if __name__ == '__main__':
     print("  默认账号: admin / admin123")
     print("=" * 50)
     try:
-        app.run(host='0.0.0.0', port=8080, debug=False)
+        host = os.environ.get('MES_HOST', '0.0.0.0')
+        port = int(os.environ.get('MES_PORT', '8080'))
+        workers = max(1, int(os.environ.get('MES_WORKERS', '4')))
+        production_mode = os.environ.get('MES_ENV', '').lower() == 'production'
+        if production_mode or os.environ.get('MES_SERVER', '').lower() == 'waitress':
+            try:
+                from waitress import serve
+            except ImportError as exc:
+                raise RuntimeError('Waitress is required for production mode') from exc
+            serve(app, host=host, port=port, threads=workers * 2)
+        else:
+            app.run(host=host, port=port, debug=False)
     finally:
         machine_runtime.stop()

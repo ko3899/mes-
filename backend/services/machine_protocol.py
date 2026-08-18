@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 import hashlib
 import hmac
+import time
 import uuid
 
 
@@ -20,6 +21,8 @@ class MachineRequest:
     cavity_code: str
     request_no: str
     sn: str
+    request_timestamp: int = None
+    request_nonce: str = None
 
 
 @dataclass(frozen=True)
@@ -80,17 +83,35 @@ def parse_request(frame, endpoint):
         secret = str(_endpoint_value(endpoint, 'shared_secret', ''))
         if not secret:
             raise ProtocolError('V2端点未配置共享密钥')
-        expected_fields = 8
-        if len(parts) == 7:
+        require_nonce = bool(int(_endpoint_value(endpoint, 'require_request_nonce', 0) or 0))
+        expected_fields = 10 if require_nonce else 8
+        if len(parts) == expected_fields - 1:
             raise ProtocolError('V2报文缺少签名')
         if len(parts) != expected_fields or parts[0] != 'REQ' or parts[1] != '2':
             raise ProtocolError('V2报文字段或版本错误')
-        unsigned_parts = parts[:7]
-        _, _, device, station, cavity, request_no, sn = unsigned_parts
+        unsigned_parts = parts[:-1]
+        if require_nonce:
+            _, _, device, station, cavity, request_no, timestamp_text, nonce, sn = unsigned_parts
+            request_nonce = nonce
+            try:
+                request_timestamp = int(timestamp_text)
+            except ValueError as exc:
+                raise ProtocolError('V2时间戳无效') from exc
+            if abs(int(time.time()) - request_timestamp) > int(
+                    _endpoint_value(endpoint, 'request_nonce_window_seconds', 60)):
+                raise ProtocolError('V2请求已过期')
+            if not nonce:
+                raise ProtocolError('V2 nonce不能为空')
+            replay_nonces = _endpoint_value(endpoint, 'replay_nonces', set())
+            if nonce in replay_nonces:
+                raise ProtocolError('V2请求重放')
+        else:
+            _, _, device, station, cavity, request_no, sn = unsigned_parts
+            request_timestamp = request_nonce = None
         expected_signature = hmac.new(
             secret.encode('utf-8'), '|'.join(unsigned_parts).encode('utf-8'), hashlib.sha256
         ).hexdigest()
-        if not hmac.compare_digest(parts[7].lower(), expected_signature):
+        if not hmac.compare_digest(parts[-1].lower(), expected_signature):
             raise ProtocolError('V2报文签名错误')
         if not all((device, station, cavity, request_no, sn)):
             raise ProtocolError('V2必填字段为空')
@@ -101,7 +122,8 @@ def parse_request(frame, endpoint):
         )
         if (device, station, cavity) != expected:
             raise ProtocolError('设备身份与端点配置不匹配')
-        return MachineRequest(2, device, station, cavity, request_no, sn)
+        return MachineRequest(2, device, station, cavity, request_no, sn,
+                              request_timestamp, request_nonce)
     if configured_version != 1:
         raise ProtocolError('V2端点不接受V1报文')
     if '|' in text:

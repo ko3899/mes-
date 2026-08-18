@@ -1,5 +1,6 @@
 """独立AIM TCP Socket接入服务。"""
 import argparse
+import ipaddress
 import os
 import socketserver
 import sqlite3
@@ -25,6 +26,9 @@ class MachineRequestHandler(socketserver.StreamRequestHandler):
     def setup(self):
         super().setup()
         self.session_id = None
+        self._connection_slot = self.server.connection_slots.acquire(blocking=False)
+        if not self._connection_slot:
+            raise ConnectionRefusedError('通讯端点连接数已达上限')
         self.db = sqlite3.connect(self.server.db_path, timeout=5)
         self.db.row_factory = sqlite3.Row
         self.db.execute('PRAGMA busy_timeout=900')
@@ -40,7 +44,7 @@ class MachineRequestHandler(socketserver.StreamRequestHandler):
             self.db.close()
             raise ConnectionRefusedError('通讯端点不存在')
         allowed_remote = str(self.endpoint.get('allowed_remote_ip') or '').strip()
-        if allowed_remote and self.client_address[0] != allowed_remote:
+        if allowed_remote and not self._remote_allowed(self.client_address[0], allowed_remote):
             remote = f'{self.client_address[0]}:{self.client_address[1]}'
             self.db.execute(
                 '''INSERT INTO iot_machine_session
@@ -64,6 +68,15 @@ class MachineRequestHandler(socketserver.StreamRequestHandler):
         self.db.commit()
         heartbeat = max(5, int(self.endpoint.get('heartbeat_seconds') or 30))
         self.request.settimeout(heartbeat * 2)
+
+    @staticmethod
+    def _remote_allowed(remote, allowlist):
+        try:
+            address = ipaddress.ip_address(remote)
+            return any(address in ipaddress.ip_network(item.strip(), strict=False)
+                       for item in str(allowlist).split(',') if item.strip())
+        except ValueError:
+            return False
 
     def _protocol_failure(self, frame, error):
         text = ''
@@ -167,6 +180,9 @@ class MachineRequestHandler(socketserver.StreamRequestHandler):
                     self.db.close()
                 except sqlite3.Error:
                     pass
+        if getattr(self, '_connection_slot', False):
+            self.server.connection_slots.release()
+            self._connection_slot = False
         super().finish()
 
 
@@ -177,12 +193,12 @@ class MachineSocketServer(socketserver.ThreadingTCPServer):
     def __init__(self, server_address, endpoint_id, db_path=DB_PATH):
         self.endpoint_id = int(endpoint_id)
         self.db_path = str(db_path)
+        self.connection_slots = threading.BoundedSemaphore(100)
         super().__init__(server_address, MachineRequestHandler)
 
 
 def _set_endpoint_runtime(db_path, endpoint_id, status, error=None, listening=False):
     db = sqlite3.connect(db_path, timeout=5)
-    failed = False
     try:
         if listening:
             db.execute(
@@ -240,6 +256,7 @@ def main():
     db.close()
     if not endpoint:
         raise SystemExit('通讯端点不存在或未启用')
+    failed = False
     try:
         with MachineSocketServer(
             (endpoint['bind_ip'], endpoint['listen_port']), endpoint['id'], args.db

@@ -127,3 +127,108 @@ def test_rejected_report_can_be_deleted_without_counting_in_task(report_client):
     assert db.execute('SELECT completed_qty,defect_qty FROM prod_task WHERE id=?',
                       (report_client.ids['tasks'][0],)).fetchone() == (0, 0)
     db.close()
+
+
+def test_report_requires_controlled_workflow_marker(report_client):
+    ids = report_client.ids
+    response = report_client.post('/api/prod/report/add', json={
+        'task_id': ids['tasks'][0], 'workorder_id': ids['workorder'],
+        'process_id': ids['processes'][0], 'qualified_qty': 1,
+        'defect_qty': 0,
+    })
+    assert response.status_code == 400
+    assert 'controlled' in response.get_json()['message']
+
+
+def test_non_admin_cannot_write_master_data(report_client):
+    db = sqlite3.connect(database.DB_PATH)
+    try:
+        role_id = db.execute(
+            "INSERT INTO sys_role(role_name,role_key,description,menu_ids) VALUES(?,?,?,?)",
+            ('操作员', 'operator', '仅查看', '[]'),
+        ).lastrowid
+        user_id = db.execute(
+            "INSERT INTO sys_user(username,password,real_name,role_id,status) VALUES(?,?,?,?,1)",
+            ('operator', 'unused', '操作员', role_id),
+        ).lastrowid
+        db.commit()
+    finally:
+        db.close()
+
+    with report_client.session_transaction() as session:
+        session['user_id'] = user_id
+        session['username'] = 'operator'
+    response = report_client.post('/api/base/process/add', json={
+        'process_name': '禁止写入', 'code': 'DENY-PROCESS', 'workshop_id': 1,
+    })
+    assert response.status_code == 403
+
+
+def test_legacy_production_add_route_cannot_bypass_domain_flow(report_client):
+    response = report_client.post('/api/prod/sales/add', json={'customer': '旁路订单'})
+    assert response.status_code == 410
+    db = sqlite3.connect(database.DB_PATH)
+    try:
+        assert db.execute("SELECT COUNT(*) FROM prod_sales_order WHERE customer=?", ('旁路订单',)).fetchone()[0] == 0
+    finally:
+        db.close()
+
+
+def test_report_creator_cannot_delete_another_users_report(report_client):
+    report_id = submit(report_client, 0, 1).get_json()['data']['id']
+    assert report_client.post(f'/api/prod/report/{report_id}/reject', json={'remark': '拒绝'}).status_code == 200
+    db = sqlite3.connect(database.DB_PATH)
+    try:
+        role_id = db.execute(
+            "INSERT INTO sys_role(role_name,role_key,description,menu_ids) VALUES(?,?,?,?)",
+            ('报工员', 'reporter', '只能创建报工', '["prod:report:create"]'),
+        ).lastrowid
+        user_id = db.execute(
+            "INSERT INTO sys_user(username,password,real_name,role_id,status) VALUES(?,?,?,?,1)",
+            ('reporter', 'unused', '报工员', role_id),
+        ).lastrowid
+        db.commit()
+    finally:
+        db.close()
+    with report_client.session_transaction() as session:
+        session['user_id'] = user_id
+        session['username'] = 'reporter'
+    response = report_client.post('/api/prod/report/delete', json={'id': report_id})
+    assert response.status_code == 403
+
+
+def test_legacy_draft_update_rejects_relationship_and_quantity_fields(report_client):
+    sales_id = report_client.post('/api/prod/sales/save', json={
+        'customer': '草稿订单', 'items': [{'product_id': 1, 'quantity': 2}],
+    }).get_json()['data']['id']
+    response = report_client.post('/api/prod/sales/update', json={
+        'id': sales_id, 'total_amount': 999999, 'customer_id': 999,
+    })
+    assert response.status_code == 400
+
+
+def test_report_operator_cannot_read_sales_without_sales_permission(report_client):
+    db = sqlite3.connect(database.DB_PATH)
+    try:
+        role_id = db.execute(
+            "INSERT INTO sys_role(role_name,role_key,description,menu_ids) VALUES(?,?,?,?)",
+            ('报工查看员', 'report-viewer', '仅报工', '["prod:report:create"]'),
+        ).lastrowid
+        user_id = db.execute(
+            "INSERT INTO sys_user(username,password,real_name,role_id,status) VALUES(?,?,?,?,1)",
+            ('report-viewer', 'unused', '报工查看员', role_id),
+        ).lastrowid
+        db.commit()
+    finally:
+        db.close()
+    with report_client.session_transaction() as session:
+        session['user_id'] = user_id
+        session['username'] = 'report-viewer'
+    assert report_client.get('/api/prod/sales/list').status_code == 403
+
+
+def test_material_legacy_crud_write_is_disabled_until_domain_service_exists(report_client):
+    response = report_client.post('/api/prod/material/add', json={
+        'workorder_id': 1, 'product_id': 1, 'required_qty': 1,
+    })
+    assert response.status_code == 410

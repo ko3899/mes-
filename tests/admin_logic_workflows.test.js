@@ -96,6 +96,13 @@ test('site workflows enforce the required fields before submitting', () => {
 });
 
 
+test('mobile production reports use the controlled idempotent workflow', () => {
+  const app = source('frontend/static/js/app.js');
+  assert.match(app, /controlled:\s*true/);
+  assert.match(app, /client_operation_id/);
+});
+
+
 test('maintenance execution is hidden for inactive plans', () => {
   const maintenance = source('admin/static/js/pages/more3.js');
   assert.match(maintenance, /r2\.status \? '<button class=\"btn btn-green btn-sm\" onclick=\"maintExec/);

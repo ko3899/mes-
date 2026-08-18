@@ -62,6 +62,7 @@ function renderArrivalPage(el) {
         t: '到货通知',
         apiBase: '/api/arrival',
         dataTable: 'inv_arrival_notice',
+        actions: {add: false, edit: false, delete: false, import: false},
         f: [
             {k: 'notice_no', l: '通知单号', generated: true},
             {

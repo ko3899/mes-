@@ -45,6 +45,7 @@ class EdgeEventStore:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     event_id TEXT NOT NULL UNIQUE,
                     device_code TEXT NOT NULL,
+                    lifecycle_id TEXT NOT NULL DEFAULT 'legacy',
                     sequence INTEGER NOT NULL CHECK(sequence > 0),
                     envelope_json TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'pending'
@@ -71,9 +72,15 @@ class EdgeEventStore:
                 db.execute('ALTER TABLE edge_event_outbox ADD COLUMN next_attempt_at INTEGER NOT NULL DEFAULT 0')
             if 'dead_lettered_at' not in columns:
                 db.execute('ALTER TABLE edge_event_outbox ADD COLUMN dead_lettered_at TIMESTAMP')
+            if 'lifecycle_id' not in columns:
+                db.execute("ALTER TABLE edge_event_outbox ADD COLUMN lifecycle_id TEXT NOT NULL DEFAULT 'legacy'")
             db.execute(
                 '''CREATE INDEX IF NOT EXISTS idx_edge_outbox_pending
-                   ON edge_event_outbox(status,device_code,sequence,id)'''
+                   ON edge_event_outbox(status,device_code,lifecycle_id,sequence,id)'''
+            )
+            db.execute(
+                '''CREATE INDEX IF NOT EXISTS idx_edge_outbox_pending_v2
+                   ON edge_event_outbox(status,device_code,lifecycle_id,sequence,id)'''
             )
             db.commit()
         finally:
@@ -90,9 +97,10 @@ class EdgeEventStore:
         try:
             cursor = db.execute(
                 '''INSERT OR IGNORE INTO edge_event_outbox
-                   (event_id,device_code,sequence,envelope_json)
-                   VALUES(?,?,?,?)''',
-                (event.event_id, event.device_code, event.sequence, envelope),
+                   (event_id,device_code,lifecycle_id,sequence,envelope_json)
+                   VALUES(?,?,?,?,?)''',
+                (event.event_id, event.device_code, event.lifecycle_id or 'legacy',
+                 event.sequence, envelope),
             )
             db.commit()
             return cursor.rowcount == 1
@@ -108,7 +116,7 @@ class EdgeEventStore:
                 '''SELECT envelope_json FROM edge_event_outbox
                    WHERE status='pending'
                      AND dead_lettered_at IS NULL
-                   ORDER BY device_code,sequence,id LIMIT ?''',
+                   ORDER BY device_code,lifecycle_id,sequence,id LIMIT ?''',
                 (limit,),
             ).fetchall()
             return [DeviceEvent.from_dict(json.loads(row['envelope_json'])) for row in rows]
@@ -125,17 +133,19 @@ class EdgeEventStore:
         try:
             db.execute('BEGIN IMMEDIATE')
             rows = db.execute(
-                '''SELECT o.id,o.event_id,o.envelope_json FROM edge_event_outbox o
+                '''SELECT o.id,o.event_id,o.lifecycle_id,o.envelope_json FROM edge_event_outbox o
                    WHERE o.status='pending'
                      AND o.dead_lettered_at IS NULL AND o.next_attempt_at <= ?
                      AND (o.lease_until IS NULL OR typeof(o.lease_until)!='integer' OR o.lease_until <= ?)
                      AND NOT EXISTS (
                        SELECT 1 FROM edge_event_outbox earlier
-                       WHERE earlier.device_code=o.device_code AND earlier.status='pending'
+                       WHERE earlier.device_code=o.device_code
+                         AND earlier.lifecycle_id=o.lifecycle_id
+                         AND earlier.status='pending'
                          AND earlier.dead_lettered_at IS NULL
                          AND earlier.sequence < o.sequence
                      )
-                   ORDER BY o.device_code,o.sequence,o.id LIMIT ?''', (now, now, limit)
+                   ORDER BY o.device_code,o.lifecycle_id,o.sequence,o.id LIMIT ?''', (now, now, limit)
             ).fetchall()
             claims = []
             for row in rows:
@@ -159,7 +169,8 @@ class EdgeEventStore:
         try:
             cursor = db.execute(
                 '''UPDATE edge_event_outbox
-                   SET status='acknowledged',acknowledged_at=CURRENT_TIMESTAMP,last_error=NULL
+                   SET status='acknowledged',acknowledged_at=CURRENT_TIMESTAMP,last_error=NULL,
+                       lease_owner=NULL,lease_until=NULL,lease_token=NULL
                    WHERE event_id=? AND status='pending'
                      AND (? IS NULL OR (lease_owner=? AND lease_token=?))''',
                 (str(event_id), worker_id, worker_id, lease_token),
@@ -210,6 +221,32 @@ class EdgeEventStore:
             )
             db.commit()
             return cursor.rowcount == 1
+        finally:
+            db.close()
+
+    def replay_dead_letters(self, event_ids=None):
+        """Move selected dead letters back to the retry queue after remediation."""
+        db = self._connect()
+        try:
+            if event_ids is None:
+                cursor = db.execute(
+                    '''UPDATE edge_event_outbox SET dead_lettered_at=NULL,
+                       attempts=0,last_error=NULL,next_attempt_at=0
+                       WHERE status='pending' AND dead_lettered_at IS NOT NULL'''
+                )
+            else:
+                ids = [str(value) for value in event_ids if str(value).strip()]
+                if not ids:
+                    return 0
+                placeholders = ','.join('?' for _ in ids)
+                cursor = db.execute(
+                    f'''UPDATE edge_event_outbox SET dead_lettered_at=NULL,
+                       attempts=0,last_error=NULL,next_attempt_at=0
+                       WHERE status='pending' AND dead_lettered_at IS NOT NULL
+                         AND event_id IN ({placeholders})''', ids
+                )
+            db.commit()
+            return cursor.rowcount
         finally:
             db.close()
 

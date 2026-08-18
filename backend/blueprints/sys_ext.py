@@ -1,6 +1,7 @@
 """系统管理增强蓝图 - 密码/权限/在线用户/登录日志/配置/公告/审计/监控/IP白名单/打印模板"""
 import os
 import datetime
+import json
 import psutil
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db, BASE_DIR
@@ -67,15 +68,49 @@ def reset_password():
 
 
 # ==================== 权限管理 ====================
+ACTION_PERMISSION_CATALOG = [
+    {'key': 'base:read', 'label': '基础资料-查看'},
+    {'key': 'base:write', 'label': '基础资料-维护'},
+    {'key': 'inv:read', 'label': '库存-查看'},
+    {'key': 'inv:write', 'label': '库存-维护'},
+    {'key': 'prod:sales:read', 'label': '销售订单-查看'},
+    {'key': 'prod:sales:write', 'label': '销售订单-维护'},
+    {'key': 'prod:plan:read', 'label': '生产计划-查看'},
+    {'key': 'prod:plan:write', 'label': '生产计划-维护'},
+    {'key': 'prod:batch:read', 'label': '生产批次-查看'},
+    {'key': 'prod:batch:write', 'label': '生产批次-维护'},
+    {'key': 'prod:workorder:read', 'label': '工单-查看'},
+    {'key': 'prod:workorder:write', 'label': '工单-维护'},
+    {'key': 'prod:task:read', 'label': '任务-查看'},
+    {'key': 'prod:task:write', 'label': '任务-维护'},
+    {'key': 'prod:report:read', 'label': '报工-查看'},
+    {'key': 'prod:report:create', 'label': '报工-创建'},
+    {'key': 'prod:report:review', 'label': '报工-审核'},
+    {'key': 'prod:report:post', 'label': '报工-过账'},
+    {'key': 'prod:extension:read', 'label': '生产扩展-查看'},
+    {'key': 'prod:extension:write', 'label': '生产扩展-维护'},
+]
+
+
+@sys_ext_bp.route('/api/sys/permissions/catalog')
+@admin_required
+def permission_catalog():
+    return jsonify({'code': 0, 'data': ACTION_PERMISSION_CATALOG})
+
+
 @sys_ext_bp.route('/api/sys/role/permissions/<int:role_id>')
-@login_required
+@admin_required
 def get_role_permissions(role_id):
     db = get_db()
     role = db.execute("SELECT * FROM sys_role WHERE id=?", (role_id,)).fetchone()
     if not role:
         return jsonify({'code': 404, 'message': '角色不存在'})
     menu_ids = role['menu_ids'] or ''
-    return jsonify({'code': 0, 'data': {'menu_ids': menu_ids}})
+    try:
+        permissions = json.loads(menu_ids) if menu_ids else []
+    except (TypeError, ValueError):
+        permissions = [item.strip() for item in menu_ids.split(',') if item.strip()]
+    return jsonify({'code': 0, 'data': {'menu_ids': menu_ids, 'permissions': permissions}})
 
 
 @sys_ext_bp.route('/api/sys/role/permissions', methods=['POST'])
@@ -84,6 +119,13 @@ def set_role_permissions():
     d = request.json
     role_id = d.get('role_id')
     menu_ids = d.get('menu_ids', '')
+    if 'permissions' in d:
+        allowed = {item['key'] for item in ACTION_PERMISSION_CATALOG}
+        permissions = d.get('permissions') or []
+        if not isinstance(permissions, list) or any(
+                not isinstance(item, str) or item not in allowed for item in permissions):
+            return jsonify({'code': 400, 'message': '存在无效的动作权限'}), 400
+        menu_ids = json.dumps(permissions, ensure_ascii=False)
     
     db = get_db()
     db.execute("UPDATE sys_role SET menu_ids=? WHERE id=?", (menu_ids, role_id))

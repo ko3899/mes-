@@ -4,8 +4,12 @@ import json
 
 from flask import Blueprint, jsonify, request
 
-from device_platform.contracts import ContractError, DeviceEvent
+from device_platform.contracts import ContractError, DeviceEvent, DeviceCommand
 from services.device_event_ingest import ingest_device_event
+from services.device_event_processor import process_pending_events, apply_standard_event
+from services.device_commands import (
+    create_command_tables, enqueue_command, claim_commands, acknowledge_command,
+)
 from services.gateway_auth import authenticate_gateway, GatewayAuthError
 from utils.database import get_db
 from utils.helpers import admin_required
@@ -32,6 +36,9 @@ def ingest_event():
     except ContractError as exc:
         return jsonify({'code': 400, 'message': str(exc)}), 400
     result = ingest_device_event(get_db(), event)
+    if not result.accepted:
+        return jsonify({'code': 409, 'data': _result_data(result),
+                        'message': '事件序列或事件内容冲突，已隔离'}), 409
     status = 200 if result.duplicate else 201
     return jsonify({'code': 0, 'data': _result_data(result)}), status
 
@@ -55,6 +62,9 @@ def ingest_gateway_event():
     except (GatewayAuthError, ContractError) as exc:
         return jsonify({'code': 401, 'message': str(exc)}), 401
     result = ingest_device_event(get_db(), event)
+    if not result.accepted:
+        return jsonify({'code': 409, 'data': _result_data(result),
+                        'message': '事件序列或事件内容冲突，已隔离'}), 409
     status = 200 if result.duplicate else 201
     return jsonify({'code': 0, 'data': _result_data(result)}), status
 
@@ -123,3 +133,112 @@ def health():
         'open_sequence_gaps': int(gaps or 0),
         'devices_seen': int(row['devices'] or 0),
     }})
+
+
+@device_platform_bp.route('/api/device-platform/communications-health', methods=['GET'])
+@admin_required
+def communications_health():
+    """Operational view for operators; keeps the legacy health contract stable."""
+    db = get_db()
+
+    def table_exists(name):
+        return db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+        ).fetchone() is not None
+
+    def count(table, where='1=1'):
+        if not table_exists(table):
+            return 0
+        return int(db.execute(f'SELECT COUNT(*) FROM {table} WHERE {where}').fetchone()[0] or 0)
+
+    return jsonify({'code': 0, 'data': {
+        'events': {
+            'pending': count('iot_device_event', "processing_status='pending'"),
+            'failed': count('iot_device_event', "processing_status='failed'"),
+            'processed': count('iot_device_event', "processing_status='processed'"),
+            'conflicts': count('iot_device_event_conflict'),
+        },
+        'aim_outbox': {
+            'pending': count('iot_aim_event_outbox', "status='pending'"),
+            'failed_attempts': int(db.execute(
+                'SELECT COALESCE(SUM(attempts),0) FROM iot_aim_event_outbox'
+            ).fetchone()[0] or 0) if table_exists('iot_aim_event_outbox') else 0,
+        },
+        'commands': {
+            'queued': count('iot_device_command', "status='queued'"),
+            'leased': count('iot_device_command', "status='leased'"),
+            'failed': count('iot_device_command', "status='failed'"),
+        },
+        'machine_endpoints': {
+            'listening': count('iot_machine_endpoint', "listener_status='listening'"),
+            'error': count('iot_machine_endpoint', "listener_status='error'"),
+            'enabled': count('iot_machine_endpoint', 'enabled=1'),
+        },
+    }})
+
+
+@device_platform_bp.route('/api/device-platform/events/process', methods=['POST'])
+@admin_required
+def process_events():
+    result = process_pending_events(get_db(), lambda event: apply_standard_event(get_db(), event))
+    return jsonify({'code': 0, 'data': result})
+
+
+@device_platform_bp.route('/api/device-platform/commands', methods=['POST'])
+@admin_required
+def create_command():
+    try:
+        command = DeviceCommand.from_dict(request.get_json(silent=True) or {})
+        stored = enqueue_command(get_db(), command)
+    except ContractError as exc:
+        return jsonify({'code': 400, 'message': str(exc)}), 400
+    return jsonify({'code': 0, 'data': stored.to_dict()}), 201
+
+
+@device_platform_bp.route('/api/device-platform/gateway-commands/claim', methods=['POST'])
+def gateway_claim_commands():
+    body = request.get_data(cache=True)
+    try:
+        credential = authenticate_gateway(
+            get_db(), request.headers.get('X-Gateway-Id', ''),
+            request.headers.get('X-Gateway-Time', ''), request.headers.get('X-Gateway-Nonce', ''),
+            request.headers.get('X-Gateway-Signature', ''), body,
+        )
+        data = request.get_json(silent=True) or {}
+        if str(data.get('gateway_code') or '') != credential['gateway_code']:
+            raise GatewayAuthError('gateway identity mismatch')
+        worker_id = str(data.get('worker_id') or '').strip()
+        if not worker_id:
+            raise GatewayAuthError('worker_id is required')
+        claims = claim_commands(get_db(), credential['gateway_code'], worker_id,
+                                data.get('device_code'), int(data.get('limit') or 20))
+    except (GatewayAuthError, ContractError, ValueError) as exc:
+        return jsonify({'code': 401, 'message': str(exc)}), 401
+    return jsonify({'code': 0, 'data': [
+        {'command': claim.command.to_dict(), 'lease_token': claim.lease_token}
+        for claim in claims
+    ]})
+
+
+@device_platform_bp.route('/api/device-platform/gateway-commands/<command_id>/ack', methods=['POST'])
+def gateway_ack_command(command_id):
+    body = request.get_data(cache=True)
+    try:
+        credential = authenticate_gateway(
+            get_db(), request.headers.get('X-Gateway-Id', ''),
+            request.headers.get('X-Gateway-Time', ''), request.headers.get('X-Gateway-Nonce', ''),
+            request.headers.get('X-Gateway-Signature', ''), body,
+        )
+        data = request.get_json(silent=True) or {}
+        row = get_db().execute(
+            'SELECT gateway_code FROM iot_device_command WHERE command_id=?', (command_id,)
+        ).fetchone()
+        if not row or row['gateway_code'] != credential['gateway_code']:
+            raise GatewayAuthError('command is outside gateway scope')
+        if not acknowledge_command(get_db(), command_id, str(data.get('worker_id') or ''),
+                                   str(data.get('status') or ''),
+                                   str(data.get('lease_token') or ''), data.get('error')):
+            return jsonify({'code': 409, 'message': '命令租约无效或已处理'}), 409
+    except (GatewayAuthError, ContractError, ValueError) as exc:
+        return jsonify({'code': 401, 'message': str(exc)}), 401
+    return jsonify({'code': 0, 'message': 'command acknowledged'})

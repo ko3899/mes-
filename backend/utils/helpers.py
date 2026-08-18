@@ -181,6 +181,23 @@ def admin_required(f):
 
 
 def permission_required(*perms):
+    def _legacy_read_aliases(required):
+        """Translate legacy menu list permissions to read-only access."""
+        aliases = set()
+        for perm in required:
+            if perm == 'base:read':
+                aliases.update({
+                    'base:route:list', 'base:product:list', 'base:bom:list',
+                    'base:process:list', 'base:defect:list', 'base:unit:list',
+                    'base:workshop:list',
+                })
+            elif perm == 'inv:read':
+                aliases.update({'inv:inbound:list', 'inv:outbound:list', 'inv:balance:list'})
+            elif perm.startswith('prod:') and perm.endswith(':read'):
+                resource = perm[len('prod:'):-len(':read')]
+                aliases.add(f'prod:{resource}:list')
+        return aliases
+
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
@@ -207,7 +224,7 @@ def permission_required(*perms):
                     return jsonify({'code': 403, 'message': '无权限'}), 403
                 parsed_permissions = raw_permissions.split(',')
             granted = {str(p).strip() for p in parsed_permissions if str(p).strip()}
-            if required.isdisjoint(granted):
+            if required.isdisjoint(granted) and _legacy_read_aliases(required).isdisjoint(granted):
                 return jsonify({'code': 403, 'message': '无权限'}), 403
             return f(*args, **kwargs)
         return decorated

@@ -124,7 +124,7 @@ def test_real_runtime_socket_csv_event_and_single_instance(tmp_path, monkeypatch
             db_path,
             "SELECT COUNT(*) FROM iot_inspection_report WHERE import_status='imported'",
         ) == 1)
-        assert scalar(db_path, 'SELECT COUNT(*) FROM iot_device_event') == 1
+        wait_until(lambda: scalar(db_path, 'SELECT COUNT(*) FROM iot_device_event') == 1)
         assert scalar(
             db_path, "SELECT COUNT(*) FROM iot_aim_event_outbox WHERE status='dispatched'"
         ) == 1

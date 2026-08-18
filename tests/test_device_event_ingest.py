@@ -79,15 +79,26 @@ def test_late_events_shrink_and_eventually_close_range_gap():
     ).fetchone()[0] == 0
 
 
-def test_same_sequence_with_different_event_id_is_kept_and_flagged():
+def test_same_sequence_with_different_event_id_is_quarantined():
     db = build_db()
     ingest_device_event(db, event('D1', 1, 'E1'))
     result = ingest_device_event(db, event('D1', 1, 'E1-OTHER'))
 
-    assert result.accepted is True
+    assert result.accepted is False
     assert result.duplicate is False
     assert result.sequence_conflict is True
-    assert db.execute('SELECT COUNT(*) FROM iot_device_event').fetchone()[0] == 2
+    assert db.execute('SELECT COUNT(*) FROM iot_device_event').fetchone()[0] == 1
+    assert db.execute('SELECT COUNT(*) FROM iot_device_event_conflict').fetchone()[0] == 1
+
+
+def test_same_event_id_with_different_payload_is_rejected():
+    db = build_db()
+    ingest_device_event(db, event('D1', 1, 'E1'))
+    changed = event('D1', 1, 'E1')
+    changed = DeviceEvent.from_dict({**changed.to_dict(), 'payload': {'value': 999}})
+    result = ingest_device_event(db, changed)
+    assert result.accepted is False
+    assert result.sequence_conflict is True
 
 
 def test_device_cursor_is_scoped_by_factory_and_device():

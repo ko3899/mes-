@@ -1,37 +1,39 @@
 """基础数据蓝图"""
 from flask import Blueprint, request, jsonify
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, permission_required
 
 base_data_bp = Blueprint('base_data', __name__)
+_base_write = permission_required('base:write')
+_base_read = permission_required('base:read')
 
 
 @base_data_bp.route('/api/base/workshop/list')
-@login_required
+@_base_read
 def base_workshop_list():
     return jsonify(crud_list('base_workshop', request.args))
 
 
 @base_data_bp.route('/api/base/workshop/add', methods=['POST'])
-@login_required
+@_base_write
 def base_workshop_add():
     return jsonify(crud_add('base_workshop', request.json))
 
 
 @base_data_bp.route('/api/base/workshop/update', methods=['POST'])
-@login_required
+@_base_write
 def base_workshop_update():
     return jsonify(crud_update('base_workshop', request.json))
 
 
 @base_data_bp.route('/api/base/workshop/delete', methods=['POST'])
-@login_required
+@_base_write
 def base_workshop_delete():
     return jsonify(crud_delete('base_workshop', request.json.get('id')))
 
 
 @base_data_bp.route('/api/base/process/list')
-@login_required
+@_base_read
 def base_process_list():
     db = get_db()
     where, params = [], []
@@ -55,7 +57,7 @@ def base_process_list():
 
 
 @base_data_bp.route('/api/base/process/add', methods=['POST'])
-@login_required
+@_base_write
 def base_process_add():
     d = dict(request.json or {})
     db = get_db()
@@ -64,7 +66,10 @@ def base_process_add():
     if not db.execute('SELECT 1 FROM base_workshop WHERE id=? AND status=1', (d['workshop_id'],)).fetchone():
         return jsonify({'code': 400, 'message': '所属车间不存在或未启用'}), 400
     # 自动排序：获取当前最大排序号
-    max_order = db.execute("SELECT COALESCE(MAX(sort_order), 0) as max_order FROM base_process").fetchone()['max_order']
+    max_order = db.execute(
+        "SELECT COALESCE(MAX(sort_order), 0) as max_order FROM base_process WHERE workshop_id=?",
+        (d['workshop_id'],),
+    ).fetchone()['max_order']
     d['sort_order'] = max_order + 1
     # 添加到 crud_add
     keys = [k for k in d.keys() if k != 'id']
@@ -80,12 +85,31 @@ def base_process_add():
 
 
 @base_data_bp.route('/api/base/process/update', methods=['POST'])
-@login_required
+@_base_write
 def base_process_update():
     data = dict(request.json or {})
+    process_id = data.get('id')
+    db = get_db()
+    referenced = bool(db.execute(
+        'SELECT 1 FROM base_process_route_detail WHERE process_id=? LIMIT 1',
+        (process_id,),
+    ).fetchone())
+    current = db.execute(
+        'SELECT workshop_id, code, sort_order FROM base_process WHERE id=?',
+        (process_id,),
+    ).fetchone()
+    changed_identity = current and any(
+        key in data and str(data.get(key)) != str(current[key])
+        for key in ('workshop_id', 'code', 'sort_order')
+    )
+    if referenced and changed_identity:
+        return jsonify({
+            'code': 409,
+            'message': '已被工艺路线引用的工序不能修改车间、编码或排序',
+        }), 409
     if not data.get('workshop_id'):
         return jsonify({'code': 400, 'message': '所属车间必填'}), 400
-    if not get_db().execute(
+    if not db.execute(
         'SELECT 1 FROM base_workshop WHERE id=? AND status=1', (data['workshop_id'],)
     ).fetchone():
         return jsonify({'code': 400, 'message': '所属车间不存在或未启用'}), 400
@@ -93,7 +117,7 @@ def base_process_update():
 
 
 @base_data_bp.route('/api/base/process/delete', methods=['POST'])
-@login_required
+@_base_write
 def base_process_delete():
     process_id = (request.json or {}).get('id')
     if get_db().execute(
@@ -104,7 +128,7 @@ def base_process_delete():
 
 
 @base_data_bp.route('/api/base/process/reorder', methods=['POST'])
-@login_required
+@_base_write
 def base_process_reorder():
     """工序调序"""
     d = request.json
@@ -115,15 +139,23 @@ def base_process_reorder():
         return jsonify({'code': 400, 'message': '参数错误'})
     
     db = get_db()
+    # Serialize the read/swap pair so concurrent operators cannot overwrite
+    # each other's positions.
+    db.execute('BEGIN IMMEDIATE')
     current = db.execute("SELECT * FROM base_process WHERE id=?", (process_id,)).fetchone()
     if not current:
+        db.rollback()
         return jsonify({'code': 404, 'message': '工序不存在'})
     
     current_order = current['sort_order']
     
     if direction == 'up':
         # 找到上一个工序
-        prev = db.execute("SELECT * FROM base_process WHERE sort_order < ? ORDER BY sort_order DESC LIMIT 1", (current_order,)).fetchone()
+        prev = db.execute(
+            "SELECT * FROM base_process WHERE workshop_id=? AND sort_order < ? "
+            "ORDER BY sort_order DESC LIMIT 1",
+            (current['workshop_id'], current_order),
+        ).fetchone()
         if prev:
             # 交换排序号
             db.execute("UPDATE base_process SET sort_order=? WHERE id=?", (prev['sort_order'], process_id))
@@ -132,7 +164,11 @@ def base_process_reorder():
             return jsonify({'code': 0, 'message': '上移成功'})
     else:
         # 找到下一个工序
-        next_proc = db.execute("SELECT * FROM base_process WHERE sort_order > ? ORDER BY sort_order ASC LIMIT 1", (current_order,)).fetchone()
+        next_proc = db.execute(
+            "SELECT * FROM base_process WHERE workshop_id=? AND sort_order > ? "
+            "ORDER BY sort_order ASC LIMIT 1",
+            (current['workshop_id'], current_order),
+        ).fetchone()
         if next_proc:
             # 交换排序号
             db.execute("UPDATE base_process SET sort_order=? WHERE id=?", (next_proc['sort_order'], process_id))
@@ -140,35 +176,36 @@ def base_process_reorder():
             db.commit()
             return jsonify({'code': 0, 'message': '下移成功'})
     
+    db.commit()
     return jsonify({'code': 0, 'message': '已在边界位置'})
 
 
 @base_data_bp.route('/api/base/product/list')
-@login_required
+@_base_read
 def base_product_list():
     return jsonify(crud_list('base_product', request.args))
 
 
 @base_data_bp.route('/api/base/product/add', methods=['POST'])
-@login_required
+@_base_write
 def base_product_add():
     return jsonify(crud_add('base_product', request.json))
 
 
 @base_data_bp.route('/api/base/product/update', methods=['POST'])
-@login_required
+@_base_write
 def base_product_update():
     return jsonify(crud_update('base_product', request.json))
 
 
 @base_data_bp.route('/api/base/product/delete', methods=['POST'])
-@login_required
+@_base_write
 def base_product_delete():
     return jsonify(crud_delete('base_product', request.json.get('id')))
 
 
 @base_data_bp.route('/api/base/product/all')
-@login_required
+@_base_read
 def base_product_all():
     db = get_db()
     rows = db.execute("SELECT id, product_name, code FROM base_product WHERE status=1").fetchall()
@@ -176,7 +213,7 @@ def base_product_all():
 
 
 @base_data_bp.route('/api/base/bom/list')
-@login_required
+@_base_read
 def base_bom_list():
     db = get_db()
     page = int(request.args.get('page', 1))
@@ -193,67 +230,67 @@ def base_bom_list():
 
 
 @base_data_bp.route('/api/base/bom/add', methods=['POST'])
-@login_required
+@_base_write
 def base_bom_add():
     return jsonify(crud_add('base_bom', request.json))
 
 
 @base_data_bp.route('/api/base/bom/delete', methods=['POST'])
-@login_required
+@_base_write
 def base_bom_delete():
     return jsonify(crud_delete('base_bom', request.json.get('id')))
 
 
 @base_data_bp.route('/api/base/defect/list')
-@login_required
+@_base_read
 def base_defect_list():
     return jsonify(crud_list('base_defect', request.args))
 
 
 @base_data_bp.route('/api/base/defect/add', methods=['POST'])
-@login_required
+@_base_write
 def base_defect_add():
     return jsonify(crud_add('base_defect', request.json))
 
 
 @base_data_bp.route('/api/base/defect/update', methods=['POST'])
-@login_required
+@_base_write
 def base_defect_update():
     return jsonify(crud_update('base_defect', request.json))
 
 
 @base_data_bp.route('/api/base/defect/delete', methods=['POST'])
-@login_required
+@_base_write
 def base_defect_delete():
     return jsonify(crud_delete('base_defect', request.json.get('id')))
 
 
 @base_data_bp.route('/api/base/unit/list')
-@login_required
+@_base_read
 def base_unit_list():
     return jsonify(crud_list('base_unit', request.args))
 
 
 @base_data_bp.route('/api/base/unit/add', methods=['POST'])
-@login_required
+@_base_write
 def base_unit_add():
     return jsonify(crud_add('base_unit', request.json))
 
 
 @base_data_bp.route('/api/base/unit/update', methods=['POST'])
-@login_required
+@_base_write
 def base_unit_update():
     return jsonify(crud_update('base_unit', request.json))
 
 
 @base_data_bp.route('/api/base/unit/delete', methods=['POST'])
-@login_required
+@_base_write
 def base_unit_delete():
     return jsonify(crud_delete('base_unit', request.json.get('id')))
 
 
 @base_data_bp.route('/api/base/route/list')
-@login_required
+@_base_read
 def base_route_list():
     db = get_db()
     where, params = [], []
@@ -290,7 +327,7 @@ def base_route_list():
 
 
 @base_data_bp.route('/api/base/route/save', methods=['POST'])
-@login_required
+@_base_write
 def base_route_save():
     data = dict(request.json or {})
     required = [('route_name', '路线名称必填'), ('product_id', '适用产品必填'),
@@ -360,18 +397,18 @@ def base_route_save():
 
 
 @base_data_bp.route('/api/base/route/add', methods=['POST'])
-@login_required
+@_base_write
 def base_route_add():
     return jsonify(crud_add('base_process_route', request.json))
 
 
 @base_data_bp.route('/api/base/route/update', methods=['POST'])
-@login_required
+@_base_write
 def base_route_update():
     return jsonify(crud_update('base_process_route', request.json))
 
 
 @base_data_bp.route('/api/base/route/delete', methods=['POST'])
-@login_required
+@_base_write
 def base_route_delete():
     return jsonify(crud_delete('base_process_route', request.json.get('id')))

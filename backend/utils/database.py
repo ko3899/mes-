@@ -1650,9 +1650,13 @@ def _init_extra_tables():
     from services.device_event_ingest import create_device_event_tables
     from services.aim_event_bridge import create_aim_event_outbox
     from services.gateway_auth import create_gateway_auth_tables
+    from services.device_event_processor import create_event_processing_tables
+    from services.device_commands import create_command_tables
     create_device_event_tables(db)
     create_aim_event_outbox(db)
     create_gateway_auth_tables(db)
+    create_event_processing_tables(db)
+    create_command_tables(db)
     _init_procurement_schema(db)
     _add_column_if_missing(db, 'base_process', 'sort_order', 'INTEGER DEFAULT 0')
     for col in ['required_sn', 'required_material', 'check_sequence', 'prev_station']:
@@ -1856,7 +1860,9 @@ def _init_extra_tables():
         heartbeat_seconds INTEGER NOT NULL DEFAULT 30,
         laser_template TEXT,
         inspection_template TEXT,
-        shared_secret TEXT,
+         shared_secret TEXT,
+         lifecycle_id TEXT NOT NULL DEFAULT 'legacy',
+         require_request_nonce INTEGER NOT NULL DEFAULT 0,
         csv_input_dir TEXT,
         csv_stable_seconds INTEGER NOT NULL DEFAULT 2,
         enabled INTEGER NOT NULL DEFAULT 1,
@@ -1879,6 +1885,8 @@ def _init_extra_tables():
     _add_column_if_missing(db, 'iot_machine_endpoint', 'listener_started_at', 'TIMESTAMP')
     _add_column_if_missing(db, 'iot_machine_endpoint', 'csv_last_scan_at', 'TIMESTAMP')
     _add_column_if_missing(db, 'iot_machine_endpoint', 'csv_last_error', 'TEXT')
+    _add_column_if_missing(db, 'iot_machine_endpoint', 'lifecycle_id', "TEXT NOT NULL DEFAULT 'legacy'")
+    _add_column_if_missing(db, 'iot_machine_endpoint', 'require_request_nonce', 'INTEGER NOT NULL DEFAULT 0')
     db.execute('''CREATE TABLE IF NOT EXISTS iot_machine_runtime (
         component TEXT PRIMARY KEY,
         status TEXT NOT NULL,

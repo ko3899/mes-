@@ -113,3 +113,12 @@ def test_event_list_paginates_and_bounds_page_size(client):
     assert data['total'] == 3
     assert len(data['list']) == 1
     assert client.get('/api/device-platform/events?page_size=501').status_code == 400
+
+
+def test_communications_health_and_liveness_probe(client):
+    health = client.get('/api/device-platform/communications-health')
+    assert health.status_code == 200
+    data = health.get_json()['data']
+    assert {'events', 'aim_outbox', 'commands', 'machine_endpoints'} <= set(data)
+    assert data['events']['pending'] == 0
+    assert client.get('/healthz').get_json()['status'] == 'ok'

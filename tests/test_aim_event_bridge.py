@@ -9,7 +9,7 @@ if BACKEND_ROOT not in sys.path:
 
 from services.aim_event_bridge import (  # noqa: E402
     aim_report_event, create_aim_event_outbox, enqueue_aim_event,
-    dispatch_aim_event,
+    dispatch_aim_event, next_aim_sequence, dispatch_pending_aim_events,
 )
 
 
@@ -70,3 +70,27 @@ def test_failed_dispatch_remains_durable_and_can_retry():
     assert dispatch_aim_event(db, event.event_id, received.append) is True
     assert received[0].event_id == event.event_id
     assert db.execute('SELECT status FROM iot_aim_event_outbox').fetchone()[0] == 'dispatched'
+
+
+def test_aim_sequence_is_scoped_per_device_and_monotonic():
+    import sqlite3
+    db = sqlite3.connect(':memory:'); db.row_factory = sqlite3.Row
+    create_aim_event_outbox(db)
+    assert next_aim_sequence(db, {'id': 7, 'device_code': 'AIM-007'}) == 1
+    assert next_aim_sequence(db, {'id': 7, 'device_code': 'AIM-007'}) == 2
+    assert next_aim_sequence(db, {'id': 8, 'device_code': 'AIM-008'}) == 1
+
+
+def test_pending_dispatch_scans_all_events_and_keeps_failures():
+    import sqlite3
+    db = sqlite3.connect(':memory:'); db.row_factory = sqlite3.Row
+    create_aim_event_outbox(db)
+    first = aim_report_event({'id': 1, 'device_code': 'D1'}, {'id': 1, 'sn': 'S1'},
+                             {'id': 1, 'result': 'OK'}, {})
+    second = aim_report_event({'id': 1, 'device_code': 'D1'}, {'id': 2, 'sn': 'S2'},
+                              {'id': 2, 'result': 'OK'}, {})
+    enqueue_aim_event(db, first); enqueue_aim_event(db, second)
+    received = []
+    result = dispatch_pending_aim_events(db, received.append, limit=10)
+    assert result == {'attempted': 2, 'dispatched': 2, 'failed': 0}
+    assert [event.event_id for event in received] == [first.event_id, second.event_id]

@@ -11,6 +11,8 @@ from typing import Any, Mapping
 
 
 SCHEMA_VERSION = '1.0'
+MAX_SEQUENCE = 10_000_000
+MAX_PAYLOAD_BYTES = 256 * 1024
 
 EVENT_TYPES = frozenset({
     'barcode.scanned',
@@ -77,6 +79,8 @@ def _json_payload(value: Any) -> dict:
         raise ContractError('payload must be a JSON object')
     try:
         encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
+        if len(encoded.encode('utf-8')) > MAX_PAYLOAD_BYTES:
+            raise ContractError('payload is too large')
         copied = json.loads(encoded)
     except (TypeError, ValueError) as exc:
         raise ContractError('payload must contain only valid JSON values') from exc
@@ -120,11 +124,13 @@ class DeviceEvent:
     correlation_id: str | None
     payload: Mapping[str, Any]
     raw_reference: str | None
+    lifecycle_id: str | None = None
 
     FIELDS = frozenset({
         'schema_version', 'event_id', 'customer_code', 'factory_code',
         'gateway_code', 'device_code', 'event_type', 'occurred_at',
         'received_at', 'sequence', 'correlation_id', 'payload', 'raw_reference',
+        'lifecycle_id',
     })
 
     @classmethod
@@ -139,8 +145,9 @@ class DeviceEvent:
         if event_type not in EVENT_TYPES:
             raise ContractError(f'unsupported event_type: {event_type}')
         sequence = data.get('sequence')
-        if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1:
-            raise ContractError('sequence must be a positive integer')
+        if (isinstance(sequence, bool) or not isinstance(sequence, int)
+                or not 1 <= sequence <= MAX_SEQUENCE):
+            raise ContractError(f'sequence must be between 1 and {MAX_SEQUENCE}')
         return cls(
             schema_version=schema_version,
             event_id=_required_text(data, 'event_id'),
@@ -155,10 +162,11 @@ class DeviceEvent:
             correlation_id=_optional_text(data, 'correlation_id'),
             payload=_freeze(_json_payload(data.get('payload'))),
             raw_reference=_optional_text(data, 'raw_reference'),
+            lifecycle_id=_optional_text(data, 'lifecycle_id'),
         )
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             'schema_version': self.schema_version,
             'event_id': self.event_id,
             'customer_code': self.customer_code,
@@ -173,6 +181,9 @@ class DeviceEvent:
             'payload': _thaw(self.payload),
             'raw_reference': self.raw_reference,
         }
+        if self.lifecycle_id is not None:
+            result['lifecycle_id'] = self.lifecycle_id
+        return result
 
 
 @dataclass(frozen=True)

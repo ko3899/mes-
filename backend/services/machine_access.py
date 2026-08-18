@@ -10,7 +10,9 @@ import uuid
 import logging
 
 from services.machine_protocol import AccessDecision
-from services.aim_event_bridge import aim_report_event, enqueue_aim_event, dispatch_aim_event
+from services.aim_event_bridge import (
+    aim_report_event, enqueue_aim_event, dispatch_aim_event, next_aim_sequence,
+)
 from services.quality_disposition import (
     QUALITY_HOLD,
     QUALITY_REWORK,
@@ -25,6 +27,23 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_WORKORDER_STATUSES = {1, 2}
 REQUIRED_CSV_HEADERS = ('2D Barcode', 'Date', 'Time', 'OK(1)/NG(0)')
+
+
+def _default_event_sink(db):
+    """Select the safe local sink for legacy AIM reports."""
+    if os.environ.get('MES_AIM_EVENT_MODE', 'central').strip().lower() == 'edge':
+        from edge_gateway.event_store import EdgeEventStore
+        edge_db = os.environ.get('MES_EDGE_DB')
+        if not edge_db:
+            raise RuntimeError('MES_EDGE_DB is required when MES_AIM_EVENT_MODE=edge')
+        store = EdgeEventStore(edge_db)
+        return store.append
+    if db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='iot_device_event'"
+    ).fetchone():
+        from services.device_event_ingest import ingest_device_event
+        return lambda item: ingest_device_event(db, item)
+    return None
 
 
 def _value(row, key, default=None):
@@ -79,9 +98,36 @@ def _persist_decision(db, endpoint, request, decision, context, started, session
     return decision
 
 
+def _consume_request_nonce(db, endpoint, request):
+    """Record a secure V2 nonce and reject a second use."""
+    nonce = getattr(request, 'request_nonce', None)
+    if not nonce or not bool(int(_value(endpoint, 'require_request_nonce', 0) or 0)):
+        return True
+    nonce = str(nonce)
+    if len(nonce) > 256:
+        return False
+    db.execute('''CREATE TABLE IF NOT EXISTS iot_machine_request_nonce (
+        endpoint_id INTEGER NOT NULL,
+        nonce TEXT NOT NULL,
+        request_no TEXT NOT NULL,
+        used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(endpoint_id, nonce)
+    )''')
+    # Keep the replay guard bounded and make the check-and-insert one write.
+    db.execute("DELETE FROM iot_machine_request_nonce WHERE used_at < datetime('now','-10 minutes')")
+    inserted = db.execute(
+        'INSERT OR IGNORE INTO iot_machine_request_nonce(endpoint_id,nonce,request_no) VALUES(?,?,?)',
+        (_value(endpoint, 'id'), nonce, request.request_no),
+    ).rowcount
+    db.commit()
+    return inserted == 1
+
+
 def evaluate_access(db, endpoint, request, now=None, session_id=None):
     """判定SN能否在指定机台工序开始加工，并持久化幂等判定。"""
     started = time.perf_counter()
+    if not _consume_request_nonce(db, endpoint, request):
+        return AccessDecision.reject('REQUEST_REPLAY', 'V2请求重复使用')
     dedupe_key = f"{_value(endpoint, 'id')}:{request.request_no}"
     existing = db.execute(
         'SELECT * FROM iot_machine_request WHERE dedupe_key=?', (dedupe_key,)
@@ -296,11 +342,10 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
         try:
             if event_sink is not None:
                 dispatch_aim_event(db, event_id, event_sink)
-            elif db.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='iot_device_event'"
-            ).fetchone():
-                from services.device_event_ingest import ingest_device_event
-                dispatch_aim_event(db, event_id, lambda item: ingest_device_event(db, item))
+            else:
+                sink = _default_event_sink(db)
+                if sink is not None:
+                    dispatch_aim_event(db, event_id, sink)
         except Exception:
             logger.exception('AIM report %s standard event retry failed', existing['id'])
         return dict(existing)
@@ -332,6 +377,15 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
         if another:
             raise ValueError('CSV中的SN与待报告准入请求不一致')
         raise ValueError('没有对应的L1准入请求')
+
+    request_row = dict(request_row)
+    if request_row.get('process_id') is None and request_row.get('route_step_id'):
+        step = db.execute(
+            'SELECT process_id FROM prod_workorder_route_step WHERE id=?',
+            (request_row['route_step_id'],),
+        ).fetchone()
+        if step:
+            request_row['process_id'] = step['process_id']
 
     date_path = datetime.strptime(inspected_at, '%Y-%m-%d %H:%M:%S')
     target_dir = Path(archive_root) / date_path.strftime('%Y') / date_path.strftime('%m') / date_path.strftime('%d')
@@ -457,15 +511,24 @@ def import_inspection_report(db, endpoint, csv_bytes, filename, archive_root, no
         for item_code, measured_value in zip(headers[4:], values[4:])
     }
     try:
-        standard_event = aim_report_event(endpoint, request_row, row, measurement_map)
+        lifecycle_id = str(_value(endpoint, 'lifecycle_id', 'legacy'))
+        # Sequence allocation and outbox insertion must commit together.  A
+        # process crash between those operations would otherwise leave a
+        # permanent sequence gap with no event to retry.
+        db.execute('BEGIN IMMEDIATE')
+        sequence = next_aim_sequence(db, endpoint, lifecycle_id)
+        standard_event = aim_report_event(
+            endpoint, request_row, row, measurement_map,
+            sequence=sequence, lifecycle_id=lifecycle_id,
+        )
         enqueue_aim_event(db, standard_event)
+        db.commit()
         if event_sink is not None:
             dispatch_aim_event(db, standard_event.event_id, event_sink)
-        elif db.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='iot_device_event'"
-        ).fetchone():
-            from services.device_event_ingest import ingest_device_event
-            dispatch_aim_event(db, standard_event.event_id, lambda item: ingest_device_event(db, item))
+        else:
+            sink = _default_event_sink(db)
+            if sink is not None:
+                dispatch_aim_event(db, standard_event.event_id, sink)
     except Exception:
         logger.exception('AIM report %s was imported but its standard event is pending retry', report_id)
     return row

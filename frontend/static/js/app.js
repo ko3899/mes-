@@ -43,6 +43,10 @@
   function closeModal() { byId('modalRoot').classList.add('is-hidden'); byId('modalRoot').replaceChildren(); }
   function formField(label, input) { var wrap = doc.createElement('label'); wrap.className = 'field'; var span = doc.createElement('span'); span.textContent = label; wrap.append(span, input); return wrap; }
   function makeInput(type, placeholder) { var input = doc.createElement('input'); input.className = 'form-control'; input.type = type; input.placeholder = placeholder; return input; }
+  function clientOperationId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    return 'mobile-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+  }
   function openReport(task, onSuccess) {
     var root = byId('modalRoot'); root.replaceChildren(); root.classList.remove('is-hidden');
     var card = doc.createElement('form'); card.className = 'modal-card';
@@ -57,7 +61,7 @@
     card.addEventListener('submit', async function (event) {
       event.preventDefault(); var good = Number(qualified.value); var bad = Number(defect.value || 0);
       if (!(good > 0) || bad < 0) { toast('请输入正确的报工数量'); return; }
-      var body = {task_id: task.id, workorder_id: task.workorder_id, process_id: task.process_id, qualified_qty: good, defect_qty: bad, remark: remark.value.trim()};
+      var body = {task_id: task.id, workorder_id: task.workorder_id, process_id: task.process_id, qualified_qty: good, defect_qty: bad, controlled: true, client_operation_id: clientOperationId(), remark: remark.value.trim()};
       submit.disabled = true;
       if (navigator.onLine === false) {
         queue.enqueue({url: '/api/prod/report/add', body: body}); updateSyncCount(); closeModal(); toast('已离线暂存，联网后自动同步'); return;

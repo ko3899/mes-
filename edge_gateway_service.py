@@ -38,6 +38,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='MES边缘网关事件传输服务')
     parser.add_argument('--once', action='store_true', help='执行一次发送后退出')
     parser.add_argument('--show-config', action='store_true', help='显示脱敏配置后退出')
+    parser.add_argument('--replay-dead-letters', action='store_true', help='将边缘死信全部重新放回发送队列')
     args = parser.parse_args(argv)
     try:
         config = load_config()
@@ -46,6 +47,10 @@ def main(argv=None):
         return 2
     if args.show_config:
         print(json.dumps(config.safe_summary(), ensure_ascii=False, indent=2))
+        return 0
+    if args.replay_dead_letters:
+        store = EdgeEventStore(config.database_path)
+        print(json.dumps({'replayed': store.replay_dead_letters()}, ensure_ascii=False))
         return 0
     pump = None
     try:

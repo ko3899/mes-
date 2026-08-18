@@ -1,38 +1,49 @@
 """仓库管理增强蓝图 - 三级库位/库存事务/到货通知"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no, permission_required
 
 warehouse_bp = Blueprint('warehouse', __name__)
+_warehouse_write = permission_required('inv:write')
+_warehouse_read = permission_required('inv:read')
+
+
+def _legacy_arrival_write_disabled():
+    """Keep arrival notices read-only until receiving is backed by a domain service."""
+    return jsonify({
+        'code': 410,
+        'message': '到货通知写入入口已停用，请使用受控入库流程',
+        'data': {'use': 'receiving_service'},
+    }), 410
 
 
 # ==================== 三级库位 ====================
 @warehouse_bp.route('/api/warehouse/list')
-@login_required
+@_warehouse_read
 def warehouse_list():
     return jsonify(crud_list('inv_warehouse', request.args))
 
 
 @warehouse_bp.route('/api/warehouse/add', methods=['POST'])
-@login_required
+@_warehouse_write
 def warehouse_add():
     return jsonify(crud_add('inv_warehouse', request.json))
 
 
 @warehouse_bp.route('/api/warehouse/update', methods=['POST'])
-@login_required
+@_warehouse_write
 def warehouse_update():
     return jsonify(crud_update('inv_warehouse', request.json))
 
 
 @warehouse_bp.route('/api/warehouse/delete', methods=['POST'])
-@login_required
+@_warehouse_write
 def warehouse_delete():
     return jsonify(crud_delete('inv_warehouse', request.json.get('id')))
 
 
 @warehouse_bp.route('/api/area/list')
-@login_required
+@_warehouse_read
 def area_list():
     db = get_db()
     page = max(1, int(request.args.get('page', 1)))
@@ -83,25 +94,25 @@ def area_list():
 
 
 @warehouse_bp.route('/api/area/add', methods=['POST'])
-@login_required
+@_warehouse_write
 def area_add():
     return jsonify(crud_add('inv_area', request.json))
 
 
 @warehouse_bp.route('/api/area/update', methods=['POST'])
-@login_required
+@_warehouse_write
 def area_update():
     return jsonify(crud_update('inv_area', request.json))
 
 
 @warehouse_bp.route('/api/area/delete', methods=['POST'])
-@login_required
+@_warehouse_write
 def area_delete():
     return jsonify(crud_delete('inv_area', request.json.get('id')))
 
 
 @warehouse_bp.route('/api/location/list')
-@login_required
+@_warehouse_read
 def location_list():
     db = get_db()
     page = max(1, int(request.args.get('page', 1)))
@@ -156,32 +167,32 @@ def location_list():
 
 
 @warehouse_bp.route('/api/location/add', methods=['POST'])
-@login_required
+@_warehouse_write
 def location_add():
     return jsonify(crud_add('inv_location', request.json))
 
 
 @warehouse_bp.route('/api/location/update', methods=['POST'])
-@login_required
+@_warehouse_write
 def location_update():
     return jsonify(crud_update('inv_location', request.json))
 
 
 @warehouse_bp.route('/api/location/delete', methods=['POST'])
-@login_required
+@_warehouse_write
 def location_delete():
     return jsonify(crud_delete('inv_location', request.json.get('id')))
 
 
 # ==================== 库存事务 ====================
 @warehouse_bp.route('/api/transaction/list')
-@login_required
+@_warehouse_read
 def transaction_list():
     return jsonify(crud_list('inv_transaction_log', request.args))
 
 
 @warehouse_bp.route('/api/transaction/add', methods=['POST'])
-@login_required
+@_warehouse_write
 def transaction_add():
     return jsonify({
         'code': 409,
@@ -191,7 +202,7 @@ def transaction_add():
 
 # ==================== 到货通知 ====================
 @warehouse_bp.route('/api/arrival/list')
-@login_required
+@_warehouse_read
 def arrival_list():
     db = get_db()
     page = max(1, int(request.args.get('page', 1)))
@@ -241,20 +252,18 @@ def arrival_list():
 
 
 @warehouse_bp.route('/api/arrival/add', methods=['POST'])
-@login_required
+@_warehouse_write
 def arrival_add():
-    d = request.json
-    d['notice_no'] = gen_no('AN')
-    return jsonify(crud_add('inv_arrival_notice', d))
+    return _legacy_arrival_write_disabled()
 
 
 @warehouse_bp.route('/api/arrival/update', methods=['POST'])
-@login_required
+@_warehouse_write
 def arrival_update():
-    return jsonify(crud_update('inv_arrival_notice', request.json))
+    return _legacy_arrival_write_disabled()
 
 
 @warehouse_bp.route('/api/arrival/delete', methods=['POST'])
-@login_required
+@_warehouse_write
 def arrival_delete():
-    return jsonify(crud_delete('inv_arrival_notice', request.json.get('id')))
+    return _legacy_arrival_write_disabled()

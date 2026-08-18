@@ -1,4 +1,6 @@
 """IoT数据采集蓝图 - 实时数据/PLC对接"""
+import hmac
+import os
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
 from utils.helpers import login_required
@@ -52,6 +54,10 @@ def iot_data_latest():
 @iot_bp.route('/api/iot/webhook', methods=['POST'])
 def iot_webhook():
     """Webhook接收外部数据"""
+    configured = str(os.environ.get('MES_IOT_WEBHOOK_TOKEN') or '')
+    supplied = str(request.headers.get('X-IOT-Webhook-Token') or '')
+    if not configured or not hmac.compare_digest(supplied, configured):
+        return jsonify({'code': 401, 'message': 'Webhook未授权'}), 401
     d = request.json
     # 记录webhook数据
     db = get_db()

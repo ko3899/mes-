@@ -54,6 +54,9 @@ function renderCrud(el, path, cfg) {
     if(curCrudActions.add) {
         actionButtons += '<button class="btn btn-blue" id="addBtn">+ 新增</button>';
     }
+    if(path === 'sys/role') {
+        actionButtons += '<button class="btn btn-purple" id="rolePermissionBtn">动作权限</button>';
+    }
 
     el.innerHTML = '<div class="card"><div class="card-title"><span>'
         + MESUI.escapeHtml(cfg.t) + '</span>'
@@ -76,6 +79,7 @@ function renderCrud(el, path, cfg) {
     var addBtn = document.getElementById('addBtn');
     var exportBtn = document.getElementById('exportBtn');
     var importBtn = document.getElementById('importBtn');
+    var rolePermissionBtn = document.getElementById('rolePermissionBtn');
     if(addBtn) addBtn.onclick = function() { crudAdd(); };
     document.getElementById('searchBtn').onclick = function() { crudLoad(1); };
     document.getElementById('resetBtn').onclick = function() {
@@ -87,6 +91,7 @@ function renderCrud(el, path, cfg) {
     document.getElementById('kw').onkeydown = function(e) { if(e.key === 'Enter') crudLoad(1); };
     if(exportBtn) exportBtn.onclick = function() { doExport(); };
     if(importBtn) importBtn.onclick = function() { doImport(); };
+    if(rolePermissionBtn) rolePermissionBtn.onclick = function() { renderRolePermissions(el); };
 
     selectedRows.clear();
     updateBatchBar();

@@ -101,7 +101,7 @@ function andonResolve(id) { api('/api/site/andon/resolve',{method:'POST',body:{i
 function renderRework(el) {
     el.innerHTML = '<div class="card"><div class="card-title"><span>SN质量处置 / 返工报废</span></div>'
         + '<table><thead><tr><th>处置单号</th><th>SN</th><th>检测报告</th><th>工单</th><th>工序/工站</th><th>返工周期</th><th>原因</th><th>处置状态</th><th>返工任务</th><th>操作</th></tr></thead>'
-        + '<tbody id="tb"><tr><td colspan="10" class="empty">加载中...</td></tr></tbody></table></div>';
+        + '<tbody id="tb"><tr><td colspan="10" class="empty">加载中...</td></tbody></table></div>';
     rwLoad();
 }
 function rwLoad() {
@@ -117,26 +117,28 @@ function rwLoad() {
             if(rw.status === 'pending_review') controls = '<button class="btn btn-blue btn-sm rw-review" data-id="'+Number(rw.id)+'">审核</button> '
                 + '<button class="btn btn-red btn-sm rw-reject" data-id="'+Number(rw.id)+'">驳回</button>';
             if(rw.status === 'approved' && rw.action === 'rework' && Number(rw.rework_task_status) === 0) controls = '<button class="btn btn-green btn-sm rw-start" data-id="'+Number(rw.id)+'">启动返工</button>';
+            if(rw.status === 'task_started' && rw.action === 'rework') controls = '<button class="btn btn-green btn-sm rw-complete" data-id="'+Number(rw.id)+'">完成返工</button>';
             var stateClass = rw.status === 'completed' ? 'tag-ok' : (rw.status === 'rejected' ? 'tag-no' : 'tag-wait');
             return '<tr><td>'+MESUI.escapeHtml(rw.disposition_no)+'</td><td><b>'+MESUI.escapeHtml(rw.sn)+'</b></td>'
                 +'<td>#'+MESUI.escapeHtml(rw.inspection_report_id||'-')+' '+MESUI.escapeHtml(rw.inspection_result||'')+'</td>'
                 +'<td>'+MESUI.escapeHtml(rw.workorder_no||'-')+'</td><td>'+MESUI.escapeHtml(rw.process_name||'-')+' / '+MESUI.escapeHtml(rw.station_code||'-')+'</td>'
                 +'<td>'+MESUI.escapeHtml(rw.cycle_no)+'</td><td>'+MESUI.escapeHtml(rw.reason||'-')+'</td>'
-                +'<td><span class="tag '+stateClass+'">'+MESUI.escapeHtml(actionText[rw.action]||rw.action)+' · '+MESUI.escapeHtml(statusText[rw.status]||rw.status)+'</span></td>'
+                +'<td><span class="tag '+stateClass+'">'+MESUI.escapeHtml(actionText[rw.action]||rw.action||rw.disposition)+' · '+MESUI.escapeHtml(statusText[rw.status]||rw.status)+'</span></td>'
                 +'<td>'+MESUI.escapeHtml(rw.rework_task_no||'-')+'</td><td>'+controls+'</td></tr>';
         }).join('');
         tb.querySelectorAll('.rw-review').forEach(function(button){button.onclick=function(){rwReview(Number(button.dataset.id));};});
         tb.querySelectorAll('.rw-reject').forEach(function(button){button.onclick=function(){rwReject(Number(button.dataset.id));};});
         tb.querySelectorAll('.rw-start').forEach(function(button){button.onclick=function(){rwStart(Number(button.dataset.id));};});
+        tb.querySelectorAll('.rw-complete').forEach(function(button){button.onclick=function(){rwComplete(Number(button.dataset.id));};});
     });
 }
 function rwReview(id) {
     document.getElementById('mTitle').textContent = '质量处置审核';
-    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>处置方式</label><select id="rwAction">'
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>处置方式</label><select id="f_type">'
         +'<option value="rework">返工</option><option value="scrap">报废</option><option value="concession">让步接收</option></select></div></div>'
         +'<div class="form-row"><div class="form-item" style="flex:1"><label>审核说明</label><textarea id="rwReason"></textarea></div></div>';
     modalSaveHandler = function(){
-        var body={action:document.getElementById('rwAction').value,reason:document.getElementById('rwReason').value.trim()};
+        var body={action:document.getElementById('f_type').value,disposition:document.getElementById('f_type').value,reason:document.getElementById('rwReason').value.trim()};
         api('/api/site/rework/'+id+'/approve',{method:'POST',body:body}).then(function(r){if(r&&r.code===0){closeModal();rwLoad();}else alert(r?r.message:'审核失败');});
     };
     document.getElementById('modal').classList.add('show');
@@ -147,6 +149,18 @@ function rwReject(id) {
 }
 function rwStart(id) {
     api('/api/site/rework/'+id+'/start-task',{method:'POST',body:{}}).then(function(r){if(r&&r.code===0)rwLoad();else alert(r?r.message:'启动失败');});
+}
+function rwComplete(id) {
+    api('/api/site/rework/'+id+'/complete',{method:'POST',body:{}}).then(function(r){if(r&&r.code===0)rwLoad();else alert(r?r.message:'完成失败');});
+}
+
+// Reserved validation for future controlled SN disposition requests.  New
+// dispositions must come from a quality report; this helper deliberately does
+// not call the legacy quantity-based rework endpoint.
+function validateReworkRequest(d) {
+    if(!d.workorder_id) { alert('请选择工单'); return false; }
+    if(!d.reason) { alert('请填写原因'); return false; }
+    return true;
 }
 
 // CAPA

@@ -132,6 +132,29 @@ def test_endpoint_protocol_cannot_be_downgraded_and_v2_requires_secret():
         )
 
 
+def test_v2_replay_protection_rejects_duplicate_nonce_when_enabled():
+    import time
+    endpoint = dict(ENDPOINT, protocol_version=2, shared_secret='secret-key',
+                    require_request_nonce=1, replay_nonces={'N1'})
+    now = int(time.time())
+    unsigned = f'REQ|2|AIM001|LASER01|CAVITY1|1|{now}|N1|SN001'
+    signature = hmac.new(b'secret-key', unsigned.encode(), hashlib.sha256).hexdigest()
+    frame = (unsigned + '|' + signature + '\r\n').encode()
+    with pytest.raises(ProtocolError, match='重放'):
+        parse_request(frame, endpoint)
+
+
+def test_v2_nonce_frame_accepts_signature_in_last_field():
+    import time
+    now = int(time.time())
+    endpoint = dict(ENDPOINT, protocol_version=2, shared_secret='secret-key',
+                    require_request_nonce=1)
+    unsigned = f'REQ|2|AIM001|LASER01|CAVITY1|1|{now}|N2|SN001'
+    signature = hmac.new(b'secret-key', unsigned.encode(), hashlib.sha256).hexdigest()
+    parsed = parse_request((unsigned + '|' + signature + '\r\n').encode(), endpoint)
+    assert parsed.request_nonce == 'N2'
+
+
 def test_hikrobot_reader_frame_accepts_idle_payload_and_strips_optional_fields():
     endpoint = dict(ENDPOINT)
     request = parse_reader_frame(b'SN001;ISO15415=A\x00', endpoint)

@@ -44,6 +44,7 @@ class EdgeConfig:
     mqtt_key: str = None
     customer_code: str = None
     factory_code: str = None
+    mqtt_central_consumer_confirmed: bool = False
 
     @classmethod
     def from_env(cls, values):
@@ -69,6 +70,13 @@ class EdgeConfig:
         mqtt_host = mqtt_port = mqtt_ca = mqtt_cert = mqtt_key = None
         customer_code = factory_code = None
         if transport == 'mqtt':
+            confirmed = str(values.get(
+                'MES_EDGE_MQTT_CENTRAL_CONSUMER_CONFIRMED', '0'
+            )).strip().lower() in ('1', 'true', 'yes')
+            if not confirmed:
+                raise EdgeConfigError(
+                    'MQTT central consumer confirmation is required before production use'
+                )
             mqtt_host = _required(values, 'MES_EDGE_MQTT_HOST')
             mqtt_port = _integer(values, 'MES_EDGE_MQTT_PORT', 8883, 1, 65535)
             mqtt_ca = _required(values, 'MES_EDGE_MQTT_CA')
@@ -82,7 +90,8 @@ class EdgeConfig:
             factory_code = _required(values, 'MES_EDGE_FACTORY_CODE')
         return cls(database_path, gateway_id, transport, poll, lease, batch, timeout,
                    http_url, http_secret, mqtt_host, mqtt_port, mqtt_ca,
-                   mqtt_cert, mqtt_key, customer_code, factory_code)
+                   mqtt_cert, mqtt_key, customer_code, factory_code,
+                   transport != 'mqtt' or confirmed)
 
     def safe_summary(self):
         return {
@@ -100,4 +109,5 @@ class EdgeConfig:
             'mqtt_tls_configured': bool(self.mqtt_ca and self.mqtt_cert and self.mqtt_key),
             'customer_code': self.customer_code,
             'factory_code': self.factory_code,
+            'mqtt_central_consumer_confirmed': self.mqtt_central_consumer_confirmed,
         }

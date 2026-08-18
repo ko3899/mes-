@@ -39,7 +39,7 @@ class MachineGatewayManager:
                     'bind_ip', 'listen_port', 'protocol_version', 'allowed_remote_ip',
                     'station_code', 'process_id', 'cavity_code', 'encoding', 'timeout_ms',
                     'heartbeat_seconds', 'shared_secret', 'laser_template',
-                    'inspection_template',
+                    'inspection_template', 'lifecycle_id', 'require_request_nonce',
                 ) if name in columns
             ]
             if signature_columns:

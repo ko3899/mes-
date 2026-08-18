@@ -356,3 +356,42 @@ function changePassword() {
     };
     document.getElementById('modal').classList.add('show');
 }
+
+// 角色动作权限（查看/维护/审核等）
+function renderRolePermissions(el) {
+    el.innerHTML = '<div class="card"><div class="card-title"><span>角色动作权限</span>'
+        + '<button class="btn btn-gray" id="backRoleList">返回角色列表</button>'
+        + '<span class="muted">仅管理员可配置，旧菜单权限仍可兼容读取</span></div>'
+        + '<div class="form-row"><div class="form-item"><label>选择角色</label><select id="rolePermissionRole"></select></div></div>'
+        + '<div id="rolePermissionBody" class="empty">请选择角色</div></div>';
+    document.getElementById('backRoleList').onclick = function() { renderPage('sys/role'); };
+    Promise.all([api('/api/sys/role/list?size=1000'), api('/api/sys/permissions/catalog')]).then(function(values) {
+        var roles = values[0] && values[0].data ? (values[0].data.list || values[0].data) : [];
+        var catalog = values[1] && values[1].data ? values[1].data : [];
+        var select = document.getElementById('rolePermissionRole');
+        select.innerHTML = '<option value="">请选择角色</option>' + roles.map(function(role) {
+            return '<option value="' + MESUI.escapeHtml(role.id) + '">' + MESUI.escapeHtml(role.role_name) + '</option>';
+        }).join('');
+        select.onchange = function() {
+            if(!this.value) return;
+            api('/api/sys/role/permissions/' + encodeURIComponent(this.value)).then(function(response) {
+                var current = response && response.data && response.data.permissions || [];
+                var body = document.getElementById('rolePermissionBody');
+                body.className = '';
+                body.innerHTML = '<div class="permission-grid">' + catalog.map(function(item) {
+                    var checked = current.indexOf(item.key) >= 0 ? ' checked' : '';
+                    return '<label class="permission-item"><input type="checkbox" value="'
+                        + MESUI.escapeHtml(item.key) + '"' + checked + '>'
+                        + MESUI.escapeHtml(item.label) + '<code>' + MESUI.escapeHtml(item.key) + '</code></label>';
+                }).join('') + '</div><button class="btn btn-blue" id="saveRolePermissions">保存权限</button>';
+                document.getElementById('saveRolePermissions').onclick = function() {
+                    var permissions = Array.prototype.slice.call(body.querySelectorAll('input:checked')).map(function(input) { return input.value; });
+                    api('/api/sys/role/permissions', {method:'POST', body:{role_id:Number(select.value), permissions:permissions}}).then(function(result) {
+                        if(result && result.code === 0) alert('权限保存成功');
+                        else alert(result ? result.message : '权限保存失败');
+                    });
+                };
+            });
+        };
+    });
+}
