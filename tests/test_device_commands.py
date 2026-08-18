@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import sys
+from datetime import datetime, timezone, timedelta
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
 BACKEND_ROOT = os.path.join(PROJECT_ROOT, 'backend')
@@ -13,11 +14,19 @@ from services.device_commands import (  # noqa: E402
 )
 
 
+def _now_iso():
+    return datetime.now(timezone.utc).isoformat(timespec='seconds')
+
+
+def _future_iso(days=7):
+    return (datetime.now(timezone.utc) + timedelta(days=days)).isoformat(timespec='seconds')
+
+
 def command(command_id='C1', idem='I1'):
     return DeviceCommand.from_dict({
         'schema_version': '1.0', 'command_id': command_id, 'factory_code': 'F1',
         'gateway_code': 'GW1', 'device_code': 'D1', 'command_type': 'task.control',
-        'created_at': '2026-08-16T10:00:00+08:00', 'expires_at': '2026-08-16T23:00:00+08:00',
+        'created_at': _now_iso(), 'expires_at': _future_iso(),
         'idempotency_key': idem, 'config_version': 'v1', 'payload': {'action': 'pause'},
     })
 
