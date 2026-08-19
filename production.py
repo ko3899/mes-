@@ -4,6 +4,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 import sys
+import time
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -21,6 +22,20 @@ logging.basicConfig(level=logging.INFO, handlers=[handler, console])
 logger = logging.getLogger(__name__)
 
 
+def _ensure_secret_key():
+    """生产环境必须配置随机 SECRET_KEY，拒绝使用默认或空密钥启动。"""
+    secret = os.environ.get('FLASK_SECRET_KEY') or os.environ.get('SECRET_KEY')
+    env = os.environ.get('MES_ENV', '').lower()
+    if not secret and env == 'production':
+        raise RuntimeError(
+            '生产环境必须设置 FLASK_SECRET_KEY 或 SECRET_KEY 环境变量。'
+            '可用 python -c "import secrets; print(secrets.token_hex(32))" 生成。'
+        )
+    if not secret:
+        logger.warning('未配置 FLASK_SECRET_KEY/SECRET_KEY，将使用临时随机密钥（重启后会话失效）')
+    return secret
+
+
 def main():
     sys.path.insert(0, os.path.join(BASE_DIR, 'backend'))
 
@@ -29,12 +44,19 @@ def main():
     from machine_runtime import MachineCommunicationRuntime
     from utils.database import _create_indexes
 
+    secret_key = _ensure_secret_key()
+    app.secret_key = secret_key or os.urandom(32).hex()
+
     logger.info('正在初始化数据库')
+    t0 = time.time()
     init_db()
     _init_extra_tables()
     _create_indexes()
+    logger.info('数据库结构初始化完成，耗时 %.3fs', time.time() - t0)
+
+    t1 = time.time()
     init_sample_data()
-    logger.info('数据库初始化完成')
+    logger.info('示例/种子数据初始化完成，耗时 %.3fs', time.time() - t1)
 
     machine_runtime = MachineCommunicationRuntime()
     owns_runtime = machine_runtime.start()
@@ -61,4 +83,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())
