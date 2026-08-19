@@ -14,6 +14,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from flask import Flask, request, jsonify, send_from_directory, make_response, session
 from openpyxl import Workbook, load_workbook
 
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    _HAS_LIMITER = True
+except ImportError:  # pragma: no cover
+    _HAS_LIMITER = False
+
 from utils.database import close_db, init_db, _init_extra_tables, DB_PATH, BASE_DIR, get_db
 from utils.helpers import login_required, gen_no, _load_session_user
 from blueprints.auth import auth_bp
@@ -82,6 +89,20 @@ def create_app():
     app.config['SESSION_COOKIE_NAME'] = os.environ.get(
         'SESSION_COOKIE_NAME', 'mes_main_session'
     )
+    # Session cookie security: always HttpOnly, Secure only in production, SameSite=Lax
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SECURE'] = (
+        os.environ.get('MES_ENV', '').lower() == 'production'
+    )
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+    # 限流（生产环境建议替换为 RedisStorage）
+    if _HAS_LIMITER:
+        Limiter(
+            key_func=get_remote_address,
+            default_limits=['200 per day', '50 per hour'],
+            storage_uri='memory://',
+        ).init_app(app)
 
     # 注册 teardown
     app.teardown_appcontext(close_db)
