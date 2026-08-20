@@ -16,8 +16,8 @@ import urllib.request
 class SmokeTest:
     def __init__(self, base_url):
         self.base_url = base_url.rstrip('/')
-        self.session = urllib.request.OpenerDirector()
-        self.session.add_handler(urllib.request.HTTPCookieProcessor())
+        cookie_handler = urllib.request.HTTPCookieProcessor()
+        self.session = urllib.request.build_opener(cookie_handler)
 
     def _request(self, method, path, data=None):
         url = self.base_url + path
@@ -57,16 +57,16 @@ class SmokeTest:
             ok = False
 
         # 3. 获取当前用户
-        status, body = self._request('GET', '/api/auth/user')
-        print(f'[3/5] /api/auth/user -> {status}')
-        if status != 200 or 'username' not in body:
+        status, body = self._request('GET', '/api/user/info')
+        print(f'[3/5] /api/user/info -> {status}')
+        if status != 200 or not body.get('data', {}).get('username'):
             print('  FAIL', body)
             ok = False
 
         # 4. 受保护业务接口:工单列表
-        status, body = self._request('GET', '/api/workorder')
-        print(f'[4/5] /api/workorder -> {status}')
-        if status not in (200, 204):
+        status, body = self._request('GET', '/api/prod/workorder/list')
+        print(f'[4/5] /api/prod/workorder/list -> {status}')
+        if status != 200:
             print('  FAIL', body)
             ok = False
 
