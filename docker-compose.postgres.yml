@@ -1,0 +1,41 @@
+# PostgreSQL 生产部署覆盖文件
+# 使用方式: docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+version: '3.8'
+
+services:
+  mes-factory:
+    environment:
+      - MES_DB_TYPE=postgresql
+      - MES_DB_HOST=postgres
+      - MES_DB_PORT=5432
+      - MES_DB_NAME=mes_factory
+      - MES_DB_USER=mes
+      - MES_DB_PASS=mes_secure_password
+      # 生产环境必须注入强随机密钥
+      # - SECRET_KEY=<openssl rand -hex 32>
+      - MES_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: mes-postgres
+    environment:
+      - POSTGRES_DB=mes_factory
+      - POSTGRES_USER=mes
+      - POSTGRES_PASSWORD=mes_secure_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/mes_postgresql.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mes -d mes_factory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

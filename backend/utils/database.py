@@ -6,12 +6,23 @@ from flask import g
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DB_PATH = os.path.join(BASE_DIR, 'database', 'mes.db')
 
+DB_TYPE = os.environ.get('MES_DB_TYPE', 'sqlite').lower()
+DB_HOST = os.environ.get('MES_DB_HOST', 'localhost')
+DB_PORT = int(os.environ.get('MES_DB_PORT', '5432'))
+DB_NAME = os.environ.get('MES_DB_NAME', 'mes_factory')
+DB_USER = os.environ.get('MES_DB_USER', 'mes')
+DB_PASS = os.environ.get('MES_DB_PASS', '')
+
 
 def get_db():
     if 'db' not in g:
-        g.db = sqlite3.connect(DB_PATH)
-        g.db.row_factory = sqlite3.Row
-        g.db.execute("PRAGMA foreign_keys = ON")
+        if DB_TYPE == 'postgresql':
+            from .postgres_compat import get_postgres_connection
+            g.db = get_postgres_connection()
+        else:
+            g.db = sqlite3.connect(DB_PATH)
+            g.db.row_factory = sqlite3.Row
+            g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
 
 
@@ -21,8 +32,57 @@ def close_db(exception):
         db.close()
 
 
+def _init_postgresql():
+    """Initialize PostgreSQL schema and minimal seed data."""
+    import hashlib
+    import secrets
+    from .postgres_compat import _PgConnection
+
+    import psycopg2
+    conn = psycopg2.connect(
+        host=DB_HOST, port=DB_PORT, dbname=DB_NAME, user=DB_USER, password=DB_PASS,
+    )
+    conn.autocommit = True
+    cur = conn.cursor()
+    schema_path = os.path.join(BASE_DIR, 'database', 'mes_postgresql.sql')
+    if os.path.exists(schema_path):
+        with open(schema_path, 'r', encoding='utf-8') as f:
+            cur.execute(f.read())
+    cur.close()
+    conn.autocommit = False
+
+    # Minimal seed data so the app can boot and admin can log in.
+    admin_salt = secrets.token_hex(16)
+    admin_hash = hashlib.pbkdf2_hmac('sha256', b'admin123', admin_salt.encode(), 100000).hex()
+    admin_password = f"{admin_salt}${admin_hash}"
+
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO sys_tenant (tenant_name, tenant_code, status) "
+        "VALUES ('默认租户', 'DEFAULT', 1) ON CONFLICT (tenant_code) DO NOTHING"
+    )
+    cur.execute(
+        "INSERT INTO sys_role (role_name, role_key, description, status) "
+        "VALUES ('管理员', 'admin', '系统管理员', 1), "
+        "('普通用户', 'user', '普通操作员', 1) "
+        "ON CONFLICT (role_key) DO NOTHING"
+    )
+    cur.execute(
+        "INSERT INTO sys_user (username, password, real_name, role_id, tenant_id, status) "
+        "SELECT 'admin', %s, '管理员', id, 1, 1 FROM sys_role WHERE role_key='admin' "
+        "ON CONFLICT (username) DO NOTHING",
+        (admin_password,),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
 def init_db():
     """初始化数据库表结构和基础数据"""
+    if DB_TYPE == 'postgresql':
+        _init_postgresql()
+        return
     import hashlib
 
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -1529,6 +1589,9 @@ def _init_procurement_schema(db):
 
 def _init_extra_tables():
     """初始化新增功能的表"""
+    if DB_TYPE == 'postgresql':
+        # Extra tables are already created by the PostgreSQL schema file.
+        return
     db = sqlite3.connect(DB_PATH)
     db.execute("PRAGMA foreign_keys = ON")
     db.executescript('''
@@ -2037,6 +2100,9 @@ def _init_extra_tables():
 
 def _create_indexes():
     """创建数据库索引优化查询性能"""
+    if DB_TYPE == 'postgresql':
+        # Indexes are already created by the PostgreSQL schema file.
+        return
     db = sqlite3.connect(DB_PATH)
     indexes = [
         "CREATE INDEX IF NOT EXISTS idx_prod_workorder_status ON prod_workorder(status)",
