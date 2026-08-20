@@ -17,27 +17,29 @@
 
 ## 已处理的运行时兼容
 
-- `?` 占位符 → `%s`（psycopg2 风格）
-- `PRAGMA` 语句 → `SELECT 1`（无害化）
-- `INSERT ... RETURNING id` 自动追加，支持 `cursor.lastrowid`
-- `RealDictCursor` 提供 `row['col']` 字典式访问
+以下 SQLite 语法已在 `postgres_compat.py` 的 `_translate_sql()` 中**自动翻译**,无需改业务代码:
 
-## 已知未处理项（需逐个适配）
+- `?` 占位符 → `%s`(psycopg2 风格)
+- `PRAGMA foreign_keys = ON` 等 → `SELECT 1`(无害化)
+- `PRAGMA table_info(t)` → `information_schema.columns` 查询(返回行兼容 `row[1]` 取列名)
+- `SELECT ... FROM sqlite_master WHERE type='table' AND name=?` → `information_schema.tables`
+- `datetime('now','-N minutes')` → `now() - interval 'N minutes'`
+- `INSERT OR IGNORE INTO` → `INSERT INTO ... ON CONFLICT DO NOTHING`
+- `GROUP_CONCAT(x)` → `string_agg(x::text, ',')`
+- `INSERT ... RETURNING id` 自动追加,支持 `cursor.lastrowid`
+- `RealDictCursor` + 自定义 `_DualRow` 同时支持 `row['col']` 和 `row[N]` 数字索引
 
-以下 SQLite 语法在 PostgreSQL 下会报错，遇到时需修改对应 SQL：
+## 已知未处理项(需逐个适配)
 
-1. `INSERT OR IGNORE INTO` → `INSERT ... ON CONFLICT DO NOTHING`
-2. `INSERT OR REPLACE INTO` → `INSERT ... ON CONFLICT DO UPDATE`
-3. `sqlite_master` 查询 → `information_schema.tables`
-4. `PRAGMA table_info(t)` → `information_schema.columns`
-5. `PRAGMA index_list(t)` → `pg_indexes`
-6. `PRAGMA foreign_key_list(t)` → `information_schema`
-7. `PRAGMA foreign_key_check` → 自定义查询
-8. `strftime('%Y-%m', col)` → `to_char(col, 'YYYY-MM')`
-9. `datetime('now')` → `now()` 或 `CURRENT_TIMESTAMP`
-10. `GROUP_CONCAT` → `string_agg`
-11. 大小写敏感的 `LIKE` → `ILIKE`
-12. 自增列已转为 `SERIAL`，但 `lastrowid` 仅对有 `id` 列的表有效
+以下情况遇到时需手动修改对应 SQL:
+
+1. `INSERT OR REPLACE INTO` → `INSERT ... ON CONFLICT DO UPDATE`(代码库中目前为 0 处)
+2. `PRAGMA index_list(t)` / `PRAGMA foreign_key_list(t)` → 需改用 `information_schema` 或 `pg_catalog`
+3. `PRAGMA foreign_key_check` → 自定义查询
+4. `strftime('%Y-%m', col)` 等 SQL 层 SQLite 函数(代码库中目前为 0 处,均为 Python `datetime.strftime`)
+5. 大小写敏感的 `LIKE` → `ILIKE`(如需不区分大小写)
+6. 自增列已转为 `SERIAL`,`lastrowid` 仅对有 `id` 列的表有效
+7. SQLite 的 `ON CONFLICT(col) DO UPDATE` 语法在 PostgreSQL 中需确保冲突列有唯一约束/主键
 
 ## 部署步骤（Docker Compose）
 
