@@ -165,16 +165,9 @@ def create_app():
     def index():
         return send_from_directory(FRONTEND_DIR, 'index.html')
 
-    @app.route('/healthz')
-    def healthz():
-        """Unauthenticated liveness/readiness probe for reverse proxies."""
-        try:
-            get_db().execute('SELECT 1').fetchone()
-            return jsonify({'status': 'ok', 'service': 'mes'}), 200
-        except Exception as exc:
-            app.logger.exception('health check failed')
-            return jsonify({'status': 'error', 'service': 'mes',
-                            'message': str(exc)[:200]}), 503
+    # 健康检查路由(由 utils.health_checks 提供)
+    from utils.health_checks import register_health_routes
+    register_health_routes(app)
 
     @app.route('/manifest.json')
     def manifest():

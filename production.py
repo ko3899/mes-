@@ -11,14 +11,24 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(BASE_DIR, 'logs')
 os.makedirs(LOG_DIR, exist_ok=True)
 
+# 结构化 JSON 日志(便于接入 ELK/Loki),可通过 MES_LOG_FORMAT=text 回退纯文本
+_log_format = os.environ.get('MES_LOG_FORMAT', 'json').lower()
 log_file = os.path.join(LOG_DIR, f'mes_{datetime.now().strftime("%Y%m%d")}.log')
-handler = RotatingFileHandler(
+file_handler = RotatingFileHandler(
     log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding='utf-8'
 )
-handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
-console = logging.StreamHandler()
-console.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
-logging.basicConfig(level=logging.INFO, handlers=[handler, console])
+console_handler = logging.StreamHandler()
+
+if _log_format == 'json':
+    sys.path.insert(0, os.path.join(BASE_DIR, 'backend'))
+    from utils.json_logger import JsonFormatter
+    _fmt = JsonFormatter()
+else:
+    _fmt = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+
+file_handler.setFormatter(_fmt)
+console_handler.setFormatter(_fmt)
+logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler])
 logger = logging.getLogger(__name__)
 
 

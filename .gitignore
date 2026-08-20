@@ -55,3 +55,6 @@ reports/
 
 # Runtime lock files
 database/*.lock
+
+# MQTT mTLS 证书(由 scripts/gen_mqtt_certs.py 本地生成,绝不提交)
+certs/
