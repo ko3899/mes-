@@ -352,3 +352,21 @@ def test_retry_rejects_report_already_claimed_by_another_worker(tmp_path):
         assert False, 'expected occupied retry rejection'
     except ValueError as exc:
         assert '重试' in str(exc)
+
+
+def test_v2_nonce_replay_is_rejected_by_database_guard():
+    db = build_db()
+    ep = endpoint(require_request_nonce=1)
+    req_with_nonce = MachineRequest(2, 'AIM001', 'ST01', 'C1', 'R1', 'SN001',
+                                    request_nonce='N1')
+    first = evaluate_access(db, ep, req_with_nonce)
+    # 首次携带该 nonce 应被放行(decision 可以是 L1 或其它业务判定,但不能是 REQUEST_REPLAY)
+    assert first.reason_code != 'REQUEST_REPLAY'
+    # 第二次用相同 nonce 应被数据库唯一约束判定为重放
+    second = evaluate_access(db, ep, MachineRequest(2, 'AIM001', 'ST01', 'C1', 'R2', 'SN001',
+                                                     request_nonce='N1'))
+    assert second.reason_code == 'REQUEST_REPLAY'
+    # 不同 nonce 应放行
+    third = evaluate_access(db, ep, MachineRequest(2, 'AIM001', 'ST01', 'C1', 'R3', 'SN001',
+                                                    request_nonce='N2'))
+    assert third.reason_code != 'REQUEST_REPLAY'

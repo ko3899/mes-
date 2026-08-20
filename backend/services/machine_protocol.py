@@ -102,9 +102,8 @@ def parse_request(frame, endpoint):
                 raise ProtocolError('V2请求已过期')
             if not nonce:
                 raise ProtocolError('V2 nonce不能为空')
-            replay_nonces = _endpoint_value(endpoint, 'replay_nonces', set())
-            if nonce in replay_nonces:
-                raise ProtocolError('V2请求重放')
+            # 防重放在 evaluate_access -> _consume_request_nonce(数据库唯一约束)执行,
+            # 此处不做内存级重复检查,避免误用永不更新的内存集合。
         else:
             _, _, device, station, cavity, request_no, sn = unsigned_parts
             request_timestamp = request_nonce = None

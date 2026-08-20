@@ -132,16 +132,19 @@ def test_endpoint_protocol_cannot_be_downgraded_and_v2_requires_secret():
         )
 
 
-def test_v2_replay_protection_rejects_duplicate_nonce_when_enabled():
+def test_v2_nonce_is_parsed_and_replay_check_delegated_to_access_service():
     import time
-    endpoint = dict(ENDPOINT, protocol_version=2, shared_secret='secret-key',
-                    require_request_nonce=1, replay_nonces={'N1'})
     now = int(time.time())
+    endpoint = dict(ENDPOINT, protocol_version=2, shared_secret='secret-key',
+                    require_request_nonce=1)
     unsigned = f'REQ|2|AIM001|LASER01|CAVITY1|1|{now}|N1|SN001'
     signature = hmac.new(b'secret-key', unsigned.encode(), hashlib.sha256).hexdigest()
     frame = (unsigned + '|' + signature + '\r\n').encode()
-    with pytest.raises(ProtocolError, match='重放'):
-        parse_request(frame, endpoint)
+    # parse_request 只解析 nonce,不在此处判定重放;
+    # 真正的防重放在 evaluate_access -> _consume_request_nonce(数据库唯一约束)。
+    parsed = parse_request(frame, endpoint)
+    assert parsed.request_nonce == 'N1'
+    assert parsed.request_timestamp == now
 
 
 def test_v2_nonce_frame_accepts_signature_in_last_field():
