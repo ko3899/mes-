@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
-import sqlite3
 import time
 import uuid
 
@@ -45,15 +44,14 @@ def enqueue_command(db, command):
         raise TypeError('command must be a DeviceCommand')
     create_command_tables(db)
     encoded = json.dumps(command.to_dict(), ensure_ascii=False, sort_keys=True)
-    try:
-        db.execute('''INSERT INTO iot_device_command
-            (command_id,factory_code,gateway_code,device_code,command_type,command_json,idempotency_key)
-            VALUES(?,?,?,?,?,?,?)''', (command.command_id, command.factory_code,
-            command.gateway_code, command.device_code, command.command_type, encoded,
-            command.idempotency_key))
-        db.commit()
-    except sqlite3.IntegrityError:
-        db.rollback()
+    # INSERT OR IGNORE + 按 idempotency_key 回查,兼容 SQLite 与 PostgreSQL
+    # (postgres_compat 会把 OR IGNORE 翻译为 ON CONFLICT DO NOTHING)
+    db.execute('''INSERT OR IGNORE INTO iot_device_command
+        (command_id,factory_code,gateway_code,device_code,command_type,command_json,idempotency_key)
+        VALUES(?,?,?,?,?,?,?)''', (command.command_id, command.factory_code,
+        command.gateway_code, command.device_code, command.command_type, encoded,
+        command.idempotency_key))
+    db.commit()
     row = db.execute('SELECT command_json FROM iot_device_command WHERE idempotency_key=?',
                      (command.idempotency_key,)).fetchone()
     return DeviceCommand.from_dict(json.loads(row['command_json']))
