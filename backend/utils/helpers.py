@@ -8,6 +8,7 @@ import secrets
 from functools import wraps
 from flask import session, jsonify, request
 from .database import get_db
+from .db_errors import INTEGRITY_ERRORS, is_unique_violation
 
 
 def hash_password(password, salt=None):
@@ -366,8 +367,8 @@ def crud_add(table, data):
         cursor = db.execute(f"INSERT INTO {table} ({columns}) VALUES ({placeholders})", vals)
         db.commit()
         return {'code': 0, 'data': {'id': cursor.lastrowid}, 'message': '添加成功'}
-    except sqlite3.IntegrityError as e:
-        if 'UNIQUE constraint failed' in str(e):
+    except INTEGRITY_ERRORS as e:
+        if is_unique_violation(e):
             return {'code': 400, 'message': f'数据重复: {str(e).split(":")[-1].strip()}'}
         return {'code': 400, 'message': f'数据约束错误: {str(e)}'}
     except Exception as e:
@@ -400,8 +401,8 @@ def crud_update(table, data):
             return {'code': 404, 'message': '记录不存在'}
         db.commit()
         return {'code': 0, 'message': '修改成功'}
-    except sqlite3.IntegrityError as e:
-        if 'UNIQUE constraint failed' in str(e):
+    except INTEGRITY_ERRORS as e:
+        if is_unique_violation(e):
             return {'code': 400, 'message': f'数据重复: {str(e).split(":")[-1].strip()}'}
         return {'code': 400, 'message': f'数据约束错误: {str(e)}'}
     except Exception as e:

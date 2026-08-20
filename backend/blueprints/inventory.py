@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request, session
 
 from utils.database import get_db
 from utils.helpers import crud_list, gen_no_in_transaction, login_required
+from utils.db_errors import INTEGRITY_ERRORS
 
 
 inventory_bp = Blueprint('inventory', __name__)
@@ -169,7 +170,7 @@ def _add_document(kind):
     except ValueError as exc:
         db.rollback()
         return _error(str(exc))
-    except sqlite3.IntegrityError as exc:
+    except INTEGRITY_ERRORS as exc:
         db.rollback()
         return _error(f'单据保存失败: {exc}', 409)
     except Exception:

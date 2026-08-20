@@ -6,6 +6,7 @@ from flask import Blueprint, jsonify, request, session
 
 from utils.database import get_db
 from utils.helpers import login_required
+from utils.db_errors import INTEGRITY_ERRORS
 
 
 flow_bp = Blueprint('flow', __name__)
@@ -91,7 +92,7 @@ def flow_def_add():
         db.commit()
     except ValueError as exc:
         return _error(str(exc))
-    except sqlite3.IntegrityError:
+    except INTEGRITY_ERRORS:
         db.rollback()
         return _error('流程标识已存在', 409)
     return jsonify({'code': 0, 'data': {'id': cursor.lastrowid}})
@@ -218,7 +219,7 @@ def flow_instance_submit():
             (instance_id, 1, steps[0]['assignee']),
         )
         db.commit()
-    except sqlite3.IntegrityError:
+    except INTEGRITY_ERRORS:
         db.rollback()
         return _error('该业务已有审批中的流程', 409)
     return jsonify({'code': 0, 'data': {'id': instance_id}})
@@ -346,7 +347,7 @@ def flow_task_approve():
                 (instance['id'], next_step, next_assignee),
             )
         db.commit()
-    except (ValueError, sqlite3.IntegrityError) as exc:
+    except (ValueError,) + INTEGRITY_ERRORS as exc:
         db.rollback()
         return _error(str(exc), 409)
     return jsonify({'code': 0})

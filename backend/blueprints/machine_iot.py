@@ -15,6 +15,7 @@ from services.machine_access import (
 )
 from utils.database import get_db
 from utils.helpers import admin_required, login_required
+from utils.db_errors import INTEGRITY_ERRORS
 
 
 machine_iot_bp = Blueprint('machine_iot', __name__)
@@ -202,7 +203,7 @@ def endpoint_save():
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', values
             ).lastrowid
         db.commit()
-    except sqlite3.IntegrityError:
+    except INTEGRITY_ERRORS:
         db.rollback()
         return jsonify({'code': 409, 'message': '该IP、端口、工站和穴位已被占用'}), 409
     return jsonify({'code': 0, 'data': _public_endpoint(_endpoint(db, endpoint_id))})

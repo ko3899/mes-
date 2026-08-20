@@ -6,6 +6,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
+from utils.db_errors import INTEGRITY_ERRORS
 from utils.helpers import (
     login_required,
     crud_list,
@@ -964,7 +965,7 @@ def _create_report(data, user_id):
             'data': {'id': cursor.lastrowid, 'duplicate': False},
             'message': '报工已提交，等待审核' if controlled else '报工成功',
         }
-    except sqlite3.IntegrityError:
+    except INTEGRITY_ERRORS:
         db.rollback()
         if client_operation_id:
             existing = db.execute(

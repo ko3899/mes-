@@ -24,6 +24,7 @@ except ImportError:  # pragma: no cover
 from utils.rate_limiter import SimpleRateLimiter
 
 from utils.database import close_db, init_db, _init_extra_tables, DB_PATH, BASE_DIR, get_db
+from utils.db_errors import INTEGRITY_ERRORS
 from utils.helpers import login_required, gen_no, _load_session_user
 from blueprints.auth import auth_bp
 from blueprints.system import system_bp
@@ -639,7 +640,7 @@ def create_app():
                         d.get('production_date',''), d.get('expiry_date',''), d.get('status',1)))
             db.commit()
             return jsonify({'code': 0, 'message': '批次新增成功', 'data': {'id': cursor.lastrowid}})
-        except sqlite3.IntegrityError:
+        except INTEGRITY_ERRORS:
             db.rollback()
             return jsonify({'code': 409, 'message': '批次号已存在'}), 409
 
