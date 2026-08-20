@@ -1,17 +1,26 @@
 """PostgreSQL compatibility layer that mimics the sqlite3 connection API used
 throughout the MES blueprints.
 
-The blueprints call ``db.execute(sql, params)``, read ``row['col']``, use
-``cursor.lastrowid`` and ``cursor.rowcount``, and call ``db.commit()`` /
-``db.rollback()``.  This module wraps psycopg2 so the same call sites work on
-PostgreSQL with minimal changes.
+The blueprints call ``db.execute(sql, params)``, read ``row['col']`` and
+``row[N]``, use ``cursor.lastrowid`` and ``cursor.rowcount``, and call
+``db.commit()`` / ``db.rollback()``.  This module wraps psycopg2 so the same
+call sites work on PostgreSQL with minimal changes.
 
-Known limitations (must be handled per-call-site when encountered):
-* ``lastrowid`` only works for INSERT statements on tables with an ``id`` column.
-* ``PRAGMA`` statements are no-ops.
-* ``sqlite_master`` / ``PRAGMA table_info`` are NOT translated here; callers
-  must use the information_schema helpers in this module instead.
-* ``INSERT OR IGNORE`` must already be written as ``ON CONFLICT DO NOTHING``.
+Automatic SQL translations applied:
+* ``?`` placeholders -> ``%s``.
+* ``PRAGMA foreign_keys = ON`` and similar -> ``SELECT 1`` (no-op).
+* ``INSERT OR IGNORE INTO t ...`` -> ``INSERT INTO t ... ON CONFLICT DO NOTHING``.
+* ``PRAGMA table_info(t)`` -> a query returning rows indexable as ``row[1]``
+  (column name), matching the SQLite layout.
+* ``SELECT ... FROM sqlite_master WHERE type='table' AND name=?`` ->
+  ``information_schema.tables`` equivalent.
+* ``datetime('now','-N minutes')`` -> ``now() - interval 'N minutes'``.
+* ``GROUP_CONCAT(x)`` -> ``string_agg(x::text, ',')``.
+
+Known limitations:
+* ``lastrowid`` only works for INSERT on tables with an ``id`` column.
+* ``INSERT OR REPLACE`` is not translated (none in the codebase).
+* Complex SQLite-specific pragmas beyond ``table_info`` are not supported.
 """
 
 import os
@@ -22,6 +31,56 @@ import psycopg2.extras
 
 
 _CONNECTION = None
+
+
+class _DualRow:
+    """A row that supports both ``row['col']`` and ``row[N]`` access.
+
+    SQLite's Row supports both dict-style and integer-index access.  psycopg2's
+    RealDictRow only supports dict-style.  This wrapper restores integer access
+    so legacy call sites using ``row[0]`` / ``row[1]`` keep working.
+    """
+
+    __slots__ = ('_data', '_keys')
+
+    def __init__(self, data):
+        # data is a RealDictRow (dict-like) or a tuple
+        if isinstance(data, dict):
+            self._data = data
+            self._keys = list(data.keys())
+        else:
+            # tuple: build positional mapping; no column names
+            self._data = {i: v for i, v in enumerate(data)}
+            self._keys = list(range(len(data)))
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._data[self._keys[key]]
+        return self._data[key]
+
+    def __iter__(self):
+        return iter(self._data.values())
+
+    def __len__(self):
+        return len(self._data)
+
+    def keys(self):
+        return self._keys
+
+    def values(self):
+        return [self._data[k] for k in self._keys]
+
+    def items(self):
+        return [(k, self._data[k]) for k in self._keys]
+
+    def get(self, key, default=None):
+        return self._data.get(key, default)
+
+    def __contains__(self, key):
+        return key in self._data
+
+    def __repr__(self):
+        return repr(self._data)
 
 
 def get_postgres_connection():
@@ -40,11 +99,88 @@ def get_postgres_connection():
     return _CONNECTION
 
 
+# Regex helpers for translation
+_PRAGMA_TABLE_INFO_RE = re.compile(
+    r"PRAGMA\s+table_info\(\s*['\"]?(\w+)['\"]?\s*\)", re.IGNORECASE
+)
+_SQLITE_MASTER_RE = re.compile(
+    r"FROM\s+sqlite_master\s+WHERE\s+type\s*=\s*'table'\s+AND\s+name\s*=\s*\?",
+    re.IGNORECASE,
+)
+_SQLITE_MASTER_LITERAL_RE = re.compile(
+    r"FROM\s+sqlite_master\s+WHERE\s+type\s*=\s*'table'\s+AND\s+name\s*=\s*'([^']+)'",
+    re.IGNORECASE,
+)
+_DATETIME_NOW_RE = re.compile(
+    r"datetime\(\s*'now'\s*,\s*'(-?\d+)\s*(minute|minutes|second|seconds|hour|hours|day|days|month|months|year|years)'\s*\)",
+    re.IGNORECASE,
+)
+_INSERT_OR_IGNORE_RE = re.compile(
+    r"^\s*INSERT\s+OR\s+IGNORE\s+INTO\b", re.IGNORECASE
+)
+_GROUP_CONCAT_RE = re.compile(r"\bGROUP_CONCAT\(([^)]+)\)", re.IGNORECASE)
+
+
 def _translate_sql(sql):
-    """Convert SQLite-style placeholders and pragmas to PostgreSQL equivalents."""
-    # PRAGMA statements are SQLite-specific; make them harmless no-ops.
+    """Convert SQLite-style SQL to PostgreSQL-compatible SQL."""
+    # PRAGMA table_info(t) -> information_schema query with positional columns
+    m = _PRAGMA_TABLE_INFO_RE.search(sql)
+    if m:
+        table = m.group(1)
+        # Return rows shaped like SQLite: (cid, name, type, notnull, dflt_value, pk)
+        # Callers use row[1] for the column name.
+        replacement = (
+            "SELECT 0 AS cid, column_name AS name, data_type AS type, "
+            "0 AS notnull, NULL AS dflt_value, 0 AS pk "
+            f"FROM information_schema.columns WHERE table_name='{table}' "
+            "ORDER BY ordinal_position"
+        )
+        sql = _PRAGMA_TABLE_INFO_RE.sub(replacement, sql)
+
+    # sqlite_master with parameterized name
+    if _SQLITE_MASTER_RE.search(sql):
+        sql = _SQLITE_MASTER_RE.sub(
+            "FROM information_schema.tables WHERE table_schema='public' AND table_name=%s",
+            sql,
+        )
+
+    # sqlite_master with literal name
+    def _literal_sub(match):
+        name = match.group(1)
+        return (
+            "FROM information_schema.tables WHERE table_schema='public' "
+            f"AND table_name='{name}'"
+        )
+
+    sql = _SQLITE_MASTER_LITERAL_RE.sub(_literal_sub, sql)
+
+    # datetime('now', '-N minutes') -> now() - interval 'N minutes'
+    # SQLite's '-N' already means subtraction; PostgreSQL uses now() - interval 'N'.
+    def _dt_sub(match):
+        n = match.group(1).lstrip('-')
+        unit = match.group(2).lower()
+        if unit.endswith('s'):
+            unit = unit[:-1]
+        return f"now() - interval '{n} {unit}'"
+
+    sql = _DATETIME_NOW_RE.sub(_dt_sub, sql)
+
+    # INSERT OR IGNORE -> INSERT ... ON CONFLICT DO NOTHING
+    # Only append ON CONFLICT to statements that originally used OR IGNORE,
+    # so plain INSERTs that should raise on conflict are left alone.
+    _was_or_ignore = bool(_INSERT_OR_IGNORE_RE.match(sql))
+    if _was_or_ignore:
+        sql = _INSERT_OR_IGNORE_RE.sub("INSERT INTO", sql)
+        if not re.search(r"\bON\s+CONFLICT\b", sql, re.IGNORECASE):
+            sql = sql.rstrip().rstrip(';') + " ON CONFLICT DO NOTHING"
+
+    # GROUP_CONCAT(x) -> string_agg(x::text, ',')
+    sql = _GROUP_CONCAT_RE.sub(r"string_agg(\1::text, ',')", sql)
+
+    # Remaining bare PRAGMAs (e.g. foreign_keys, foreign_key_check) -> no-op
     if re.match(r'^\s*PRAGMA\b', sql, re.IGNORECASE):
         return 'SELECT 1'
+
     # Convert ? placeholders to %s (psycopg2 style).
     return sql.replace('?', '%s')
 
@@ -61,12 +197,11 @@ class _PgCursor:
         self.lastrowid = None
         self.rowcount = real_cursor.rowcount
         self.description = real_cursor.description
-        self.row_factory = None  # kept for API compatibility; rows are already dict-like
+        self.row_factory = None
 
     def execute(self, sql, params=()):
         sql_t = _translate_sql(sql)
-        if _INSERT_RE.match(sql) and not _RETURNING_RE.search(sql):
-            # Append RETURNING id so lastrowid works on tables with an id column.
+        if _INSERT_RE.match(sql_t) and not _RETURNING_RE.search(sql_t):
             sql_t = sql_t.rstrip().rstrip(';') + ' RETURNING id'
             self._cursor.execute(sql_t, _as_tuple(params))
             row = self._cursor.fetchone()
@@ -85,22 +220,23 @@ class _PgCursor:
         return self
 
     def executescript(self, script):
-        # psycopg2 has no executescript; split on ';' and run each statement.
         for stmt in script.split(';'):
             stmt = stmt.strip()
             if stmt:
                 self._cursor.execute(stmt)
         return self
 
+    def _wrap(self, row):
+        return _DualRow(row) if row is not None else None
+
     def fetchone(self):
-        row = self._cursor.fetchone()
-        return row  # RealDictRow supports row['col']
+        return self._wrap(self._cursor.fetchone())
 
     def fetchall(self):
-        return self._cursor.fetchall()
+        return [self._wrap(r) for r in self._cursor.fetchall()]
 
     def fetchmany(self, size=1):
-        return self._cursor.fetchmany(size)
+        return [self._wrap(r) for r in self._cursor.fetchmany(size)]
 
     def close(self):
         self._cursor.close()
