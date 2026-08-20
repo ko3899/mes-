@@ -9,6 +9,14 @@ from device_platform.contracts import ContractError, DeviceEvent
 from services.device_event_ingest import ingest_device_event
 
 
+# Operational database errors that should be treated as retryable regardless of backend.
+_OperationalError = sqlite3.OperationalError
+try:
+    import psycopg2
+    _OperationalError = (sqlite3.OperationalError, psycopg2.OperationalError)
+except ImportError:  # pragma: no cover
+    pass
+
 TOPIC = re.compile(r'^mes/v1/([^/]+)/([^/]+)/([^/]+)/events/([^/]+)$')
 
 
@@ -68,7 +76,7 @@ class MqttEventConsumer:
             if event_id:
                 self._ack(customer, factory, gateway, device, event_id,
                           accepted=False, ack_message=str(exc),
-                          retryable=isinstance(exc, sqlite3.OperationalError))
+                          retryable=isinstance(exc, _OperationalError))
             try:
                 self._reject(message, str(exc))
             except sqlite3.Error:

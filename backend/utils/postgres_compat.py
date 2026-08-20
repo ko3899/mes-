@@ -177,6 +177,9 @@ def _translate_sql(sql):
     # GROUP_CONCAT(x) -> string_agg(x::text, ',')
     sql = _GROUP_CONCAT_RE.sub(r"string_agg(\1::text, ',')", sql)
 
+    # BEGIN IMMEDIATE / EXCLUSIVE -> BEGIN (PostgreSQL has no IMMEDIATE/EXCLUSIVE modifier)
+    sql = re.sub(r"\bBEGIN\s+(?:IMMEDIATE|EXCLUSIVE)\b", "BEGIN", sql, flags=re.IGNORECASE)
+
     # Remaining bare PRAGMAs (e.g. foreign_keys, foreign_key_check) -> no-op
     if re.match(r'^\s*PRAGMA\b', sql, re.IGNORECASE):
         return 'SELECT 1'

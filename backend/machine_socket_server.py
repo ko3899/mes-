@@ -26,9 +26,7 @@ class MachineRequestHandler(socketserver.StreamRequestHandler):
     def setup(self):
         super().setup()
         self.session_id = None
-        self._connection_slot = self.server.connection_slots.acquire(blocking=False)
-        if not self._connection_slot:
-            raise ConnectionRefusedError('通讯端点连接数已达上限')
+        self._connection_slot = False
         self.db = sqlite3.connect(self.server.db_path, timeout=5)
         self.db.row_factory = sqlite3.Row
         self.db.execute('PRAGMA busy_timeout=900')
@@ -55,6 +53,11 @@ class MachineRequestHandler(socketserver.StreamRequestHandler):
             self.db.commit()
             self.db.close()
             raise ConnectionRefusedError('远端IP不在端点白名单')
+        # 连接数上限在身份校验通过后再占用,避免恶意/非法连接耗尽连接槽
+        self._connection_slot = self.server.connection_slots.acquire(blocking=False)
+        if not self._connection_slot:
+            self.db.close()
+            raise ConnectionRefusedError('通讯端点连接数已达上限')
         remote = f'{self.client_address[0]}:{self.client_address[1]}'
         self.session_id = self.db.execute(
             '''INSERT INTO iot_machine_session(endpoint_id,remote_address,status,last_heartbeat_at)
