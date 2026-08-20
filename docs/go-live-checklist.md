@@ -75,8 +75,9 @@
 - [ ] **负责人**:开发 / **验证**:浏览器看 Cookie 属性
 
 ### 3.3 限流
-- [ ] `flask-limiter` 已安装(`pip show flask-limiter`)
-- [ ] 默认限流 200/day、50/hour 生效
+- [ ] `flask-limiter` 已安装时优先使用(`pip show flask-limiter`)
+- [ ] 未安装时,内置内存限流器兜底,默认 `200 per day`、`50 per hour`
+- [ ] 验证:连续请求 51 次 `/healthz` 后第 51 次返回 429
 - [ ] Nginx 登录接口限流 `1r/s`、API 限流 `10r/s` 生效
 - [ ] **负责人**:运维 / **验证**:压测脚本快速打登录接口,观察 429
 

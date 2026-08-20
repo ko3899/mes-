@@ -21,6 +21,8 @@ try:
 except ImportError:  # pragma: no cover
     _HAS_LIMITER = False
 
+from utils.rate_limiter import SimpleRateLimiter
+
 from utils.database import close_db, init_db, _init_extra_tables, DB_PATH, BASE_DIR, get_db
 from utils.helpers import login_required, gen_no, _load_session_user
 from blueprints.auth import auth_bp
@@ -96,12 +98,16 @@ def create_app():
     )
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-    # 限流（生产环境建议替换为 RedisStorage）
+    # 限流:优先使用 flask-limiter;未安装时使用内置内存限流兜底,避免生产环境无保护
     if _HAS_LIMITER:
         Limiter(
             key_func=get_remote_address,
             default_limits=['200 per day', '50 per hour'],
             storage_uri='memory://',
+        ).init_app(app)
+    else:
+        SimpleRateLimiter(
+            default_limits=['200 per day', '50 per hour'],
         ).init_app(app)
 
     # 注册 teardown
