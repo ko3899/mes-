@@ -92,14 +92,19 @@ def authenticate_gateway(db, gateway_id, timestamp, nonce, signature, body, max_
         now = int(time.time())
         db.execute('DELETE FROM iot_gateway_nonce WHERE expires_at IS NULL OR expires_at < ?',
                    (now,))
-        db.execute(
-            'INSERT INTO iot_gateway_nonce(gateway_code,nonce,expires_at) VALUES(?,?,?)',
+        # INSERT OR IGNORE + rowcount 检测重放,同时兼容 SQLite 与 PostgreSQL
+        # (postgres_compat 会把 OR IGNORE 翻译为 ON CONFLICT DO NOTHING)
+        cursor = db.execute(
+            'INSERT OR IGNORE INTO iot_gateway_nonce(gateway_code,nonce,expires_at) VALUES(?,?,?)',
             (gateway_id, nonce, now + int(max_skew)),
         )
         db.commit()
+        if cursor.rowcount == 0:
+            raise GatewayAuthError('gateway nonce replayed')
+    except GatewayAuthError:
+        db.rollback()
+        raise
     except Exception as exc:
         db.rollback()
-        if 'UNIQUE constraint failed' in str(exc):
-            raise GatewayAuthError('gateway nonce replayed') from exc
         raise
     return dict(row)
