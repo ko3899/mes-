@@ -97,3 +97,24 @@ def test_recovers_processing_file_after_restart(tmp_path):
     )
     collector.scan_once(); clock[0] = 103.0; collector.scan_once()
     assert imported == ['recovered.csv']
+
+
+def test_prunes_stale_observed_entries_to_avoid_memory_leak(tmp_path):
+    input_dir = tmp_path / 'input'; input_dir.mkdir()
+    db_path = tmp_path / 'collector.db'; make_db(db_path, input_dir)
+    (input_dir / 'stale.csv').write_bytes(b'payload')
+    clock = [100.0]
+    collector = MachineCsvCollector(
+        db_path, tmp_path / 'archive', now=lambda: clock[0],
+        importer=lambda *args: (_ for _ in ()).throw(AssertionError('must not import')),
+        failure_recorder=lambda *args: None,
+    )
+    # first scan observes the file
+    collector.scan_once()
+    assert (1, str((input_dir / 'stale.csv').resolve())) in collector._observed
+    # advance beyond 1 hour stale threshold
+    clock[0] = 3700.0
+    collector.scan_once()
+    # stale entry should be pruned
+    assert (1, str((input_dir / 'stale.csv').resolve())) not in collector._observed
+

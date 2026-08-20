@@ -113,9 +113,21 @@ class MachineCsvCollector:
             if item.is_file() and item.suffix.lower() == '.csv':
                 self._move(item, self._unique_target(input_dir, item.name))
 
+    def _prune_observed(self, now):
+        """清理已不存在或长时间未稳定的观测记录,避免内存无限增长。"""
+        stale_threshold = now - 3600  # 1小时未稳定视为过期
+        keys_to_remove = [
+            key for key, value in self._observed.items()
+            if now - value[2] > 3600
+        ]
+        for key in keys_to_remove:
+            del self._observed[key]
+
     def scan_once(self):
         summary = {'imported': 0, 'failed': 0, 'unstable_files': 0,
                    'missing_directories': 0, 'collector_directories': 0}
+        now = self.now()
+        self._prune_observed(now)
         db = sqlite3.connect(self.db_path, timeout=1)
         db.row_factory = sqlite3.Row
         db.execute('PRAGMA busy_timeout=900')
