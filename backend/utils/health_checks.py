@@ -48,20 +48,48 @@ def _table_count(db, table, where='1=1'):
 
 
 def _mqtt_probe():
-    """MQTT 消费者进程是否在运行(通过运行时标记表判断)。"""
+    """MQTT 消费者进程健康状态(通过运行时标记表判断)。"""
     try:
         db = get_db()
+        # 先确认表存在,避免首次启动时表尚未创建导致误报
+        table_exists = _table_count(db, 'iot_machine_runtime') is not None
+        if not table_exists:
+            return {'status': 'unknown', 'reason': 'iot_machine_runtime 表尚未创建'}
+
         row = db.execute(
             "SELECT component, status, heartbeat_at, last_error "
             "FROM iot_machine_runtime WHERE component='mqtt_consumer'"
         ).fetchone()
         if not row:
-            return {'status': 'unknown', 'reason': 'mqtt_consumer 未注册运行时'}
+            return {
+                'status': 'unknown',
+                'reason': 'mqtt_consumer 未注册运行时(消费者服务可能未启动)',
+            }
         data = dict(row) if not isinstance(row, dict) else row
+        heartbeat = data.get('heartbeat_at')
+        status = data.get('status', 'unknown')
         # 心跳超过 2 分钟视为失联
+        if heartbeat:
+            try:
+                # 兼容 ISO 字符串和 datetime 对象
+                from datetime import datetime
+                if isinstance(heartbeat, str):
+                    heartbeat_dt = datetime.fromisoformat(heartbeat.replace('Z', '+00:00'))
+                else:
+                    heartbeat_dt = heartbeat
+                age_seconds = (datetime.now(heartbeat_dt.tzinfo) - heartbeat_dt).total_seconds()
+                if age_seconds > 120:
+                    return {
+                        'status': 'stale',
+                        'reason': f'心跳已超时 {int(age_seconds)} 秒',
+                        'heartbeat_at': heartbeat,
+                        'last_error': data.get('last_error'),
+                    }
+            except Exception:
+                pass
         return {
-            'status': data.get('status', 'unknown'),
-            'heartbeat_at': data.get('heartbeat_at'),
+            'status': status,
+            'heartbeat_at': heartbeat,
             'last_error': data.get('last_error'),
         }
     except Exception as exc:
