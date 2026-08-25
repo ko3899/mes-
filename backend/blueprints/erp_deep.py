@@ -31,7 +31,7 @@ def sap_sync():
 def _integration_not_implemented():
     return jsonify({
         'code': 501,
-        'message': '该集成适配器尚未实现',
+        'message': 'ERP 集成未启用：请先在系统管理-ERP配置中填写对接信息，或联系管理员开通'
     }), 501
 
 

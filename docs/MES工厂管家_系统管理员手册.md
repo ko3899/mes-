@@ -122,7 +122,10 @@ docker compose up -d   # 需在 .env 中设置 SECRET_KEY
 
 | 配置项 | 说明 |
 |--------|------|
-| ai_enabled / ai_provider / ai_api_key / ai_model | AI 扩展（当前为占位，接入需配置 Provider 与 Key） |
+| ai_enabled | AI 总开关（1/0），开启后 `/api/ai/inspect` 可用 |
+| ai_provider | AI 提供方（`deepseek` / `openai`），默认 deepseek |
+| ai_api_key | 大模型 API Key（如 DeepSeek 的 `sk-...`） |
+| ai_model | 模型名（DeepSeek 默认 `deepseek-chat`） |
 
 其他运行配置通过环境变量控制：`MES_HOST`、`MES_PORT`、`MES_WORKERS`、`MES_ENV`、`SECRET_KEY`、`MES_ADMIN_HOST`（管理后台默认仅绑定 127.0.0.1）。
 
@@ -185,7 +188,7 @@ SQLite 单文件数据库，直接复制 `database/mes.db` 即可（建议停止
 
 | 功能 | 状态 | 说明 |
 |------|------|------|
-| AI 质检/智能分析 | 占位（503） | 需配置 Provider/Key 后接入 |
-| ERP 同步 | 占位（501） | 需明确对接系统后实现 |
+| AI 智能分析（/api/ai/inspect） | 已接入（DeepSeek） | 在 AI 配置中启用并填写 API Key 后即可使用；未配置返回 503 明确提示 |
+| ERP 同步 | 未启用（501） | 占位保留，未配置时返回明确提示；接入需明确对接系统后实现 |
 | 采购收料闭环 | 已实现 | 到货登记→收料过账→库存更新→采购单联动 |
 | 权限双轨 | 兼容模式 | 菜单权限 + 动作权限并存，别名映射为兼容旧配置 |
