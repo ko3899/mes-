@@ -15,6 +15,6 @@ echo.
 echo Collector: http://localhost:8080
 echo Admin: http://localhost:8081/admin
 echo.
-echo Login: admin / admin123
+echo Default admin credentials removed; use your changed admin password
 echo.
 pause

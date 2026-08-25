@@ -38,13 +38,21 @@ if not exist "logs" mkdir logs
 if not exist "backups" mkdir backups
 if not exist "uploads\documents" mkdir uploads\documents
 
+
+:: Production requires a strong SECRET_KEY
+if "%SECRET_KEY%"=="" (
+    echo [ERROR] SECRET_KEY environment variable is required in production.
+    pause
+    exit /b 1
+)
+set MES_ENV=production
 echo [3/3] 启动服务...
 echo.
 echo ========================================
 echo   服务已启动！
 echo   访问地址: http://localhost:8080
 echo   管理后台: http://localhost:8081/admin
-echo   默认账号: admin / admin123
+echo   Default admin credentials removed; use your changed admin password
 echo   按 Ctrl+C 停止服务
 echo ========================================
 echo.

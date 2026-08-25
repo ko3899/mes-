@@ -686,7 +686,10 @@ class TestAuthentication:
         resp = client.get('/api/captcha')
         data = assert_success(resp)
         assert 'key' in data['data']
-        assert 'hint' in data['data']
+        assert 'hint' not in data['data']
+        img = client.get('/api/captcha/image/' + data['data']['key'])
+        assert img.status_code == 200
+        assert img.content_type.startswith('image/svg+xml')
 
     def test_protected_endpoint_no_login(self, client):
         endpoints = [

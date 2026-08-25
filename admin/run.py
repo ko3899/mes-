@@ -20,7 +20,7 @@ def main():
     print("=" * 40)
     print("  MES Admin")
     print("  http://localhost:8081/admin")
-    print("  admin / admin123")
+    print("  Default admin credentials must be changed before deployment")
     print("=" * 40)
     
     init_db()
@@ -32,7 +32,8 @@ def main():
     
     if os.environ.get('MES_OPEN_BROWSER', '1') != '0':
         threading.Thread(target=open_browser, daemon=True).start()
-    app.run(host='0.0.0.0', port=8081, debug=False)
+    admin_host = os.environ.get('MES_ADMIN_HOST', '127.0.0.1')
+    app.run(host=admin_host, port=8081, debug=False)
 
 if __name__ == '__main__':
     main()

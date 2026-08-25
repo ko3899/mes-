@@ -40,7 +40,7 @@ def main():
     print("服务启动中...")
     print("管理后台: http://localhost:8080/admin")
     print("采集终端: http://localhost:8080")
-    print("账号: admin / admin123")
+    print("默认口令已移除，请使用已修改的管理员账号登录")
     
     machine_runtime = MachineCommunicationRuntime()
     machine_runtime.start()

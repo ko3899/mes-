@@ -12,8 +12,10 @@ services:
       - ./backups:/app/backups
       - ./uploads:/app/uploads
     environment:
-      # 生产环境必须注入强随机密钥，例如：
+      # 生产环境必须通过 .env 或 shell 注入强随机密钥，例如：
       # SECRET_KEY=<openssl rand -hex 32>
+      - MES_ENV=production
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in .env}
       - MES_HOST=0.0.0.0
       - MES_PORT=8080
       - MES_WORKERS=4

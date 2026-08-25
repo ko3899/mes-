@@ -57,6 +57,6 @@ echo     管理后台: http://localhost:8080/admin
 echo     采集终端: http://localhost:8080
 echo     生产看板: http://localhost:8080/kanban
 echo.
-echo   默认账号: admin / admin123
+echo   Default admin credentials removed; use your changed admin password
 echo.
 pause

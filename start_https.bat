@@ -23,6 +23,14 @@ if not exist "certs\server.crt" (
     echo   自签名证书已生成: certs\server.crt
 )
 
+
+:: Production requires a strong SECRET_KEY
+if "%SECRET_KEY%"=="" (
+    echo [ERROR] SECRET_KEY environment variable is required in production.
+    pause
+    exit /b 1
+)
+set MES_ENV=production
 echo 启动 HTTPS 服务器...
 py -3.13 -c "
 import ssl
@@ -40,7 +48,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.info('MES工厂管家 HTTPS 模式启动中...')
 logger.info('访问地址: https://localhost:8443')
-logger.info('默认账号: admin / admin123')
+logger.info('Default admin credentials removed; use your changed admin password')
 
 # 使用 waitress + SSL
 import subprocess
