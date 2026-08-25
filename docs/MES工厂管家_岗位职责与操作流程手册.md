@@ -201,14 +201,16 @@
 
 ## 附：岗位-权限对照建议（管理员配置参考）
 
-| 岗位 | 建议权限 key |
-|------|--------------|
-| 生产计划员 | prod:read、prod:write、prod:batch:write、schedule:write |
-| 车间主任/班组长 | prod:read、prod:task:write、prod:report:audit、flow:approve |
-| 操作工 | prod:task:write、prod:report:post（采集端） |
-| 质检员 | quality:write、qm:*、spc:read |
-| 仓管员 | inv:write、inv:read、warehouse:write |
-| 设备管理员 | eqp:read、eqp:write、eqp_schedule:write |
-| 采购员 | scm:write、scm:receipt、supplier:read |
+> 以下 7 个业务角色已由 `backend/init_business_roles.py` 内置到系统（幂等脚本，可重复执行），管理员只需在"用户管理"中给员工账号选择对应角色即可。角色权限遵循最小权限原则，可按需在"角色权限"中调整。
+
+| 岗位 | 系统角色 role_key | 建议权限 key |
+|------|------------------|--------------|
+| 生产计划员 | planner | prod:plan:write、prod:workorder:write、prod:batch:write、aps:write |
+| 车间主任/班组长 | workshop_leader | prod:task:write、prod:report:review、prod:report:post、flow:approve |
+| 操作工 | operator | prod:task:list、prod:report:create |
+| 质检员 | quality_inspector | quality:write、qm:process:list |
+| 仓管员 | warehouse_keeper | inv:write、scm:receipt |
+| 设备管理员 | equipment_admin | eqp:write、iot:write、tool:write |
+| 采购员 | purchaser | scm:write、scm:receipt |
 
 > 实际权限以系统管理 → 权限目录中的定义为准，遵循最小权限原则分配。
