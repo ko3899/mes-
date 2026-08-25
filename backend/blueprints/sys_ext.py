@@ -80,6 +80,8 @@ ACTION_PERMISSION_CATALOG = [
     {'key': 'prod:sales:write', 'label': '销售订单-维护'},
     {'key': 'prod:plan:read', 'label': '生产计划-查看'},
     {'key': 'prod:plan:write', 'label': '生产计划-维护'},
+    {'key': 'plan:control:read', 'label': '计划控制-查看'},
+    {'key': 'plan:control:write', 'label': '计划控制-维护'},
     {'key': 'prod:batch:read', 'label': '生产批次-查看'},
     {'key': 'prod:batch:write', 'label': '生产批次-维护'},
     {'key': 'prod:workorder:read', 'label': '工单-查看'},

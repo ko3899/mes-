@@ -26,7 +26,7 @@ var MENUS = [
         {k:'warehouse/arrival',t:'到货通知'},{k:'warehouse/transaction',t:'库存事务'}
     ]},
     {k:'prod', t:'生产管理', sub:[
-        {k:'prod/sales',t:'销售订单'},{k:'prod/plan',t:'生产计划'},{k:'prod/batch',t:'生产批次'},
+        {k:'prod/sales',t:'销售订单'},{k:'prod/plan',t:'生产计划'},{k:'prod/plan-control',t:'计划控制'},{k:'prod/batch',t:'生产批次'},
         {k:'prod/workorder',t:'工单管理'},{k:'prod/task',t:'任务管理'},{k:'prod/report',t:'报工管理'},
         {k:'prod/transfer',t:'工序转移'},{k:'prod/material',t:'生产领料'},
         {k:'prod/outsource',t:'委外加工'},{k:'prod/serial',t:'序列号'},{k:'prod/labor',t:'工时统计'},{k:'prod/packing',t:'包装管理'},

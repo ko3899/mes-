@@ -2094,6 +2094,22 @@ def _init_extra_tables():
             pass
     from services.quality_disposition import create_quality_disposition_tables
     create_quality_disposition_tables(db)
+    # 计划控制：计划员按 产品+阶段码 控制计划镭雕数量，避免多版本共用导致多做返工。
+    # 余量 balance_qty = plan_qty - ok_qty 为计算值，不落库。
+    db.execute('''CREATE TABLE IF NOT EXISTS prod_plan_control (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL,
+        stage_code TEXT DEFAULT '',
+        plan_qty INTEGER NOT NULL DEFAULT 0,
+        ok_qty INTEGER NOT NULL DEFAULT 0,
+        adjust_qty INTEGER NOT NULL DEFAULT 0,
+        remark TEXT DEFAULT '',
+        status INTEGER NOT NULL DEFAULT 1,
+        created_by INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(product_id, stage_code)
+    )''')
     db.commit()
     db.close()
 
