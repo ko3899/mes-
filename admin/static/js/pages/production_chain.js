@@ -445,7 +445,7 @@ function reportOpenEditor() {
         var tasks = chainList(response).filter(function(task) { return Number(task.status) < 3; });
         document.getElementById('mTitle').textContent = '提交生产报工';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>生产任务 *</label><select id="reportTask">'
-            + routeOptions(tasks.map(function(task) { return {id:task.id,label:task.task_no+' / '+task.workorder_no+' / '+task.process_name}; }), 'id', 'label', '')
+            + routeOptions(tasks.map(function(task) { return {id:task.id,label:task.task_no+' / '+MESUI.escapeHtml(task.workorder_no)+' / '+task.process_name}; }), 'id', 'label', '')
             + '</select></div><div class="form-item"><label>当前可执行数量</label><input id="reportAvailable" readonly value="请先选择任务"></div></div>'
             + '<div class="form-row"><div class="form-item"><label>合格数量 *</label><input id="reportQualified" type="number" min="0"></div><div class="form-item"><label>不良数量</label><input id="reportDefect" type="number" min="0" value="0"></div></div>'
             + '<div class="form-row"><div class="form-item"><label>备注</label><input id="reportRemark" value="生产业务链测试"></div></div>';

@@ -23,7 +23,7 @@ function maintLoad() {
             h += '<td>'+MESUI.escapeHtml(r2.check_items||'-')+'</td><td>'+MESUI.escapeHtml(r2.frequency||'-')+'</td>';
             h += '<td'+(overdue?' style="color:#f5222d;font-weight:bold"':'')+'>'+MESUI.escapeHtml(r2.next_date||'-')+'</td>';
             h += '<td>'+statusTag+'</td>';
-            h += '<td>'+(r2.status ? '<button class="btn btn-green btn-sm" onclick="maintExec('+r2.id+','+r2.equipment_id+')">执行保养</button> ' : '');
+            h += '<td>'+(r2.status ? '<button class="btn btn-green btn-sm" onclick="maintExec('+r2.id+','+MESUI.escapeHtml(r2.equipment_id)+')">执行保养</button> ' : '');
             h += '<button class="btn btn-red btn-sm" onclick="maintDel('+r2.id+')">删除</button></td></tr>';
         });
         tb.innerHTML = h;
@@ -119,7 +119,7 @@ function batchAdd() {
     api('/api/base/product/all').then(function(r) {
         var prods = (r && r.data) ? r.data : [];
         var opts = '<option value="">请选择产品</option>';
-        prods.forEach(function(p) { opts += '<option value="'+p.id+'">'+p.product_name+' ('+p.code+')</option>'; });
+        prods.forEach(function(p) { opts += '<option value="'+p.id+'">'+MESUI.escapeHtml(p.product_name)+' ('+MESUI.escapeHtml(p.code)+')</option>'; });
         document.getElementById('mTitle').textContent = '新增批次';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>批次号<span style="color:red">*</span></label><input id="f_bn"></div>'
             + '<div class="form-item"><label>产品<span style="color:red">*</span></label><select id="f_pid">'+opts+'</select></div></div>'

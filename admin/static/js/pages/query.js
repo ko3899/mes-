@@ -28,9 +28,9 @@ function queryProduction() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">无匹配数据</td></tr>'; return; }
         var st = {0:'<span class="tag tag-draft">草稿</span>',1:'<span class="tag tag-wait">已下达</span>',2:'<span class="tag tag-run">生产中</span>',3:'<span class="tag tag-ok">已完工</span>',4:'<span class="tag tag-wait">已暂停</span>',5:'<span class="tag tag-ok">已关闭</span>',6:'<span class="tag tag-no">已取消</span>'};
         tb.innerHTML = list.map(function(w) {
-            return '<tr><td>'+w.order_no+'</td><td>'+(w.product_name||'-')+'</td><td>'+w.planned_qty+'</td><td>'+w.completed_qty+'</td>'
-                +'<td>'+(w.defect_qty||0)+'</td><td>'+(w.workshop_name||'-')+'</td>'
-                +'<td>'+(st[w.status]||'-')+'</td><td>'+(w.created_at||'')+'</td></tr>';
+            return '<tr><td>'+MESUI.escapeHtml(w.order_no)+'</td><td>'+MESUI.escapeHtml(w.product_name||'-')+'</td><td>'+MESUI.escapeHtml(w.planned_qty)+'</td><td>'+w.completed_qty+'</td>'
+                +'<td>'+(w.defect_qty||0)+'</td><td>'+MESUI.escapeHtml(w.workshop_name||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(st[w.status]||'-')+'</td><td>'+(w.created_at||'')+'</td></tr>';
         }).join('');
     });
 }
@@ -71,8 +71,8 @@ function queryInventory() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">无匹配数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(b) {
             var qtyColor = b.quantity < 10 ? '#f5222d' : '#333';
-            return '<tr><td>'+b.product_name+'</td><td>'+b.code+'</td><td>'+(b.product_type||'-')+'</td>'
-                +'<td style="color:'+qtyColor+';font-weight:bold">'+b.quantity+'</td><td>'+(b.unit||'-')+'</td>'
+            return '<tr><td>'+MESUI.escapeHtml(b.product_name)+'</td><td>'+MESUI.escapeHtml(b.code)+'</td><td>'+(b.product_type||'-')+'</td>'
+                +'<td style="color:'+qtyColor+';font-weight:bold">'+MESUI.escapeHtml(b.quantity)+'</td><td>'+MESUI.escapeHtml(b.unit||'-')+'</td>'
                 +'<td>¥'+(b.amount||0).toFixed(2)+'</td></tr>';
         }).join('');
     });
@@ -107,9 +107,9 @@ function queryQuality() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">无匹配数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(q) {
             var resultTag = q.result === '合格' ? '<span class="tag tag-ok">合格</span>' : '<span class="tag tag-no">不合格</span>';
-            return '<tr><td>'+q.inspect_no+'</td><td>'+(q.supplier||q.workorder_id||q.customer||'-')+'</td>'
+            return '<tr><td>'+MESUI.escapeHtml(q.inspect_no)+'</td><td>'+(q.supplier||q.workorder_id||q.customer||'-')+'</td>'
                 +'<td>'+resultTag+'</td>'
-                +'<td><span class="tag '+(q.status?'tag-ok':'tag-wait')+'">'+(q.status?'已检':'待检')+'</span></td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(q.status?'tag-ok':'tag-wait')+'">'+MESUI.escapeHtml(q.status?'已检':'待检')+'</span></td>'
                 +'<td>'+(q.created_at||'')+'</td></tr>';
         }).join('');
     });
@@ -139,9 +139,9 @@ function queryEquipment() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">无匹配数据</td></tr>'; return; }
         var st = {1:'<span class="tag tag-ok">运行</span>',2:'<span class="tag tag-run">维修</span>',0:'<span class="tag tag-draft">停用</span>'};
         tb.innerHTML = list.map(function(e) {
-            return '<tr><td>'+e.equipment_name+'</td><td>'+e.code+'</td><td>'+(e.model||'-')+'</td>'
-                +'<td>'+(e.manufacturer||'-')+'</td><td>'+(e.workshop_name||'-')+'</td>'
-                +'<td>'+(st[e.status]||'-')+'</td></tr>';
+            return '<tr><td>'+MESUI.escapeHtml(e.equipment_name)+'</td><td>'+MESUI.escapeHtml(e.code)+'</td><td>'+MESUI.escapeHtml(e.model||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(e.manufacturer||'-')+'</td><td>'+MESUI.escapeHtml(e.workshop_name||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(st[e.status]||'-')+'</td></tr>';
         }).join('');
     });
 }
@@ -165,9 +165,9 @@ function queryEmployee() {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">无匹配数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(u) {
-            return '<tr><td>'+u.username+'</td><td>'+u.real_name+'</td><td>'+(u.phone||'-')+'</td>'
-                +'<td>'+(u.dept_name||'-')+'</td><td>'+(u.role_name||'-')+'</td>'
-                +'<td><span class="tag '+(u.status?'tag-ok':'tag-draft')+'">'+(u.status?'在职':'离职')+'</span></td></tr>';
+            return '<tr><td>'+MESUI.escapeHtml(u.username)+'</td><td>'+MESUI.escapeHtml(u.real_name)+'</td><td>'+MESUI.escapeHtml(u.phone||'-')+'</td>'
+                +'<td>'+(u.dept_name||'-')+'</td><td>'+MESUI.escapeHtml(u.role_name||'-')+'</td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(u.status?'tag-ok':'tag-draft')+'">'+MESUI.escapeHtml(u.status?'在职':'离职')+'</span></td></tr>';
         }).join('');
     });
 }

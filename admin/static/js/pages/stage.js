@@ -18,10 +18,10 @@ function stageCodeLoad() {
                 +'<button class="btn btn-gray btn-sm" onclick="stageReorder('+s.id+',\'up\')" '+(i===0?'disabled':'')+'>▲</button> '
                 +'<button class="btn btn-gray btn-sm" onclick="stageReorder('+s.id+',\'down\')" '+(i===r.data.length-1?'disabled':'')+'>▼</button></td>'
                 +'<td>'+s.id+'</td><td><span style="color:'+s.color+';font-weight:bold">'+s.stage_name+'</span></td>'
-                +'<td><code>'+s.code+'</code></td>'
+                +'<td><code>'+MESUI.escapeHtml(s.code)+'</code></td>'
                 +'<td><span style="display:inline-block;width:20px;height:20px;background:'+s.color+';border-radius:4px;vertical-align:middle"></span></td>'
-                +'<td>'+(s.description||'-')+'</td>'
-                +'<td><span class="tag '+(s.status?'tag-ok':'tag-draft')+'">'+(s.status?'启用':'停用')+'</span></td>'
+                +'<td>'+MESUI.escapeHtml(s.description||'-')+'</td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(s.status?'tag-ok':'tag-draft')+'">'+MESUI.escapeHtml(s.status?'启用':'停用')+'</span></td>'
                 +'<td class="actions"><button class="btn btn-blue btn-sm" onclick=\'stageEdit('+escapeJson(s)+')\'>编辑</button>'
                 +'<button class="btn btn-red btn-sm" onclick="stageDel('+s.id+')">删除</button></td></tr>';
         }).join('');
@@ -45,10 +45,10 @@ function stageAdd() {
 }
 function stageEdit(row) {
     document.getElementById('mTitle').textContent = '编辑阶段码';
-    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>阶段名称<span style="color:red">*</span></label><input id="f_name" value="'+row.stage_name+'"></div>'
-        + '<div class="form-item"><label>编码<span style="color:red">*</span></label><input id="f_code" value="'+row.code+'" disabled></div></div>'
-        + '<div class="form-row"><div class="form-item"><label>颜色</label><input id="f_color" type="color" value="'+row.color+'"></div>'
-        + '<div class="form-item"><label>描述</label><input id="f_desc" value="'+(row.description||'')+'"></div></div>';
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>阶段名称<span style="color:red">*</span></label><input id="f_name" value="'+MESUI.escapeHtml(row.stage_name)+'"></div>'
+        + '<div class="form-item"><label>编码<span style="color:red">*</span></label><input id="f_code" value="'+MESUI.escapeHtml(row.code)+'" disabled></div></div>'
+        + '<div class="form-row"><div class="form-item"><label>颜色</label><input id="f_color" type="color" value="'+MESUI.escapeHtml(row.color)+'"></div>'
+        + '<div class="form-item"><label>描述</label><input id="f_desc" value="'+MESUI.escapeHtml(row.description||'')+'"></div></div>';
     modalSaveHandler = function() {
         var d = {id:row.id, stage_name:document.getElementById('f_name').value,
             color:document.getElementById('f_color').value, description:document.getElementById('f_desc').value};
@@ -77,8 +77,8 @@ function stageRecordLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="10" class="empty">暂无记录</td></tr>'; return; }
         tb.innerHTML = list.map(function(sr) {
             var isComplete = sr.end_time;
-            return '<tr><td>'+sr.id+'</td><td><code>'+sr.stage_code+'</code></td><td>'+(sr.workorder_no||'-')+'</td>'
-                +'<td>'+(sr.product_name||'-')+'</td><td>'+sr.quantity+'</td><td>'+(sr.real_name||'-')+'</td>'
+            return '<tr><td>'+sr.id+'</td><td><code>'+sr.stage_code+'</code></td><td>'+MESUI.escapeHtml(sr.workorder_no||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(sr.product_name||'-')+'</td><td>'+MESUI.escapeHtml(sr.quantity)+'</td><td>'+MESUI.escapeHtml(sr.real_name||'-')+'</td>'
                 +'<td>'+(sr.start_time||'-')+'</td><td>'+(sr.end_time||'-')+'</td><td>'+(sr.duration?sr.duration+'分钟':'-')+'</td>'
                 +'<td>'+(isComplete?'<span class="tag tag-ok">已完成</span>':'<button class="btn btn-green btn-sm" onclick="srComplete('+sr.id+')">完成</button>')+'</td></tr>';
         }).join('');
@@ -87,11 +87,11 @@ function stageRecordLoad() {
 function stageRecordAdd() {
     Promise.all([api('/api/stage/code/list'), api('/api/prod/workorder/list?size=500'), api('/api/base/product/all')]).then(function(r) {
         var stageOpts = '<option value="">选择阶段</option>';
-        (r[0]?.data||[]).forEach(function(s) { stageOpts += '<option value="'+s.code+'">'+s.stage_name+' ('+s.code+')</option>'; });
+        (r[0]?.data||[]).forEach(function(s) { stageOpts += '<option value="'+MESUI.escapeHtml(s.code)+'">'+s.stage_name+' ('+MESUI.escapeHtml(s.code)+')</option>'; });
         var woOpts = '<option value="">选择工单(可选)</option>';
-        (r[1]?.data?.list||[]).forEach(function(w) { woOpts += '<option value="'+w.id+'">'+w.order_no+'</option>'; });
+        (r[1]?.data?.list||[]).forEach(function(w) { woOpts += '<option value="'+w.id+'">'+MESUI.escapeHtml(w.order_no)+'</option>'; });
         var prodOpts = '<option value="">选择产品(可选)</option>';
-        (r[2]?.data||[]).forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+p.product_name+'</option>'; });
+        (r[2]?.data||[]).forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+MESUI.escapeHtml(p.product_name)+'</option>'; });
         
         document.getElementById('mTitle').textContent = '新增阶段记录';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>阶段<span style="color:red">*</span></label><select id="f_stage">'+stageOpts+'</select></div>'

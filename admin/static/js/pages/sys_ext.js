@@ -21,7 +21,7 @@ function loginLogLoad(page) {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(l) {
             return '<tr><td>'+MESUI.escapeHtml(l.id)+'</td><td>'+MESUI.escapeHtml(l.username)+'</td><td>'+MESUI.escapeHtml(l.login_ip||'-')+'</td>'
-                +'<td><span class="tag '+(l.status?'tag-ok':'tag-no')+'">'+(l.status?'成功':'失败')+'</span></td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(l.status?'tag-ok':'tag-no')+'">'+MESUI.escapeHtml(l.status?'成功':'失败')+'</span></td>'
                 +'<td>'+MESUI.escapeHtml(l.login_time||'')+'</td></tr>';
         }).join('');
     });
@@ -32,7 +32,7 @@ function loginLogStats() {
         var d = r.data;
         document.getElementById('loginStats').innerHTML = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">'
             +'<div class="stat"><div class="label">今日登录</div><div class="val">'+d.today+'</div></div>'
-            +'<div class="stat"><div class="label">总登录数</div><div class="val">'+d.total+'</div></div>'
+            +'<div class="stat"><div class="label">总登录数</div><div class="val">'+MESUI.escapeHtml(d.total)+'</div></div>'
             +'<div class="stat"><div class="label">登录失败</div><div class="val" style="color:#f5222d">'+d.failed+'</div></div>'
             +'</div>';
     });
@@ -124,7 +124,7 @@ function annLoad() {
             var id = Number(a.id);
             return '<tr><td>'+MESUI.escapeHtml(a.id)+'</td><td>'+MESUI.escapeHtml(a.title)+'</td><td>'+MESUI.escapeHtml(a.notice_type)+'</td>'
                 +'<td>'+MESUI.escapeHtml(a.priority)+'</td>'
-                +'<td><span class="tag '+(a.status?'tag-ok':'tag-draft')+'">'+(a.status?'发布':'草稿')+'</span></td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(a.status?'tag-ok':'tag-draft')+'">'+MESUI.escapeHtml(a.status?'发布':'草稿')+'</span></td>'
                 +'<td>'+MESUI.escapeHtml(a.publish_time||'')+'</td>'
                 +'<td><button class="btn btn-red btn-sm" onclick="annDel('+id+')">删除</button></td></tr>';
         }).join('');
@@ -227,7 +227,7 @@ function ipLoad() {
         tb.innerHTML = list.map(function(ip) {
             var id = Number(ip.id);
             return '<tr><td>'+MESUI.escapeHtml(ip.id)+'</td><td><b>'+MESUI.escapeHtml(ip.ip_address)+'</b></td><td>'+MESUI.escapeHtml(ip.description||'-')+'</td>'
-                +'<td><span class="tag '+(ip.status?'tag-ok':'tag-draft')+'">'+(ip.status?'启用':'禁用')+'</span></td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(ip.status?'tag-ok':'tag-draft')+'">'+MESUI.escapeHtml(ip.status?'启用':'禁用')+'</span></td>'
                 +'<td><button class="btn btn-red btn-sm" onclick="ipDel('+id+')">删除</button></td></tr>';
         }).join('');
     });
@@ -265,7 +265,7 @@ function ptLoad() {
         tb.innerHTML = list.map(function(t) {
             var id = Number(t.id);
             return '<tr><td>'+MESUI.escapeHtml(t.id)+'</td><td>'+MESUI.escapeHtml(t.template_name)+'</td><td>'+MESUI.escapeHtml(t.biz_type)+'</td>'
-                +'<td><span class="tag '+(t.status?'tag-ok':'tag-draft')+'">'+(t.status?'启用':'禁用')+'</span></td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(t.status?'tag-ok':'tag-draft')+'">'+MESUI.escapeHtml(t.status?'启用':'禁用')+'</span></td>'
                 +'<td><button class="btn btn-red btn-sm" onclick="ptDel('+id+')">删除</button></td></tr>';
         }).join('');
     });

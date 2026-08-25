@@ -20,7 +20,7 @@ function flowDefLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(r2) {
             return '<tr><td>'+MESUI.escapeHtml(r2.id)+'</td><td>'+MESUI.escapeHtml(r2.flow_name)+'</td><td>'+MESUI.escapeHtml(r2.flow_key)+'</td><td>'+MESUI.escapeHtml(r2.description||'-')+'</td>'
-                +'<td><span class="tag '+(r2.status?'tag-ok':'tag-draft')+'">'+(r2.status?'启用':'停用')+'</span></td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(r2.status?'tag-ok':'tag-draft')+'">'+MESUI.escapeHtml(r2.status?'启用':'停用')+'</span></td>'
                 +'<td><button class="btn btn-blue btn-sm" onclick="flowDefEdit('+r2.id+')">编辑</button> '
                 +'<button class="btn btn-red btn-sm" onclick="flowDefDel('+r2.id+')">删除</button></td></tr>';
         }).join('');
@@ -132,7 +132,7 @@ function flowSubmit() {
         var r = responses[0];
         var flows = (r && r.data) ? (r.data.list||[]) : [];
         var opts = '<option value="">请选择流程</option>';
-        flows.forEach(function(f) { if(f.status) opts += '<option value="'+f.id+'">'+f.flow_name+'</option>'; });
+        flows.forEach(function(f) { if(f.status) opts += '<option value="'+f.id+'">'+MESUI.escapeHtml(f.flow_name)+'</option>'; });
         var workorders = responses[1] && responses[1].data ? (responses[1].data.list || []).filter(function(workorder) {
             return Number(workorder.status) === 0;
         }) : [];
@@ -226,7 +226,7 @@ function renderSPC(el) {
         if(!r) return;
         var list = r.data && r.data.list ? r.data.list : [];
         var sel = document.getElementById('spcProc');
-        list.forEach(function(p) { sel.innerHTML += '<option value="'+p.id+'">'+p.process_name+'</option>'; });
+        list.forEach(function(p) { sel.innerHTML += '<option value="'+p.id+'">'+MESUI.escapeHtml(p.process_name)+'</option>'; });
     });
 }
 function spcLoad() {

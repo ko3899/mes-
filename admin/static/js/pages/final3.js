@@ -16,9 +16,9 @@ function trainLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>'; return; }
         var st = {0:'待开始',1:'进行中',2:'已完成'};
         tb.innerHTML = list.map(function(t) {
-            return '<tr><td>'+t.id+'</td><td>'+t.training_name+'</td><td>'+(t.training_type||'-')+'</td>'
-                +'<td>'+(t.trainer||'-')+'</td><td>'+(t.start_date||'-')+'</td><td>'+(t.end_date||'-')+'</td>'
-                +'<td><span class="tag '+(t.status===2?'tag-ok':t.status?'tag-run':'tag-wait')+'">'+(st[t.status]||'待开始')+'</span></td>'
+            return '<tr><td>'+t.id+'</td><td>'+MESUI.escapeHtml(t.training_name)+'</td><td>'+MESUI.escapeHtml(t.training_type||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(t.trainer||'-')+'</td><td>'+MESUI.escapeHtml(t.start_date||'-')+'</td><td>'+MESUI.escapeHtml(t.end_date||'-')+'</td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(t.status===2?'tag-ok':t.status?'tag-run':'tag-wait')+'">'+MESUI.escapeHtml(st[t.status]||'待开始')+'</span></td>'
                 +'<td><button class="btn btn-red btn-sm" onclick="trainDel('+t.id+')">删除</button></td></tr>';
         }).join('');
     });
@@ -62,9 +62,9 @@ function skillLoad() {
         var levels = {0:'未评估',1:'初级',2:'中级',3:'高级',4:'专家'};
         var colors = {'0':'#999','1':'#fa8c16','2':'#1890ff','3':'#52c41a','4':'#722ed1'};
         tb.innerHTML = r.data.map(function(s) {
-            return '<tr><td>'+s.id+'</td><td>'+(s.real_name||'-')+'</td><td>'+(s.process_name||'-')+'</td>'
-                +'<td><span style="color:'+(colors[s.skill_level]||'#333')+';font-weight:bold">'+(levels[s.skill_level]||'-')+'</span></td>'
-                +'<td>'+(s.cert_date||'-')+'</td><td>'+(s.expiry_date||'-')+'</td>'
+            return '<tr><td>'+s.id+'</td><td>'+MESUI.escapeHtml(s.real_name||'-')+'</td><td>'+MESUI.escapeHtml(s.process_name||'-')+'</td>'
+                +'<td><span style="color:'+MESUI.escapeHtml(colors[s.skill_level]||'#333')+';font-weight:bold">'+MESUI.escapeHtml(levels[s.skill_level]||'-')+'</span></td>'
+                +'<td>'+MESUI.escapeHtml(s.cert_date||'-')+'</td><td>'+MESUI.escapeHtml(s.expiry_date||'-')+'</td>'
                 +'<td><button class="btn btn-red btn-sm" onclick="skillDel('+s.id+')">删除</button></td></tr>';
         }).join('');
     });
@@ -78,10 +78,10 @@ function skillMatrixView() {
         var levels = {0:'-',1:'初',2:'中',3:'高',4:'专'};
         var colors = {'0':'#f5f5f5','1':'#fff7e6','2':'#e6f7ff','3':'#f6ffed','4':'#f9f0ff'};
         var h = '<table style="font-size:12px"><thead><tr><th>员工</th>';
-        d.processes.forEach(function(p) { h += '<th>'+p.process_name+'</th>'; });
+        d.processes.forEach(function(p) { h += '<th>'+MESUI.escapeHtml(p.process_name)+'</th>'; });
         h += '</tr></thead><tbody>';
         d.users.forEach(function(u) {
-            h += '<tr><td>'+u.real_name+'</td>';
+            h += '<tr><td>'+MESUI.escapeHtml(u.real_name)+'</td>';
             d.processes.forEach(function(p) {
                 var level = d.matrix[u.id+'_'+p.id] || 0;
                 h += '<td style="background:'+(colors[level]||'#f5f5f5')+';text-align:center;font-weight:bold">'+(levels[level]||'-')+'</td>';
@@ -95,9 +95,9 @@ function skillMatrixView() {
 function skillAdd() {
     Promise.all([api('/api/sys/user/list?size=100'), api('/api/base/process/list?size=100')]).then(function(r) {
         var userOpts = '<option value="">选择员工</option>';
-        (r[0]?.data?.list||[]).forEach(function(u) { userOpts += '<option value="'+u.id+'">'+u.real_name+'</option>'; });
+        (r[0]?.data?.list||[]).forEach(function(u) { userOpts += '<option value="'+u.id+'">'+MESUI.escapeHtml(u.real_name)+'</option>'; });
         var procOpts = '<option value="">选择工序</option>';
-        (r[1]?.data?.list||[]).forEach(function(p) { procOpts += '<option value="'+p.id+'">'+p.process_name+'</option>'; });
+        (r[1]?.data?.list||[]).forEach(function(p) { procOpts += '<option value="'+p.id+'">'+MESUI.escapeHtml(p.process_name)+'</option>'; });
         document.getElementById('mTitle').textContent = '新增技能评估';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>员工<span style="color:red">*</span></label><select id="f_user">'+userOpts+'</select></div>'
             + '<div class="form-item"><label>工序<span style="color:red">*</span></label><select id="f_proc">'+procOpts+'</select></div></div>'
@@ -135,11 +135,11 @@ function audit5sLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="11" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(a) {
             var scoreColor = a.total_score >= 80 ? '#52c41a' : (a.total_score >= 60 ? '#fa8c16' : '#f5222d');
-            return '<tr><td>'+a.id+'</td><td>'+a.audit_no+'</td><td>'+(a.workshop_name||'-')+'</td><td>'+a.audit_date+'</td>'
+            return '<tr><td>'+a.id+'</td><td>'+MESUI.escapeHtml(a.audit_no)+'</td><td>'+MESUI.escapeHtml(a.workshop_name||'-')+'</td><td>'+MESUI.escapeHtml(a.audit_date)+'</td>'
                 +'<td>'+a.sort_score+'</td><td>'+a.set_in_order_score+'</td><td>'+a.shine_score+'</td>'
                 +'<td>'+a.standardize_score+'</td><td>'+a.sustain_score+'</td>'
                 +'<td style="color:'+scoreColor+';font-weight:bold">'+a.total_score+'</td>'
-                +'<td><span class="tag '+(a.status?'tag-ok':'tag-wait')+'">'+(a.status?'已整改':'待整改')+'</span></td></tr>';
+                +'<td><span class="tag '+MESUI.escapeHtml(a.status?'tag-ok':'tag-wait')+'">'+MESUI.escapeHtml(a.status?'已整改':'待整改')+'</span></td></tr>';
         }).join('');
     });
 }
@@ -151,7 +151,7 @@ function audit5sStatsLoad() {
             +r.data.map(function(s) {
                 var color = s.avg_score >= 80 ? '#52c41a' : (s.avg_score >= 60 ? '#fa8c16' : '#f5222d');
                 return '<div style="background:#f0f5ff;padding:12px;border-radius:8px;text-align:center">'
-                    +'<div style="font-weight:bold">'+s.workshop_name+'</div>'
+                    +'<div style="font-weight:bold">'+MESUI.escapeHtml(s.workshop_name)+'</div>'
                     +'<div style="font-size:20px;color:'+color+'">'+s.avg_score.toFixed(1)+'分</div>'
                     +'<div style="font-size:12px;color:#666">'+s.audit_count+'次检查</div></div>';
             }).join('')+'</div>';
@@ -160,7 +160,7 @@ function audit5sStatsLoad() {
 function audit5sAdd() {
     api('/api/base/workshop/list?size=100').then(function(r) {
         var opts = '<option value="">选择车间</option>';
-        (r?.data?.list||[]).forEach(function(w) { opts += '<option value="'+w.id+'">'+w.workshop_name+'</option>'; });
+        (r?.data?.list||[]).forEach(function(w) { opts += '<option value="'+w.id+'">'+MESUI.escapeHtml(w.workshop_name)+'</option>'; });
         document.getElementById('mTitle').textContent = '5S检查';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>车间<span style="color:red">*</span></label><select id="f_ws">'+opts+'</select></div>'
             + '<div class="form-item"><label>日期</label><input id="f_date" type="date"></div></div>'
@@ -208,10 +208,10 @@ function csLoad() {
         var sev = {low:'低',medium:'中',high:'高',critical:'危急'};
         var sevColor = {low:'#52c41a',medium:'#1890ff',high:'#fa8c16',critical:'#f5222d'};
         tb.innerHTML = list.map(function(c) {
-            return '<tr><td>'+c.id+'</td><td>'+c.complaint_no+'</td><td>'+(c.customer_name||'-')+'</td>'
-                +'<td>'+(c.product_name||'-')+'</td><td>'+(c.complaint_type||'-')+'</td>'
+            return '<tr><td>'+c.id+'</td><td>'+MESUI.escapeHtml(c.complaint_no)+'</td><td>'+MESUI.escapeHtml(c.customer_name||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(c.product_name||'-')+'</td><td>'+(c.complaint_type||'-')+'</td>'
                 +'<td style="color:'+(sevColor[c.severity]||'#333')+'">'+(sev[c.severity]||'-')+'</td>'
-                +'<td><span class="tag '+(c.status===2?'tag-ok':c.status?'tag-run':'tag-wait')+'">'+(st[c.status]||'待处理')+'</span></td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(c.status===2?'tag-ok':c.status?'tag-run':'tag-wait')+'">'+MESUI.escapeHtml(st[c.status]||'待处理')+'</span></td>'
                 +'<td><button class="btn btn-red btn-sm" onclick="csDel('+c.id+')">删除</button></td></tr>';
         }).join('');
     });
@@ -229,9 +229,9 @@ function csStatsLoad() {
 function csAdd() {
     Promise.all([api('/api/base/customer/all'), api('/api/base/product/all')]).then(function(r) {
         var custOpts = '<option value="">选择客户</option>';
-        (r[0]?.data||[]).forEach(function(c) { custOpts += '<option value="'+c.id+'">'+c.customer_name+'</option>'; });
+        (r[0]?.data||[]).forEach(function(c) { custOpts += '<option value="'+c.id+'">'+MESUI.escapeHtml(c.customer_name)+'</option>'; });
         var prodOpts = '<option value="">选择产品</option>';
-        (r[1]?.data||[]).forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+p.product_name+'</option>'; });
+        (r[1]?.data||[]).forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+MESUI.escapeHtml(p.product_name)+'</option>'; });
         document.getElementById('mTitle').textContent = '新增客诉';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>客户</label><select id="f_cust">'+custOpts+'</select></div>'
             + '<div class="form-item"><label>产品</label><select id="f_prod">'+prodOpts+'</select></div></div>'
@@ -277,19 +277,19 @@ function serviceReturnLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>'; return; }
         var st = {0:'待处理',1:'已收货',2:'已换货',3:'已退款'};
         tb.innerHTML = list.map(function(sr) {
-            return '<tr><td>'+sr.id+'</td><td>'+sr.return_no+'</td><td>'+(sr.complaint_id||'-')+'</td>'
-                +'<td>'+(sr.customer_name||'-')+'</td><td>'+(sr.product_name||'-')+'</td><td>'+sr.quantity+'</td>'
+            return '<tr><td>'+sr.id+'</td><td>'+MESUI.escapeHtml(sr.return_no)+'</td><td>'+(sr.complaint_id||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(sr.customer_name||'-')+'</td><td>'+MESUI.escapeHtml(sr.product_name||'-')+'</td><td>'+MESUI.escapeHtml(sr.quantity)+'</td>'
                 +'<td>'+MESUI.escapeHtml(sr.return_reason||'-')+'</td>'
-                +'<td><span class="tag '+(sr.status>=2?'tag-ok':sr.status?'tag-run':'tag-wait')+'">'+(st[sr.status]||'待处理')+'</span></td></tr>';
+                +'<td><span class="tag '+MESUI.escapeHtml(sr.status>=2?'tag-ok':sr.status?'tag-run':'tag-wait')+'">'+MESUI.escapeHtml(st[sr.status]||'待处理')+'</span></td></tr>';
         }).join('');
     });
 }
 function serviceReturnAdd() {
     Promise.all([api('/api/base/customer/all'), api('/api/base/product/all')]).then(function(r) {
         var custOpts = '<option value="">选择客户</option>';
-        (r[0]?.data||[]).forEach(function(c) { custOpts += '<option value="'+c.id+'">'+c.customer_name+'</option>'; });
+        (r[0]?.data||[]).forEach(function(c) { custOpts += '<option value="'+c.id+'">'+MESUI.escapeHtml(c.customer_name)+'</option>'; });
         var prodOpts = '<option value="">选择产品</option>';
-        (r[1]?.data||[]).forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+p.product_name+'</option>'; });
+        (r[1]?.data||[]).forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+MESUI.escapeHtml(p.product_name)+'</option>'; });
         document.getElementById('mTitle').textContent = '新增退换货';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>客户</label><select id="f_cust">'+custOpts+'</select></div>'
             + '<div class="form-item"><label>产品</label><select id="f_prod">'+prodOpts+'</select></div></div>'

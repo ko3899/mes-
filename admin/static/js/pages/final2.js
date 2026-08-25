@@ -16,10 +16,10 @@ function moldLoad() {
         tb.innerHTML = r.data.map(function(m) {
             var lifePercent = m.total_life > 0 ? Math.round(m.used_life/m.total_life*100) : 0;
             var lifeColor = lifePercent > 80 ? '#f5222d' : (lifePercent > 50 ? '#fa8c16' : '#52c41a');
-            return '<tr><td>'+m.id+'</td><td>'+m.mold_name+'</td><td>'+m.code+'</td><td>'+(m.mold_type||'-')+'</td>'
-                +'<td>'+(m.product_name||'-')+'</td><td>'+m.total_life+'</td>'
+            return '<tr><td>'+m.id+'</td><td>'+MESUI.escapeHtml(m.mold_name)+'</td><td>'+MESUI.escapeHtml(m.code)+'</td><td>'+MESUI.escapeHtml(m.mold_type||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(m.product_name||'-')+'</td><td>'+m.total_life+'</td>'
                 +'<td><span style="color:'+lifeColor+';font-weight:bold">'+m.used_life+' ('+lifePercent+'%)</span></td>'
-                +'<td><span class="tag '+(m.status?'tag-ok':'tag-draft')+'">'+(m.status?'在用':'停用')+'</span></td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(m.status?'tag-ok':'tag-draft')+'">'+MESUI.escapeHtml(m.status?'在用':'停用')+'</span></td>'
                 +'<td><button class="btn btn-red btn-sm" onclick="moldDel('+m.id+')">删除</button></td></tr>';
         }).join('');
     });
@@ -27,7 +27,7 @@ function moldLoad() {
 function moldAdd() {
     api('/api/base/product/all').then(function(r) {
         var opts = '<option value="">选择产品</option>';
-        (r?.data||[]).forEach(function(p) { opts += '<option value="'+p.id+'">'+p.product_name+'</option>'; });
+        (r?.data||[]).forEach(function(p) { opts += '<option value="'+p.id+'">'+MESUI.escapeHtml(p.product_name)+'</option>'; });
         document.getElementById('mTitle').textContent = '新增模具';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>模具名称<span style="color:red">*</span></label><input id="f_name"></div>'
             + '<div class="form-item"><label>编码<span style="color:red">*</span></label><input id="f_code"></div></div>'
@@ -67,10 +67,10 @@ function fixLoad() {
         var today = new Date().toISOString().slice(0,10);
         tb.innerHTML = r.data.map(function(f) {
             var overdue = f.next_calibration && f.next_calibration < today;
-            return '<tr><td>'+f.id+'</td><td>'+f.fixture_name+'</td><td>'+f.code+'</td><td>'+(f.fixture_type||'-')+'</td>'
-                +'<td>'+(f.process_name||'-')+'</td><td>'+(f.calibration_date||'-')+'</td>'
+            return '<tr><td>'+f.id+'</td><td>'+MESUI.escapeHtml(f.fixture_name)+'</td><td>'+MESUI.escapeHtml(f.code)+'</td><td>'+MESUI.escapeHtml(f.fixture_type||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(f.process_name||'-')+'</td><td>'+(f.calibration_date||'-')+'</td>'
                 +'<td'+(overdue?' style="color:#f5222d;font-weight:bold"':'')+'>'+(f.next_calibration||'-')+'</td>'
-                +'<td><span class="tag '+(f.status?'tag-ok':'tag-draft')+'">'+(f.status?'正常':'停用')+'</span></td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(f.status?'tag-ok':'tag-draft')+'">'+MESUI.escapeHtml(f.status?'正常':'停用')+'</span></td>'
                 +'<td><button class="btn btn-red btn-sm" onclick="fixDel('+f.id+')">删除</button></td></tr>';
         }).join('');
     });
@@ -78,7 +78,7 @@ function fixLoad() {
 function fixAdd() {
     api('/api/base/process/list?size=100').then(function(r) {
         var opts = '<option value="">选择工序</option>';
-        (r?.data?.list||[]).forEach(function(p) { opts += '<option value="'+p.id+'">'+p.process_name+'</option>'; });
+        (r?.data?.list||[]).forEach(function(p) { opts += '<option value="'+p.id+'">'+MESUI.escapeHtml(p.process_name)+'</option>'; });
         document.getElementById('mTitle').textContent = '新增工装夹具';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>名称<span style="color:red">*</span></label><input id="f_name"></div>'
             + '<div class="form-item"><label>编码<span style="color:red">*</span></label><input id="f_code"></div></div>'
@@ -119,8 +119,8 @@ function energyLoad() {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(e) {
-            return '<tr><td>'+e.id+'</td><td>'+e.record_date+'</td><td>'+(e.workshop_name||'-')+'</td><td>'+e.energy_type+'</td>'
-                +'<td>'+e.quantity+'</td><td>'+(e.unit||'-')+'</td><td style="color:#f5222d">¥'+(e.cost||0).toFixed(2)+'</td></tr>';
+            return '<tr><td>'+e.id+'</td><td>'+MESUI.escapeHtml(e.record_date)+'</td><td>'+MESUI.escapeHtml(e.workshop_name||'-')+'</td><td>'+MESUI.escapeHtml(e.energy_type)+'</td>'
+                +'<td>'+MESUI.escapeHtml(e.quantity)+'</td><td>'+MESUI.escapeHtml(e.unit||'-')+'</td><td style="color:#f5222d">¥'+(e.cost||0).toFixed(2)+'</td></tr>';
         }).join('');
     });
 }
@@ -131,7 +131,7 @@ function energyStatsLoad() {
         el.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">'
             +r.data.map(function(e) {
                 return '<div style="background:#f0f5ff;padding:12px;border-radius:8px;text-align:center">'
-                    +'<div style="font-weight:bold">'+e.energy_type+'</div>'
+                    +'<div style="font-weight:bold">'+MESUI.escapeHtml(e.energy_type)+'</div>'
                     +'<div style="font-size:16px;color:#1890ff">'+e.total_qty.toFixed(1)+'</div>'
                     +'<div style="font-size:12px;color:#666">¥'+e.total_cost.toFixed(2)+'</div></div>';
             }).join('')+'</div>';
@@ -140,7 +140,7 @@ function energyStatsLoad() {
 function energyAdd() {
     api('/api/base/workshop/list?size=100').then(function(r) {
         var opts = '<option value="">选择车间</option>';
-        (r?.data?.list||[]).forEach(function(w) { opts += '<option value="'+w.id+'">'+w.workshop_name+'</option>'; });
+        (r?.data?.list||[]).forEach(function(w) { opts += '<option value="'+w.id+'">'+MESUI.escapeHtml(w.workshop_name)+'</option>'; });
         document.getElementById('mTitle').textContent = '新增能耗记录';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>日期<span style="color:red">*</span></label><input id="f_date" type="date"></div>'
             + '<div class="form-item"><label>车间</label><select id="f_ws">'+opts+'</select></div></div>'
@@ -180,7 +180,7 @@ function envLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(e) {
             var tempColor = e.temperature > 30 ? '#f5222d' : (e.temperature < 10 ? '#1890ff' : '#52c41a');
-            return '<tr><td>'+e.id+'</td><td>'+(e.workshop_name||'-')+'</td>'
+            return '<tr><td>'+e.id+'</td><td>'+MESUI.escapeHtml(e.workshop_name||'-')+'</td>'
                 +'<td style="color:'+tempColor+';font-weight:bold">'+e.temperature+'</td><td>'+e.humidity+'</td>'
                 +'<td>'+(e.cleanliness||'-')+'</td><td>'+(e.record_time||'')+'</td></tr>';
         }).join('');
@@ -193,7 +193,7 @@ function envLatestLoad() {
         el.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">'
             +r.data.map(function(e) {
                 return '<div style="background:#f0f5ff;padding:12px;border-radius:8px">'
-                    +'<div style="font-weight:bold">'+e.workshop_name+'</div>'
+                    +'<div style="font-weight:bold">'+MESUI.escapeHtml(e.workshop_name)+'</div>'
                     +'<div style="display:flex;gap:16px;margin-top:8px">'
                     +'<div>🌡️ '+e.temperature+'°C</div><div>💧 '+e.humidity+'%</div></div></div>';
             }).join('')+'</div>';
@@ -202,7 +202,7 @@ function envLatestLoad() {
 function envAdd() {
     api('/api/base/workshop/list?size=100').then(function(r) {
         var opts = '<option value="">选择车间</option>';
-        (r?.data?.list||[]).forEach(function(w) { opts += '<option value="'+w.id+'">'+w.workshop_name+'</option>'; });
+        (r?.data?.list||[]).forEach(function(w) { opts += '<option value="'+w.id+'">'+MESUI.escapeHtml(w.workshop_name)+'</option>'; });
         document.getElementById('mTitle').textContent = '新增环境记录';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>车间</label><select id="f_ws">'+opts+'</select></div></div>'
             + '<div class="form-row"><div class="form-item"><label>温度°C</label><input id="f_temp" type="number" step="0.1"></div>'

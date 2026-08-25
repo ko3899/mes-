@@ -55,8 +55,8 @@ function renderCapacity(el) {
         });
         var empEl = document.getElementById('empList');
         empEl.innerHTML = d.employees.map(function(e,i) {
-            return '<tr><td>'+(i+1)+'</td><td>'+e.real_name+'</td><td>'+e.task_count+'</td>'
-                +'<td style="color:#52c41a">'+e.total_qualified+'</td><td style="color:#f5222d">'+e.total_defect+'</td></tr>';
+            return '<tr><td>'+(i+1)+'</td><td>'+MESUI.escapeHtml(e.real_name)+'</td><td>'+MESUI.escapeHtml(e.task_count)+'</td>'
+                +'<td style="color:#52c41a">'+MESUI.escapeHtml(e.total_qualified)+'</td><td style="color:#f5222d">'+MESUI.escapeHtml(e.total_defect)+'</td></tr>';
         }).join('');
     });
 }
@@ -75,17 +75,17 @@ function renderDeliveryAlert(el) {
         var ol = document.getElementById('overdueList');
         if(d.overdue.length) {
             ol.innerHTML = d.overdue.map(function(o) {
-                return '<tr><td>'+o.order_no+'</td><td>'+o.product_name+'</td><td>'+o.planned_qty+'</td>'
-                    +'<td>'+o.completed_qty+'</td><td style="color:#f5222d;font-weight:bold">'+o.end_date+'</td>'
-                    +'<td>'+(o.workshop_name||'-')+'</td></tr>';
+                return '<tr><td>'+MESUI.escapeHtml(o.order_no)+'</td><td>'+MESUI.escapeHtml(o.product_name)+'</td><td>'+MESUI.escapeHtml(o.planned_qty)+'</td>'
+                    +'<td>'+o.completed_qty+'</td><td style="color:#f5222d;font-weight:bold">'+MESUI.escapeHtml(o.end_date)+'</td>'
+                    +'<td>'+MESUI.escapeHtml(o.workshop_name||'-')+'</td></tr>';
             }).join('');
         } else { ol.innerHTML = '<tr><td colspan="6" class="empty">无逾期工单</td></tr>'; }
         var ul = document.getElementById('upcomingList');
         if(d.upcoming.length) {
             ul.innerHTML = d.upcoming.map(function(u) {
-                return '<tr><td>'+u.order_no+'</td><td>'+u.product_name+'</td><td>'+u.planned_qty+'</td>'
-                    +'<td>'+u.completed_qty+'</td><td style="color:#fa8c16">'+u.end_date+'</td>'
-                    +'<td>'+(u.workshop_name||'-')+'</td></tr>';
+                return '<tr><td>'+MESUI.escapeHtml(u.order_no)+'</td><td>'+MESUI.escapeHtml(u.product_name)+'</td><td>'+MESUI.escapeHtml(u.planned_qty)+'</td>'
+                    +'<td>'+u.completed_qty+'</td><td style="color:#fa8c16">'+MESUI.escapeHtml(u.end_date)+'</td>'
+                    +'<td>'+MESUI.escapeHtml(u.workshop_name||'-')+'</td></tr>';
             }).join('');
         } else { ul.innerHTML = '<tr><td colspan="6" class="empty">无即将到期工单</td></tr>'; }
     });
@@ -124,7 +124,7 @@ function renderInventoryAnalysis(el) {
         var ls = document.getElementById('lowStock');
         if(d.low_stock.length) {
             ls.innerHTML = d.low_stock.map(function(l) {
-                return '<tr><td>'+l.product_name+'</td><td>'+l.code+'</td><td style="color:#f5222d;font-weight:bold">'+l.quantity+'</td></tr>';
+                return '<tr><td>'+MESUI.escapeHtml(l.product_name)+'</td><td>'+MESUI.escapeHtml(l.code)+'</td><td style="color:#f5222d;font-weight:bold">'+MESUI.escapeHtml(l.quantity)+'</td></tr>';
             }).join('');
         } else { ls.innerHTML = '<tr><td colspan="3" class="empty">暂无预警</td></tr>'; }
     });
@@ -234,7 +234,7 @@ function loadDashboard() {
         }
         var ls = document.getElementById('dashLowStock');
         if(d.low_stock.length) {
-            ls.innerHTML = d.low_stock.map(function(l) { return '<tr><td>'+l.product_name+'</td><td>'+l.code+'</td><td style="color:#f5222d;font-weight:bold">'+l.quantity+'</td></tr>'; }).join('');
+            ls.innerHTML = d.low_stock.map(function(l) { return '<tr><td>'+MESUI.escapeHtml(l.product_name)+'</td><td>'+MESUI.escapeHtml(l.code)+'</td><td style="color:#f5222d;font-weight:bold">'+MESUI.escapeHtml(l.quantity)+'</td></tr>'; }).join('');
         } else { ls.innerHTML = '<tr><td colspan="3" class="empty">暂无预警</td></tr>'; }
     });
 }

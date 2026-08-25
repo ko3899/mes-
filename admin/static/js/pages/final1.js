@@ -14,9 +14,9 @@ function wsLoad() {
         var tb = document.getElementById('tb');
         if(!r.data.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = r.data.map(function(w) {
-            return '<tr><td>'+w.id+'</td><td>'+w.station_name+'</td><td>'+w.code+'</td><td>'+(w.workshop_name||'-')+'</td>'
-                +'<td>'+(w.process_name||'-')+'</td><td>'+w.capacity+'</td>'
-                +'<td><span class="tag '+(w.status?'tag-ok':'tag-draft')+'">'+(w.status?'启用':'停用')+'</span></td>'
+            return '<tr><td>'+w.id+'</td><td>'+MESUI.escapeHtml(w.station_name)+'</td><td>'+MESUI.escapeHtml(w.code)+'</td><td>'+MESUI.escapeHtml(w.workshop_name||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(w.process_name||'-')+'</td><td>'+w.capacity+'</td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(w.status?'tag-ok':'tag-draft')+'">'+MESUI.escapeHtml(w.status?'启用':'停用')+'</span></td>'
                 +'<td><button class="btn btn-red btn-sm" onclick="wsDel('+w.id+')">删除</button></td></tr>';
         }).join('');
     });
@@ -24,9 +24,9 @@ function wsLoad() {
 function wsAdd() {
     Promise.all([api('/api/base/workshop/list?size=100'), api('/api/base/process/list?size=100')]).then(function(r) {
         var wsOpts = '<option value="">请选择车间</option>';
-        (r[0].data?.list||[]).forEach(function(w) { wsOpts += '<option value="'+w.id+'">'+w.workshop_name+'</option>'; });
+        (r[0].data?.list||[]).forEach(function(w) { wsOpts += '<option value="'+w.id+'">'+MESUI.escapeHtml(w.workshop_name)+'</option>'; });
         var procOpts = '<option value="">请选择工序</option>';
-        (r[1].data?.list||[]).forEach(function(p) { procOpts += '<option value="'+p.id+'">'+p.process_name+'</option>'; });
+        (r[1].data?.list||[]).forEach(function(p) { procOpts += '<option value="'+p.id+'">'+MESUI.escapeHtml(p.process_name)+'</option>'; });
         document.getElementById('mTitle').textContent = '新增工位';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>工位名称<span style="color:red">*</span></label><input id="f_name"></div>'
             + '<div class="form-item"><label>编码<span style="color:red">*</span></label><input id="f_code"></div></div>'
@@ -65,9 +65,9 @@ function andonLoad() {
         var pris = {1:'普通',2:'紧急',3:'危急'};
         var sts = {0:'<span class="tag tag-no">呼叫中</span>',1:'<span class="tag tag-run">响应中</span>',2:'<span class="tag tag-ok">已解决</span>'};
         tb.innerHTML = list.map(function(a) {
-            return '<tr><td>'+a.id+'</td><td>'+a.andon_no+'</td><td>'+(a.station_name||'-')+'</td>'
+            return '<tr><td>'+a.id+'</td><td>'+MESUI.escapeHtml(a.andon_no)+'</td><td>'+MESUI.escapeHtml(a.station_name||'-')+'</td>'
                 +'<td>'+(types[a.andon_type]||a.andon_type)+'</td><td>'+(pris[a.priority]||'-')+'</td>'
-                +'<td>'+(sts[a.status]||'-')+'</td><td>'+(a.caller_name||'-')+'</td><td>'+(a.responder_name||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(sts[a.status]||'-')+'</td><td>'+(a.caller_name||'-')+'</td><td>'+(a.responder_name||'-')+'</td>'
                 +'<td>'+(a.status===0?'<button class="btn btn-blue btn-sm" onclick="andonRespond('+a.id+')">响应</button>':'')
                 +(a.status===1?'<button class="btn btn-green btn-sm" onclick="andonResolve('+a.id+')">解决</button>':'')+'</td></tr>';
         }).join('');
@@ -179,9 +179,9 @@ function capaLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>'; return; }
         var st = {0:'草稿',1:'进行中',2:'已关闭'};
         tb.innerHTML = list.map(function(c) {
-            return '<tr><td>'+c.id+'</td><td>'+c.capa_no+'</td><td>'+c.title+'</td><td>'+(c.source||'-')+'</td>'
+            return '<tr><td>'+c.id+'</td><td>'+MESUI.escapeHtml(c.capa_no)+'</td><td>'+MESUI.escapeHtml(c.title)+'</td><td>'+MESUI.escapeHtml(c.source||'-')+'</td>'
                 +'<td>'+(c.responsible||'-')+'</td><td>'+(c.due_date||'-')+'</td>'
-                +'<td><span class="tag '+(c.status===2?'tag-ok':c.status?'tag-run':'tag-draft')+'">'+(st[c.status]||'草稿')+'</span></td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(c.status===2?'tag-ok':c.status?'tag-run':'tag-draft')+'">'+MESUI.escapeHtml(st[c.status]||'草稿')+'</span></td>'
                 +'<td><button class="btn btn-red btn-sm" onclick="capaDel('+c.id+')">删除</button></td></tr>';
         }).join('');
     });
@@ -224,7 +224,7 @@ function cpLoad() {
         var tb = document.getElementById('tb');
         if(!r.data.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = r.data.map(function(c) {
-            return '<tr><td>'+c.id+'</td><td>'+c.plan_name+'</td><td>'+(c.product_name||'-')+'</td><td>'+(c.process_name||'-')+'</td>'
+            return '<tr><td>'+c.id+'</td><td>'+MESUI.escapeHtml(c.plan_name)+'</td><td>'+MESUI.escapeHtml(c.product_name||'-')+'</td><td>'+MESUI.escapeHtml(c.process_name||'-')+'</td>'
                 +'<td>'+(c.characteristic||'-')+'</td><td>'+(c.method||'-')+'</td><td>'+(c.frequency||'-')+'</td>'
                 +'<td><button class="btn btn-red btn-sm" onclick="cpDel('+c.id+')">删除</button></td></tr>';
         }).join('');
@@ -233,9 +233,9 @@ function cpLoad() {
 function cpAdd() {
     Promise.all([api('/api/base/product/all'), api('/api/base/process/list?size=100')]).then(function(r) {
         var prodOpts = '<option value="">选择产品</option>';
-        (r[0]?.data||[]).forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+p.product_name+'</option>'; });
+        (r[0]?.data||[]).forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+MESUI.escapeHtml(p.product_name)+'</option>'; });
         var procOpts = '<option value="">选择工序</option>';
-        (r[1]?.data?.list||[]).forEach(function(p) { procOpts += '<option value="'+p.id+'">'+p.process_name+'</option>'; });
+        (r[1]?.data?.list||[]).forEach(function(p) { procOpts += '<option value="'+p.id+'">'+MESUI.escapeHtml(p.process_name)+'</option>'; });
         document.getElementById('mTitle').textContent = '新增控制计划';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>计划名称<span style="color:red">*</span></label><input id="f_name"></div></div>'
             + '<div class="form-row"><div class="form-item"><label>产品</label><select id="f_prod">'+prodOpts+'</select></div>'
@@ -275,8 +275,8 @@ function ecoLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>'; return; }
         var st = {0:'草稿',1:'审批中',2:'已批准',3:'已实施'};
         tb.innerHTML = list.map(function(e) {
-            return '<tr><td>'+e.id+'</td><td>'+e.eco_no+'</td><td>'+e.title+'</td><td>'+(e.change_type||'-')+'</td>'
-                +'<td><span class="tag '+(e.status>=2?'tag-ok':e.status?'tag-run':'tag-draft')+'">'+(st[e.status]||'草稿')+'</span></td>'
+            return '<tr><td>'+e.id+'</td><td>'+MESUI.escapeHtml(e.eco_no)+'</td><td>'+MESUI.escapeHtml(e.title)+'</td><td>'+MESUI.escapeHtml(e.change_type||'-')+'</td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(e.status>=2?'tag-ok':e.status?'tag-run':'tag-draft')+'">'+MESUI.escapeHtml(st[e.status]||'草稿')+'</span></td>'
                 +'<td>'+(e.effective_date||'-')+'</td>'
                 +'<td><button class="btn btn-red btn-sm" onclick="ecoDel('+e.id+')">删除</button></td></tr>';
         }).join('');

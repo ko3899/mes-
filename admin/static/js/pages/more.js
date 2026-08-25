@@ -20,7 +20,7 @@ function repairLoad() {
         list.forEach(function(r2) {
             h += '<tr><td>' + MESUI.escapeHtml(r2.id) + '</td><td>' + MESUI.escapeHtml(r2.repair_no) + '</td><td>' + MESUI.escapeHtml(r2.equipment_name||r2.equipment_id) + '</td>';
             h += '<td>' + MESUI.escapeHtml(r2.fault_desc||'') + '</td>';
-            h += '<td><span class="tag ' + (r2.status === 2 ? 'tag-ok' : r2.status ? 'tag-wait' : 'tag-draft') + '">' + (r2.status === 2 ? '已完成' : r2.status ? '维修中' : '待修') + '</span></td>';
+            h += '<td><span class="tag ' +MESUI.escapeHtml(r2.status === 2 ? 'tag-ok' : r2.status ? 'tag-wait' : 'tag-draft')+ '">' +MESUI.escapeHtml(r2.status === 2 ? '已完成' : r2.status ? '维修中' : '待修')+ '</span></td>';
             h += '<td>';
             if(r2.status === 0) h += '<button class="btn btn-blue btn-sm" onclick="repairStart(' + r2.id + ')">开始维修</button> <button class="btn btn-red btn-sm" onclick="repairDel(' + r2.id + ')">删除</button>';
             if(r2.status === 1) h += '<button class="btn btn-green btn-sm" onclick="repairComplete(' + r2.id + ')">完成维修</button>';
@@ -96,9 +96,9 @@ function userLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>'; return; }
         var h = '';
         list.forEach(function(r2) {
-            h += '<tr><td>' + r2.id + '</td><td>' + r2.username + '</td><td>' + (r2.real_name||'') + '</td>';
-            h += '<td>' + (r2.phone||'') + '</td>';
-            h += '<td><span class="tag ' + (r2.status ? 'tag-ok' : 'tag-draft') + '">' + (r2.status ? '正常' : '禁用') + '</span></td>';
+            h += '<tr><td>' + r2.id + '</td><td>' +MESUI.escapeHtml(r2.username)+ '</td><td>' +MESUI.escapeHtml(r2.real_name||'')+ '</td>';
+            h += '<td>' +MESUI.escapeHtml(r2.phone||'')+ '</td>';
+            h += '<td><span class="tag ' +MESUI.escapeHtml(r2.status ? 'tag-ok' : 'tag-draft')+ '">' +MESUI.escapeHtml(r2.status ? '正常' : '禁用')+ '</span></td>';
             h += '<td class="actions"><button class="btn btn-blue btn-sm" onclick=\'userEdit(' + escapeJson(r2) + ')\'>编辑</button>';
             if(r2.id !== 1) h += '<button class="btn btn-red btn-sm" onclick="userDel(' + r2.id + ')">删除</button>';
             h += '</td></tr>';
@@ -124,10 +124,10 @@ function userAdd() {
 }
 function userEdit(row) {
     document.getElementById('mTitle').textContent = '编辑用户';
-    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>用户名</label><input type="text" value="' + row.username + '" disabled></div>'
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>用户名</label><input type="text" value="' + MESUI.escapeHtml(row.username) + '" disabled></div>'
         + '<div class="form-item"><label>新密码(留空不改)</label><input id="f_pwd" type="password"></div></div>'
-        + '<div class="form-row"><div class="form-item"><label>姓名</label><input id="f_rname" type="text" value="' + (row.real_name||'') + '"></div>'
-        + '<div class="form-item"><label>手机</label><input id="f_phone" type="text" value="' + (row.phone||'') + '"></div></div>';
+        + '<div class="form-row"><div class="form-item"><label>姓名</label><input id="f_rname" type="text" value="' + MESUI.escapeHtml(row.real_name||'') + '"></div>'
+        + '<div class="form-item"><label>手机</label><input id="f_phone" type="text" value="' + MESUI.escapeHtml(row.phone||'') + '"></div></div>';
     modalSaveHandler = function() {
         var d = {id:row.id, real_name:document.getElementById('f_rname').value, phone:document.getElementById('f_phone').value};
         var pwd = document.getElementById('f_pwd').value;
@@ -158,8 +158,8 @@ function renderLog(el) {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">暂无日志</td></tr>'; return; }
         var h = '';
         list.forEach(function(r2) {
-            h += '<tr><td>' + r2.id + '</td><td>' + (r2.username||'') + '</td><td>' + (r2.operation||'') + '</td>';
-            h += '<td>' + (r2.url||'') + '</td><td>' + (r2.ip||'') + '</td><td>' + (r2.created_at||'') + '</td></tr>';
+            h += '<tr><td>' + r2.id + '</td><td>' +MESUI.escapeHtml(r2.username||'')+ '</td><td>' + (r2.operation||'') + '</td>';
+            h += '<td>' +MESUI.escapeHtml(r2.url||'')+ '</td><td>' +MESUI.escapeHtml(r2.ip||'')+ '</td><td>' + (r2.created_at||'') + '</td></tr>';
         });
         tb.innerHTML = h;
     });

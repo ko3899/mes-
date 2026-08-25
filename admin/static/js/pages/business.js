@@ -18,8 +18,8 @@ function bomLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>'; return; }
         var h = '';
         list.forEach(function(r2) {
-            h += '<tr><td>' + r2.id + '</td><td>' + (r2.product_name||'') + '</td><td>' + (r2.material_name||'') + '</td>';
-            h += '<td>' + r2.quantity + '</td><td>' + (r2.unit||'') + '</td>';
+            h += '<tr><td>' + r2.id + '</td><td>' +MESUI.escapeHtml(r2.product_name||'')+ '</td><td>' +MESUI.escapeHtml(r2.material_name||'')+ '</td>';
+            h += '<td>' +MESUI.escapeHtml(r2.quantity)+ '</td><td>' +MESUI.escapeHtml(r2.unit||'')+ '</td>';
             h += '<td><button class="btn btn-red btn-sm" onclick="bomDel(' + r2.id + ')">删除</button></td></tr>';
         });
         tb.innerHTML = h;
@@ -28,7 +28,7 @@ function bomLoad() {
 function bomAdd() {
     api('/api/base/product/all').then(function(r) {
         var opts = '<option value="">请选择</option>';
-        (r && r.data ? r.data : []).forEach(function(p) { opts += '<option value="' + p.id + '">' + p.product_name + '(' + p.code + ')</option>'; });
+        (r && r.data ? r.data : []).forEach(function(p) { opts += '<option value="' + p.id + '">' +MESUI.escapeHtml(p.product_name)+ '(' +MESUI.escapeHtml(p.code)+ ')</option>'; });
         document.getElementById('mTitle').textContent = '新增BOM';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>产品<span style="color:red">*</span></label><select id="f_pid">' + opts + '</select></div>'
             + '<div class="form-item"><label>物料<span style="color:red">*</span></label><select id="f_mid">' + opts + '</select></div></div>'
@@ -88,7 +88,7 @@ function invAdd(type) {
     var isIn = type === 'in';
     api('/api/base/product/all').then(function(r) {
         var opts = '<option value="">请选择</option>';
-        (r && r.data ? r.data : []).forEach(function(p) { opts += '<option value="' + p.id + '">' + p.product_name + '</option>'; });
+        (r && r.data ? r.data : []).forEach(function(p) { opts += '<option value="' + p.id + '">' +MESUI.escapeHtml(p.product_name)+ '</option>'; });
         var typeOptions = isIn
             ? '<option value="采购">采购</option><option value="生产入库">生产入库</option><option value="退料">退料</option><option value="其他">其他</option>'
             : '<option value="销售">销售</option><option value="生产领料">生产领料</option><option value="调拨">调拨</option><option value="其他">其他</option>';
@@ -141,7 +141,7 @@ function renderBalance(el) {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="4" class="empty">暂无库存</td></tr>'; return; }
         var h = '';
         list.forEach(function(r2) {
-            h += '<tr><td>' + r2.id + '</td><td>' + (r2.product_name||r2.product_id) + '</td><td>' + r2.quantity + '</td><td>' + (r2.amount||0) + '</td></tr>';
+            h += '<tr><td>' + r2.id + '</td><td>' +MESUI.escapeHtml(r2.product_name||r2.product_id)+ '</td><td>' +MESUI.escapeHtml(r2.quantity)+ '</td><td>' + (r2.amount||0) + '</td></tr>';
         });
         tb.innerHTML = h;
     });
@@ -173,7 +173,7 @@ function woLoad() {
                 + '<td>' + MESUI.escapeHtml((r2.route_name||'-') + (r2.route_version ? ' / V'+r2.route_version : '')) + '</td>';
             h += '<td>' + MESUI.escapeHtml(r2.planned_qty) + '</td><td>' + MESUI.escapeHtml((r2.completed_qty||0) + ' / ' + (r2.defect_qty||0)) + '</td>';
             h += '<td><span class="tag ' + (r2.priority >= 3 ? 'tag-no' : 'tag-wait') + '">' + (pri[r2.priority]||'低') + '</span></td>';
-            h += '<td><span class="tag ' + (r2.status >= 3 && r2.status !== 4 ? 'tag-ok' : r2.status ? 'tag-wait' : 'tag-draft') + '">' + (status[r2.status]||r2.status) + '</span></td><td class="actions">';
+            h += '<td><span class="tag ' +MESUI.escapeHtml(r2.status >= 3 && r2.status !== 4 ? 'tag-ok' : r2.status ? 'tag-wait' : 'tag-draft')+ '">' +MESUI.escapeHtml(status[r2.status]||r2.status)+ '</span></td><td class="actions">';
             if(Number(r2.status) === 0) h += '<button class="btn btn-blue btn-sm" onclick="woRelease(' + r2.id + ')">下达并冻结</button> '
                 + '<button class="btn btn-red btn-sm" onclick="woDel(' + r2.id + ')">删除</button>';
             if(Number(r2.status) >= 1 && Number(r2.status) < 5) h += '<button class="btn btn-green btn-sm" onclick="woGenerateTasks(' + r2.id + ')">生成任务</button> '
@@ -266,9 +266,9 @@ function eqpLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>'; return; }
         var h = '';
         list.forEach(function(r2) {
-            h += '<tr><td>' + r2.id + '</td><td>' + r2.equipment_name + '</td><td>' + r2.code + '</td>';
-            h += '<td>' + (r2.model||'') + '</td><td>' + (r2.manufacturer||'') + '</td>';
-            h += '<td><span class="tag ' + (r2.status === 1 ? 'tag-ok' : r2.status === 2 ? 'tag-wait' : 'tag-draft') + '">' + (r2.status === 1 ? '运行' : r2.status === 2 ? '维修' : '停用') + '</span></td>';
+            h += '<tr><td>' + r2.id + '</td><td>' + MESUI.escapeHtml(r2.equipment_name) + '</td><td>' + MESUI.escapeHtml(r2.code) + '</td>';
+            h += '<td>' + MESUI.escapeHtml(r2.model||'') + '</td><td>' + MESUI.escapeHtml(r2.manufacturer||'') + '</td>';
+            h += '<td><span class="tag ' +MESUI.escapeHtml(r2.status === 1 ? 'tag-ok' : r2.status === 2 ? 'tag-wait' : 'tag-draft')+ '">' +MESUI.escapeHtml(r2.status === 1 ? '运行' : r2.status === 2 ? '维修' : '停用')+ '</span></td>';
             h += '<td><button class="btn btn-red btn-sm" onclick="eqpDel(' + r2.id + ')">删除</button></td></tr>';
         });
         tb.innerHTML = h;

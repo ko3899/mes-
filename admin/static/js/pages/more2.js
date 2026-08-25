@@ -44,7 +44,7 @@ function tbLoad() {
         list.forEach(function(r2) {
             h += '<tr><td>' + r2.id + '</td><td>' + (r2.borrow_no||'') + '</td><td>' + (r2.tool_name||r2.tool_id) + '</td>';
             h += '<td>' + (r2.borrower_name||'') + '</td><td>' + r2.borrow_qty + '（未还 ' + Number(r2.outstanding_qty || 0) + '）</td>';
-            h += '<td><span class="tag ' + (r2.status ? 'tag-ok' : 'tag-wait') + '">' + (r2.status ? '已还' : '借出') + '</span></td>';
+            h += '<td><span class="tag ' +MESUI.escapeHtml(r2.status ? 'tag-ok' : 'tag-wait')+ '">' +MESUI.escapeHtml(r2.status ? '已还' : '借出')+ '</span></td>';
             h += '<td>' + (r2.borrow_time||'') + '</td>';
             h += '<td class="actions">';
             if(!r2.status) h += '<button class="btn btn-green btn-sm" onclick="tbReturn(' + r2.id + ',' + Number(r2.outstanding_qty || 0) + ')">归还</button>';
@@ -113,9 +113,9 @@ function qmProcLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>'; return; }
         var h = '';
         list.forEach(function(r2) {
-            h += '<tr><td>' + r2.id + '</td><td>' + (r2.inspect_no||'') + '</td><td>' + (r2.workorder_id||'') + '</td>';
+            h += '<tr><td>' + r2.id + '</td><td>' +MESUI.escapeHtml(r2.inspect_no||'')+ '</td><td>' + (r2.workorder_id||'') + '</td>';
             h += '<td>' + (r2.result||'-') + '</td>';
-            h += '<td><span class="tag ' + (r2.status ? 'tag-ok' : 'tag-wait') + '">' + (r2.status ? '已检' : '待检') + '</span></td>';
+            h += '<td><span class="tag ' +MESUI.escapeHtml(r2.status ? 'tag-ok' : 'tag-wait')+ '">' +MESUI.escapeHtml(r2.status ? '已检' : '待检')+ '</span></td>';
             h += '<td>' + (r2.created_at||'') + '</td>';
             h += '<td><button class="btn btn-red btn-sm" onclick="qmProcDel(' + r2.id + ')">删除</button></td></tr>';
         });
@@ -126,7 +126,7 @@ function qmProcAdd() {
     api('/api/prod/workorder/list?size=500').then(function(r) {
         var woList = r && r.data ? (r.data.list || r.data) : [];
         var opts = '<option value="">请选择工单</option>';
-        woList.forEach(function(w) { opts += '<option value="' + w.id + '">' + w.order_no + ' - ' + (w.product_name||'') + '</option>'; });
+        woList.forEach(function(w) { opts += '<option value="' + w.id + '">' +MESUI.escapeHtml(w.order_no)+ ' - ' +MESUI.escapeHtml(w.product_name||'')+ '</option>'; });
         document.getElementById('mTitle').textContent = '新增过程检验';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>工单</label><select id="f_wo">' + opts + '</select></div></div>'
             + '<div class="form-row"><div class="form-item"><label>结果</label><select id="f_result"><option value="合格">合格</option><option value="不合格">不合格</option></select></div></div>'

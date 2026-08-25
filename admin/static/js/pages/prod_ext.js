@@ -16,9 +16,9 @@ function transferLoad() {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(t) {
-            return '<tr><td>'+t.id+'</td><td>'+t.transfer_no+'</td><td>'+(t.workorder_no||'-')+'</td>'
-                +'<td>'+(t.from_process||'-')+'</td><td>'+(t.to_process||'-')+'</td><td>'+t.quantity+'</td>'
-                +'<td><span class="tag '+(t.status?'tag-ok':'tag-wait')+'">'+(t.status?'已完成':'待转移')+'</span></td>'
+            return '<tr><td>'+t.id+'</td><td>'+MESUI.escapeHtml(t.transfer_no)+'</td><td>'+MESUI.escapeHtml(t.workorder_no||'-')+'</td>'
+                +'<td>'+(t.from_process||'-')+'</td><td>'+(t.to_process||'-')+'</td><td>'+MESUI.escapeHtml(t.quantity)+'</td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(t.status?'tag-ok':'tag-wait')+'">'+MESUI.escapeHtml(t.status?'已完成':'待转移')+'</span></td>'
                 +'<td>'+(t.created_at||'')+'</td></tr>';
         }).join('');
     });
@@ -28,7 +28,7 @@ function transferAdd() {
         var r = [response];
         var woList = r[0] && r[0].data ? (r[0].data.list||r[0].data) : [];
         var woOpts = '<option value="">请选择工单</option>';
-        woList.forEach(function(w) { woOpts += '<option value="'+w.id+'">'+w.order_no+'</option>'; });
+        woList.forEach(function(w) { woOpts += '<option value="'+w.id+'">'+MESUI.escapeHtml(w.order_no)+'</option>'; });
         document.getElementById('mTitle').textContent = '新增工序转移';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>工单<span style="color:red">*</span></label><select id="f_wo">'+woOpts+'</select></div></div>'
             + '<div class="form-row"><div class="form-item"><label>从工序<span style="color:red">*</span></label><select id="f_from"><option value="">先选工单</option></select></div>'
@@ -113,9 +113,9 @@ function matReqAdd() {
         var woList = r[0] && r[0].data ? (r[0].data.list||r[0].data) : [];
         var prodList = r[1] && r[1].data ? r[1].data : [];
         var woOpts = '<option value="">请选择工单</option>';
-        woList.forEach(function(w) { woOpts += '<option value="'+w.id+'">'+w.order_no+'</option>'; });
+        woList.forEach(function(w) { woOpts += '<option value="'+w.id+'">'+MESUI.escapeHtml(w.order_no)+'</option>'; });
         var prodOpts = '<option value="">请选择物料</option>';
-        prodList.forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+p.product_name+'</option>'; });
+        prodList.forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+MESUI.escapeHtml(p.product_name)+'</option>'; });
         document.getElementById('mTitle').textContent = '新增领料';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>工单<span style="color:red">*</span></label><select id="f_wo">'+woOpts+'</select></div></div>'
             + '<div class="form-row"><div class="form-item"><label>物料<span style="color:red">*</span></label><select id="f_prod">'+prodOpts+'</select></div>'
@@ -149,10 +149,10 @@ function osLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(o) {
             var st = {0:'待发料',1:'加工中',2:'已收货',3:'已完成'};
-            return '<tr><td>'+o.id+'</td><td>'+o.outsource_no+'</td><td>'+(o.supplier_name||'-')+'</td>'
-                +'<td>'+(o.product_name||'-')+'</td><td>'+o.quantity+'</td><td>'+o.unit_price+'</td>'
+            return '<tr><td>'+o.id+'</td><td>'+o.outsource_no+'</td><td>'+MESUI.escapeHtml(o.supplier_name||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(o.product_name||'-')+'</td><td>'+MESUI.escapeHtml(o.quantity)+'</td><td>'+o.unit_price+'</td>'
                 +'<td>'+(o.delivery_date||'-')+'</td>'
-                +'<td><span class="tag '+(o.status>=2?'tag-ok':o.status?'tag-run':'tag-wait')+'">'+(st[o.status]||'待发料')+'</span></td></tr>';
+                +'<td><span class="tag '+MESUI.escapeHtml(o.status>=2?'tag-ok':o.status?'tag-run':'tag-wait')+'">'+MESUI.escapeHtml(st[o.status]||'待发料')+'</span></td></tr>';
         }).join('');
     });
 }
@@ -161,9 +161,9 @@ function osAdd() {
         var supList = r[0] && r[0].data ? r[0].data : [];
         var prodList = r[1] && r[1].data ? r[1].data : [];
         var supOpts = '<option value="">请选择供应商</option>';
-        supList.forEach(function(s) { supOpts += '<option value="'+s.id+'">'+s.supplier_name+'</option>'; });
+        supList.forEach(function(s) { supOpts += '<option value="'+s.id+'">'+MESUI.escapeHtml(s.supplier_name)+'</option>'; });
         var prodOpts = '<option value="">请选择产品</option>';
-        prodList.forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+p.product_name+'</option>'; });
+        prodList.forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+MESUI.escapeHtml(p.product_name)+'</option>'; });
         document.getElementById('mTitle').textContent = '新增委外加工';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>供应商<span style="color:red">*</span></label><select id="f_sup">'+supOpts+'</select></div>'
             + '<div class="form-item"><label>产品<span style="color:red">*</span></label><select id="f_prod">'+prodOpts+'</select></div></div>'
@@ -209,8 +209,8 @@ function serialLoad(page) {
         };
         tb.innerHTML = list.map(function(s) {
             var quality = qualityMap[s.quality_status || 'normal'] || [s.quality_status || '正常','tag-wait'];
-            return '<tr><td>'+s.id+'</td><td><b>'+s.serial_no+'</b></td><td>'+(s.product_name||'-')+'</td>'
-                +'<td>'+(s.workorder_id||'-')+'</td>'
+            return '<tr><td>'+s.id+'</td><td><b>'+MESUI.escapeHtml(s.serial_no)+'</b></td><td>'+MESUI.escapeHtml(s.product_name||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(s.workorder_id||'-')+'</td>'
                 +'<td><span class="tag '+quality[1]+'">'+quality[0]+'</span></td>'
                 +'<td>'+(s.created_at||'')+'</td></tr>';
         }).join('');
@@ -220,7 +220,7 @@ function serialGen() {
     api('/api/base/product/all').then(function(r) {
         var prodList = r && r.data ? r.data : [];
         var prodOpts = '<option value="">请选择产品</option>';
-        prodList.forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+p.product_name+'</option>'; });
+        prodList.forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+MESUI.escapeHtml(p.product_name)+'</option>'; });
         document.getElementById('mTitle').textContent = '生成序列号';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>产品<span style="color:red">*</span></label><select id="f_prod">'+prodOpts+'</select></div></div>'
             + '<div class="form-row"><div class="form-item"><label>数量<span style="color:red">*</span></label><input id="f_count" type="number" value="10"></div></div>';
@@ -251,8 +251,8 @@ function laborLoad() {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(l) {
-            return '<tr><td>'+l.id+'</td><td>'+(l.real_name||'-')+'</td><td>'+(l.task_no||'-')+'</td>'
-                +'<td>'+(l.workorder_no||'-')+'</td><td>'+l.duration+'h</td><td>'+(l.overtime||0)+'h</td>'
+            return '<tr><td>'+l.id+'</td><td>'+MESUI.escapeHtml(l.real_name||'-')+'</td><td>'+MESUI.escapeHtml(l.task_no||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(l.workorder_no||'-')+'</td><td>'+l.duration+'h</td><td>'+(l.overtime||0)+'h</td>'
                 +'<td>'+(l.created_at||'')+'</td></tr>';
         }).join('');
     });
@@ -264,9 +264,9 @@ function laborSummaryLoad() {
         el.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">'
             +r.data.slice(0,6).map(function(e) {
                 return '<div style="background:#f0f5ff;padding:12px;border-radius:8px;text-align:center">'
-                    +'<div style="font-weight:bold">'+e.real_name+'</div>'
+                    +'<div style="font-weight:bold">'+MESUI.escapeHtml(e.real_name)+'</div>'
                     +'<div style="font-size:18px;color:#1890ff">'+e.total_hours+'h</div>'
-                    +'<div style="font-size:12px;color:#666">'+e.task_count+'个任务</div></div>';
+                    +'<div style="font-size:12px;color:#666">'+MESUI.escapeHtml(e.task_count)+'个任务</div></div>';
             }).join('')+'</div>';
     });
 }
@@ -286,9 +286,9 @@ function packLoad() {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(p) {
-            return '<tr><td>'+p.id+'</td><td>'+p.packing_no+'</td><td>'+(p.workorder_no||'-')+'</td>'
+            return '<tr><td>'+p.id+'</td><td>'+MESUI.escapeHtml(p.packing_no)+'</td><td>'+MESUI.escapeHtml(p.workorder_no||'-')+'</td>'
                 +'<td>'+p.box_count+'</td><td>'+p.quantity_per_box+'</td><td>'+p.total_quantity+'</td>'
-                +'<td><span class="tag '+(p.status?'tag-ok':'tag-wait')+'">'+(p.status?'已完成':'待包装')+'</span></td></tr>';
+                +'<td><span class="tag '+MESUI.escapeHtml(p.status?'tag-ok':'tag-wait')+'">'+MESUI.escapeHtml(p.status?'已完成':'待包装')+'</span></td></tr>';
         }).join('');
     });
 }
@@ -296,7 +296,7 @@ function packAdd() {
     api('/api/prod/workorder/list?size=500').then(function(r) {
         var list = r && r.data ? (r.data.list||r.data) : [];
         var opts = '<option value="">请选择工单</option>';
-        list.forEach(function(w) { opts += '<option value="'+w.id+'">'+w.order_no+'</option>'; });
+        list.forEach(function(w) { opts += '<option value="'+w.id+'">'+MESUI.escapeHtml(w.order_no)+'</option>'; });
         document.getElementById('mTitle').textContent = '新增包装';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>工单</label><select id="f_wo">'+opts+'</select></div></div>'
             + '<div class="form-row"><div class="form-item"><label>箱数<span style="color:red">*</span></label><input id="f_box" type="number"></div>'

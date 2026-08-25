@@ -18,9 +18,9 @@ function scLoad() {
         tb.innerHTML = list.map(function(s) {
             var repeatTag = s.allow_repeat ? '<span class="tag tag-ok">允许</span>' : '<span class="tag tag-no">禁止</span>';
             var maxTag = s.max_pass_count > 0 ? s.max_pass_count + '次' : '不限';
-            return '<tr><td>'+s.id+'</td><td><code>'+s.station+'</code></td><td>'+s.station_name+'</td>'
-                +'<td>'+repeatTag+'</td><td>'+maxTag+'</td><td>'+(s.description||'-')+'</td>'
-                +'<td><span class="tag '+(s.status?'tag-ok':'tag-draft')+'">'+(s.status?'启用':'停用')+'</span></td>'
+            return '<tr><td>'+s.id+'</td><td><code>'+MESUI.escapeHtml(s.station)+'</code></td><td>'+MESUI.escapeHtml(s.station_name)+'</td>'
+                +'<td>'+repeatTag+'</td><td>'+maxTag+'</td><td>'+MESUI.escapeHtml(s.description||'-')+'</td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(s.status?'tag-ok':'tag-draft')+'">'+MESUI.escapeHtml(s.status?'启用':'停用')+'</span></td>'
                 +'<td class="actions"><button class="btn btn-blue btn-sm" onclick=\'scEdit('+escapeJson(s)+')\'>编辑</button>'
                 +'<button class="btn btn-red btn-sm" onclick="scDel('+s.id+')">删除</button></td></tr>';
         }).join('');
@@ -54,8 +54,8 @@ function scAdd() {
 }
 function scEdit(row) {
     document.getElementById('mTitle').textContent = '编辑站点配置';
-    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>站点编码</label><input value="'+row.station+'" disabled></div>'
-        + '<div class="form-item"><label>站点名称</label><input id="f_name" value="'+row.station_name+'"></div></div>'
+    document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>站点编码</label><input value="'+MESUI.escapeHtml(row.station)+'" disabled></div>'
+        + '<div class="form-item"><label>站点名称</label><input id="f_name" value="'+MESUI.escapeHtml(row.station_name)+'"></div></div>'
         + '<div class="form-row"><div class="form-item"><label>允许重复过站</label><select id="f_repeat"><option value="1"'+(row.allow_repeat?' selected':'')+'>允许</option><option value="0"'+(!row.allow_repeat?' selected':'')+'>禁止</option></select></div>'
         + '<div class="form-item"><label>最大过站次数</label><input id="f_max" type="number" value="'+row.max_pass_count+'" placeholder="0=不限"></div></div>'
         + '<div style="background:#f0f5ff;padding:12px;border-radius:6px;margin-bottom:12px"><b>防呆设置</b></div>'
@@ -64,7 +64,7 @@ function scEdit(row) {
         + '<div class="form-row"><div class="form-item"><label>校验站点顺序</label><select id="f_seq"><option value="0"'+(!row.check_sequence?' selected':'')+'>否</option><option value="1"'+(row.check_sequence?' selected':'')+'>是</option></select></div>'
         + '<div class="form-item"><label>前置站点</label><input id="f_prev" value="'+(row.prev_station||'')+'" placeholder="如: SMT01"></div></div>'
         + '<div class="form-row"><div class="form-item"><label>要求工序</label><input id="f_proc" value="'+(row.required_process||'')+'" placeholder="留空不限"></div></div>'
-        + '<div class="form-row"><div class="form-item" style="flex:1"><label>描述</label><textarea id="f_desc">'+(row.description||'')+'</textarea></div></div>';
+        + '<div class="form-row"><div class="form-item" style="flex:1"><label>描述</label><textarea id="f_desc">'+MESUI.escapeHtml(row.description||'')+'</textarea></div></div>';
     modalSaveHandler = function() {
         var d = {id:row.id, station_name:document.getElementById('f_name').value,
             allow_repeat:parseInt(document.getElementById('f_repeat').value), max_pass_count:parseInt(document.getElementById('f_max').value),
@@ -100,9 +100,9 @@ function flowLoad(page) {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(f) {
-            return '<tr><td>'+f.id+'</td><td>'+f.flow_no+'</td><td><b>'+f.sn+'</b></td>'
+            return '<tr><td>'+f.id+'</td><td>'+MESUI.escapeHtml(f.flow_no)+'</td><td><b>'+MESUI.escapeHtml(f.sn)+'</b></td>'
                 +'<td>'+f.current_station+'</td><td>'+(f.current_process||'-')+'</td>'
-                +'<td><span class="tag '+(f.status?'tag-ok':'tag-run')+'">'+(f.status?'完成':'流转中')+'</span></td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(f.status?'tag-ok':'tag-run')+'">'+MESUI.escapeHtml(f.status?'完成':'流转中')+'</span></td>'
                 +'<td>'+(f.updated_at||'')+'</td></tr>';
         }).join('');
     });
@@ -174,9 +174,9 @@ function recordLoad(page) {
         var actionColors = {'过站':'#52c41a','跳站':'#fa8c16','出站':'#1890ff','重工':'#f5222d','返线':'#722ed1','关箱':'#13c2c2','拆箱':'#eb2f96'};
         tb.innerHTML = list.map(function(r) {
             var color = actionColors[r.action]||'#333';
-            return '<tr><td>'+r.id+'</td><td><b>'+r.sn+'</b></td><td>'+r.station+'</td><td>'+(r.process_name||'-')+'</td>'
-                +'<td><span style="color:'+color+';font-weight:bold">'+r.action+'</span></td>'
-                +'<td>'+(r.result||'-')+'</td><td>'+(r.real_name||'-')+'</td><td>'+(r.created_at||'')+'</td></tr>';
+            return '<tr><td>'+r.id+'</td><td><b>'+MESUI.escapeHtml(r.sn)+'</b></td><td>'+MESUI.escapeHtml(r.station)+'</td><td>'+MESUI.escapeHtml(r.process_name||'-')+'</td>'
+                +'<td><span style="color:'+color+';font-weight:bold">'+MESUI.escapeHtml(r.action)+'</span></td>'
+                +'<td>'+(r.result||'-')+'</td><td>'+MESUI.escapeHtml(r.real_name||'-')+'</td><td>'+(r.created_at||'')+'</td></tr>';
         }).join('');
     });
 }
@@ -201,7 +201,7 @@ function loadSNTimeline() {
         var el = document.getElementById('timelineResult');
         
         if(!records.length) {
-            el.innerHTML = '<div style="text-align:center;padding:20px;color:#999">未找到SN: '+sn+' 的过站记录</div>';
+            el.innerHTML = '<div style="text-align:center;padding:20px;color:#999">未找到SN: '+MESUI.escapeHtml(sn)+' 的过站记录</div>';
             return;
         }
         
@@ -253,10 +253,10 @@ function loadSNTimeline() {
             var color = colors[s.action]||'#1890ff';
             
             h += '<div style="display:flex;align-items:center;margin-bottom:8px">';
-            h += '<div style="width:80px;font-size:12px;font-weight:bold;color:'+color+'">'+s.station+'</div>';
+            h += '<div style="width:80px;font-size:12px;font-weight:bold;color:'+color+'">'+MESUI.escapeHtml(s.station)+'</div>';
             h += '<div style="flex:1;position:relative;height:30px">';
             h += '<div style="position:absolute;left:'+left+'%;width:'+width+'%;height:100%;background:'+color+';border-radius:4px;opacity:0.8;display:flex;align-items:center;justify-content:center">';
-            h += '<span style="color:white;font-size:11px;font-weight:bold">'+s.action+'</span>';
+            h += '<span style="color:white;font-size:11px;font-weight:bold">'+MESUI.escapeHtml(s.action)+'</span>';
             h += '</div>';
             h += '</div>';
             h += '<div style="width:80px;text-align:right;font-size:11px;color:#666">'+formatDuration(s.duration)+'</div>';
@@ -268,7 +268,7 @@ function loadSNTimeline() {
         // 详细记录表格
         h += '<table style="font-size:13px"><thead><tr><th>站点</th><th>操作</th><th>时间</th><th>时长</th><th>操作人</th><th>结果</th></tr></thead><tbody>';
         stations.forEach(function(s) {
-            h += '<tr><td><b>'+s.station+'</b></td><td><span style="color:'+(colors[s.action]||'#333')+'">'+s.action+'</span></td>';
+            h += '<tr><td><b>'+MESUI.escapeHtml(s.station)+'</b></td><td><span style="color:'+(colors[s.action]||'#333')+'">'+MESUI.escapeHtml(s.action)+'</span></td>';
             h += '<td>'+formatTime(s.start)+'</td><td>'+formatDuration(s.duration)+'</td>';
             h += '<td>'+s.operator+'</td><td>'+s.result+'</td></tr>';
         });
@@ -307,8 +307,8 @@ function boxLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(b) {
             var st = {0:'<span class="tag tag-draft">空箱</span>',1:'<span class="tag tag-ok">已关箱</span>',2:'<span class="tag tag-wait">已拆箱</span>'};
-            return '<tr><td>'+b.id+'</td><td><b>'+b.box_no+'</b></td><td>'+b.box_type+'</td><td>'+b.quantity+'</td>'
-                +'<td>'+(st[b.status]||'-')+'</td><td>'+(b.created_at||'')+'</td></tr>';
+            return '<tr><td>'+b.id+'</td><td><b>'+MESUI.escapeHtml(b.box_no)+'</b></td><td>'+MESUI.escapeHtml(b.box_type)+'</td><td>'+MESUI.escapeHtml(b.quantity)+'</td>'
+                +'<td>'+MESUI.escapeHtml(st[b.status]||'-')+'</td><td>'+(b.created_at||'')+'</td></tr>';
         }).join('');
     });
 }
@@ -352,10 +352,10 @@ function lockLoad() {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(l) {
-            return '<tr><td>'+l.id+'</td><td>'+l.lock_no+'</td><td>'+(l.material_name||l.material_id)+'</td>'
+            return '<tr><td>'+l.id+'</td><td>'+MESUI.escapeHtml(l.lock_no)+'</td><td>'+(l.material_name||l.material_id)+'</td>'
                 +'<td>'+l.lock_type+'</td><td>'+(l.reason||'-')+'</td>'
-                +'<td><span class="tag '+(l.status?'tag-no':'tag-ok')+'">'+(l.status?'已锁':'已解')+'</span></td>'
-                +'<td>'+(l.real_name||'-')+'</td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(l.status?'tag-no':'tag-ok')+'">'+MESUI.escapeHtml(l.status?'已锁':'已解')+'</span></td>'
+                +'<td>'+MESUI.escapeHtml(l.real_name||'-')+'</td>'
                 +'<td>'+(l.status?'<button class="btn btn-green btn-sm" onclick="unlockMaterial('+l.id+')">解料</button>':'已解')+'</td></tr>';
         }).join('');
     });
@@ -363,7 +363,7 @@ function lockLoad() {
 function showLockDialog() {
     api('/api/process/material/list?size=500').then(function(r) {
         var opts = '<option value="">选择物料</option>';
-        (r?.data?.list||[]).forEach(function(m) { opts += '<option value="'+m.id+'">'+m.material_name+' ('+m.material_no+')</option>'; });
+        (r?.data?.list||[]).forEach(function(m) { opts += '<option value="'+m.id+'">'+MESUI.escapeHtml(m.material_name)+' ('+MESUI.escapeHtml(m.material_no)+')</option>'; });
         document.getElementById('mTitle').textContent = '锁料';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>物料<span style="color:red">*</span></label><select id="f_mat">'+opts+'</select></div></div>'
             + '<div class="form-row"><div class="form-item" style="flex:1"><label>原因</label><textarea id="f_reason"></textarea></div></div>';
@@ -394,19 +394,19 @@ function defectLoad() {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="9" class="empty">暂无数据</td></tr>'; return; }
         tb.innerHTML = list.map(function(d) {
-            return '<tr><td>'+d.id+'</td><td>'+d.receive_no+'</td><td>'+(d.sn||'-')+'</td>'
-                +'<td>'+(d.product_name||'-')+'</td><td>'+(d.defect_name||'-')+'</td><td>'+(d.station||'-')+'</td>'
-                +'<td>'+d.quantity+'</td><td>'+d.process_type+'</td>'
-                +'<td><span class="tag '+(d.status?'tag-ok':'tag-wait')+'">'+(d.status?'已处理':'待处理')+'</span></td></tr>';
+            return '<tr><td>'+d.id+'</td><td>'+MESUI.escapeHtml(d.receive_no)+'</td><td>'+MESUI.escapeHtml(d.sn||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(d.product_name||'-')+'</td><td>'+MESUI.escapeHtml(d.defect_name||'-')+'</td><td>'+MESUI.escapeHtml(d.station||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(d.quantity)+'</td><td>'+d.process_type+'</td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(d.status?'tag-ok':'tag-wait')+'">'+MESUI.escapeHtml(d.status?'已处理':'待处理')+'</span></td></tr>';
         }).join('');
     });
 }
 function showDefectDialog() {
     Promise.all([api('/api/base/product/all'), api('/api/base/defect/list?size=100')]).then(function(r) {
         var prodOpts = '<option value="">选择产品</option>';
-        (r[0]?.data||[]).forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+p.product_name+'</option>'; });
+        (r[0]?.data||[]).forEach(function(p) { prodOpts += '<option value="'+p.id+'">'+MESUI.escapeHtml(p.product_name)+'</option>'; });
         var defOpts = '<option value="">选择缺陷</option>';
-        (r[1]?.data?.list||[]).forEach(function(d) { defOpts += '<option value="'+d.id+'">'+d.defect_name+'</option>'; });
+        (r[1]?.data?.list||[]).forEach(function(d) { defOpts += '<option value="'+d.id+'">'+MESUI.escapeHtml(d.defect_name)+'</option>'; });
         document.getElementById('mTitle').textContent = '不良品接收';
         document.getElementById('mBody').innerHTML = '<div class="form-row"><div class="form-item"><label>SN</label><input id="f_sn" autofocus></div></div>'
             + '<div class="form-row"><div class="form-item"><label>产品</label><select id="f_prod">'+prodOpts+'</select></div>'
@@ -441,9 +441,9 @@ function materialLoad() {
         var tb = document.getElementById('tb');
         if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无物料</td></tr>'; return; }
         tb.innerHTML = list.map(function(m) {
-            return '<tr><td>'+m.id+'</td><td>'+m.material_name+'</td><td><code>'+m.material_no+'</code></td>'
-                +'<td>'+(m.specification||'-')+'</td><td>'+(m.unit||'-')+'</td><td>'+(m.category||'-')+'</td>'
-                +'<td><span class="tag '+(m.status?'tag-ok':'tag-draft')+'">'+(m.status?'启用':'停用')+'</span></td>'
+            return '<tr><td>'+m.id+'</td><td>'+MESUI.escapeHtml(m.material_name)+'</td><td><code>'+MESUI.escapeHtml(m.material_no)+'</code></td>'
+                +'<td>'+MESUI.escapeHtml(m.specification||'-')+'</td><td>'+MESUI.escapeHtml(m.unit||'-')+'</td><td>'+MESUI.escapeHtml(m.category||'-')+'</td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(m.status?'tag-ok':'tag-draft')+'">'+MESUI.escapeHtml(m.status?'启用':'停用')+'</span></td>'
                 +'<td><button class="btn btn-red btn-sm" onclick="materialDel('+m.id+')">删除</button></td></tr>';
         }).join('');
     });
@@ -484,10 +484,10 @@ function exceptionLoad() {
         if(!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无异常</td></tr>'; return; }
         var sevColor = {low:'#52c41a',medium:'#fa8c16',high:'#f5222d',critical:'#722ed1'};
         tb.innerHTML = list.map(function(e) {
-            return '<tr><td>'+e.id+'</td><td>'+e.exception_no+'</td><td>'+(e.exception_type||'-')+'</td>'
-                +'<td>'+(e.station||'-')+'</td><td style="color:'+(sevColor[e.severity]||'#333')+'">'+(e.severity||'-')+'</td>'
+            return '<tr><td>'+e.id+'</td><td>'+MESUI.escapeHtml(e.exception_no)+'</td><td>'+MESUI.escapeHtml(e.exception_type||'-')+'</td>'
+                +'<td>'+MESUI.escapeHtml(e.station||'-')+'</td><td style="color:'+(sevColor[e.severity]||'#333')+'">'+(e.severity||'-')+'</td>'
                 +'<td>'+(e.description||'-').substring(0,30)+'</td>'
-                +'<td><span class="tag '+(e.status?'tag-ok':'tag-no')+'">'+(e.status?'已处理':'待处理')+'</span></td>'
+                +'<td><span class="tag '+MESUI.escapeHtml(e.status?'tag-ok':'tag-no')+'">'+MESUI.escapeHtml(e.status?'已处理':'待处理')+'</span></td>'
                 +'<td>'+(e.status?'':'<button class="btn btn-green btn-sm" onclick="resolveException('+e.id+')">处理</button>')+'</td></tr>';
         }).join('');
     });
