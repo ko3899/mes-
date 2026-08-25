@@ -132,6 +132,11 @@ class SimpleRateLimiter:
         if self._app is None:
             return None
 
+        # 仅对 API 接口做限流；静态资源与页面本身不计入，
+        # 避免管理后台一次性加载几十个 CSS/JS 就瞬间打爆 50/hour 额度
+        if not request.path.startswith('/api/'):
+            return None
+
         view_func = self._app.view_functions.get(request.endpoint)
         if self._is_exempt(view_func):
             return None

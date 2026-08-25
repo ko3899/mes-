@@ -25,10 +25,10 @@ def client(tmp_path, monkeypatch):
 def test_default_rate_limit_blocks_after_threshold(client):
     """默认 50/hour:同一 IP 连续请求 50 次后第 51 次应被 429 拒绝。"""
     for i in range(50):
-        resp = client.get('/healthz', environ_overrides={'REMOTE_ADDR': '1.2.3.4'})
+        resp = client.get('/api/captcha', environ_overrides={'REMOTE_ADDR': '1.2.3.4'})
         assert resp.status_code == 200, f'第 {i+1} 次请求失败'
 
-    resp = client.get('/healthz', environ_overrides={'REMOTE_ADDR': '1.2.3.4'})
+    resp = client.get('/api/captcha', environ_overrides={'REMOTE_ADDR': '1.2.3.4'})
     assert resp.status_code == 429
     data = resp.get_json()
     assert data['error'] == 'Too many requests'
@@ -38,11 +38,11 @@ def test_default_rate_limit_blocks_after_threshold(client):
 def test_rate_limit_is_per_ip(client):
     """不同 IP 的计数器应独立。"""
     for i in range(51):
-        resp = client.get('/healthz', environ_overrides={'REMOTE_ADDR': '1.2.3.5'})
+        resp = client.get('/api/captcha', environ_overrides={'REMOTE_ADDR': '1.2.3.5'})
     assert resp.status_code == 429
 
     # 换一个 IP 应被允许
-    resp = client.get('/healthz', environ_overrides={'REMOTE_ADDR': '1.2.3.6'})
+    resp = client.get('/api/captcha', environ_overrides={'REMOTE_ADDR': '1.2.3.6'})
     assert resp.status_code == 200
 
 

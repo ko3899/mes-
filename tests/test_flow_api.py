@@ -26,6 +26,17 @@ def flow_client(tmp_path, monkeypatch):
         """INSERT INTO sys_user(username,password,real_name,status)
            VALUES('approver','x','审批人',1)"""
     ).lastrowid
+    # 审批人需要具备审批权限（/api/flow/task/approve|reject 依赖 flow:approve）：
+    # 绑定 admin 角色让其命中 permission_required 的管理员放行分支。
+    # init_db 已种子 role_key='admin'，INSERT OR IGNORE 仅为兜底。
+    db.execute(
+        """INSERT OR IGNORE INTO sys_role(role_name,role_key,description,menu_ids,status)
+           VALUES('超级管理员','admin','拥有所有权限','',1)"""
+    )
+    db.execute(
+        "UPDATE sys_user SET role_id=(SELECT id FROM sys_role WHERE role_key='admin') WHERE id=?",
+        (approver_id,),
+    )
     product_id = db.execute(
         "INSERT INTO base_product(product_name,code,unit) VALUES('审批产品','FLOW-P','个')"
     ).lastrowid
