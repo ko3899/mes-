@@ -27,9 +27,17 @@
 <h2>欢迎回来</h2>
 <p class="login-subtitle">登录工厂生产管理平台</p>
 <label for="lu">用户名</label>
-<input id="lu" type="text" autocomplete="username" placeholder="请输入用户名" value="admin">
+<input id="lu" type="text" autocomplete="username" placeholder="请输入用户名">
 <label for="lp">密码</label>
-<input id="lp" type="password" autocomplete="current-password" placeholder="请输入密码" value="admin123">
+<input id="lp" type="password" autocomplete="current-password" placeholder="请输入密码">
+<div id="captchaRow" class="captcha-row is-hidden">
+<label for="lc">验证码</label>
+<div class="captcha-box">
+<input id="lc" type="text" autocomplete="off" placeholder="请输入图形验证码">
+<img id="captchaImg" alt="验证码" title="点击刷新验证码">
+<button type="button" id="captchaRefresh" class="btn btn-gray btn-sm">刷新</button>
+</div>
+</div>
 <button id="loginBtn" type="button">登录系统</button>
 <div id="lerr" class="login-err" role="status"></div>
 </div>

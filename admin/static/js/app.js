@@ -276,6 +276,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.getElementById('loginBtn').onclick = doLogin;
+    document.getElementById('captchaRefresh').onclick = function(e) { e.preventDefault(); loadCaptcha(); };
+    document.getElementById('captchaImg').onclick = function() { loadCaptcha(); };
     document.getElementById('lu').onkeydown = function(e) { if(e.key === 'Enter') document.getElementById('lp').focus(); };
     document.getElementById('lp').onkeydown = function(e) { if(e.key === 'Enter') doLogin(); };
     document.getElementById('globalSearch').onkeydown = function(e) { if(e.key === 'Enter') doGlobalSearch(); };
@@ -345,7 +347,7 @@ function doGlobalSearch() {
         var menuMap = {product:'base/product',workorder:'prod/workorder',task:'prod/task',customer:'base/customer',supplier:'base/supplier',equipment:'eqp/ledger',user:'sys/user'};
         var h = '找到 ' + results.length + ' 条结果:\n\n';
         results.forEach(function(r) {
-            h += '[' + (typeMap[r.type]||r.type) + '] ' + r.name + (r.code ? ' (' + r.code + ')' : '') + '\n';
+            h += '[' + (typeMap[r.type]||r.type) + '] ' +MESUI.escapeHtml(r.name)+ (r.code ? ' (' +MESUI.escapeHtml(r.code)+ ')' : '') + '\n';
         });
         alert(h);
     });
@@ -355,12 +357,46 @@ function doLogin() {
     var u = document.getElementById('lu').value;
     var p = document.getElementById('lp').value;
     if(!u || !p) { document.getElementById('lerr').textContent = '请输入用户名和密码'; return; }
+    var body = {username:u, password:p};
+    if(window._captchaKey) {
+        body.captcha_key = window._captchaKey;
+        body.captcha_code = document.getElementById('lc').value;
+    }
     document.getElementById('lerr').textContent = '登录中...';
-    api('/api/login', {method:'POST', body:{username:u, password:p}}).then(function(r) {
+    api('/api/login', {method:'POST', body:body}).then(function(r) {
         if(!r) { document.getElementById('lerr').textContent = '网络错误'; return; }
+        if(r.code === 429) {
+            document.getElementById('lerr').textContent = r.message || '请填写验证码后重试';
+            showCaptcha();
+            return;
+        }
         if(r.code !== 0) { document.getElementById('lerr').textContent = r.message; return; }
+        window._captchaKey = '';
+        document.getElementById('captchaRow').classList.add('is-hidden');
+        document.getElementById('lc').value = '';
         applyAuthenticatedUser(r.data);
     });
+}
+
+var _captchaLoading = false;
+function loadCaptcha() {
+    if(_captchaLoading) return Promise.resolve();
+    _captchaLoading = true;
+    return api('/api/captcha').then(function(r) {
+        if(r && r.code === 0 && r.data && r.data.key) {
+            window._captchaKey = r.data.key;
+            var img = document.getElementById('captchaImg');
+            if(img) img.src = '/api/captcha/image/' + encodeURIComponent(window._captchaKey) + '?t=' + Date.now();
+        }
+    }).finally(function() { _captchaLoading = false; });
+}
+
+function showCaptcha() {
+    var row = document.getElementById('captchaRow');
+    if(row) row.classList.remove('is-hidden');
+    loadCaptcha();
+    var input = document.getElementById('lc');
+    if(input) input.focus();
 }
 
 function doLogout(skipServerLogout) {

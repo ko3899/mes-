@@ -79,6 +79,11 @@ button { cursor: pointer; }
 .login-box #loginBtn:hover { background: var(--primary-700); box-shadow: 0 8px 20px rgba(37, 99, 235, .2); }
 .login-err { min-height: 22px; padding-top: 10px; color: var(--danger); font-size: 13px; }
 
+.captcha-row { margin-bottom: 14px; }
+.captcha-box { display: flex; align-items: center; gap: 8px; }
+.captcha-box input { flex: 1; margin: 0 !important; }
+.captcha-box img { width: 110px; height: 42px; border: 1px solid var(--border-subtle); border-radius: 7px; background: #fff; cursor: pointer; object-fit: cover; }
+
 /* Application shell */
 .app-shell { display: flex; width: 100%; height: 100dvh; background: var(--workspace); }
 .sidebar-shell { width: var(--sidebar-width); flex: 0 0 var(--sidebar-width); display: flex; flex-direction: column; overflow: hidden; color: #fff; background: var(--navy-950); transition: width .18s, flex-basis .18s, transform .18s; }

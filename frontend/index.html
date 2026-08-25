@@ -33,6 +33,7 @@
         <p class="login-intro">使用您的工号进入当前班次工作台</p>
         <label class="field"><span>工号 / 用户名</span><input id="usernameInput" name="username" autocomplete="username" placeholder="请输入工号" required></label>
         <label class="field"><span>密码</span><input id="passwordInput" name="password" type="password" autocomplete="current-password" placeholder="请输入密码" required></label>
+          <div id="captchaField" class="field is-hidden"><span>验证码</span><div style="display:flex;gap:8px"><input id="captchaInput" autocomplete="off" placeholder="请输入图形验证码" style="flex:1;min-width:0"><img id="captchaImage" alt="验证码" title="点击刷新" style="width:120px;height:46px;border:1px solid var(--border);border-radius:9px;background:#f8fafc;cursor:pointer;object-fit:cover"></div></div>
         <p id="loginError" class="form-error" aria-live="polite"></p>
         <button id="loginButton" class="button button-primary button-large" type="submit">进入工作台</button>
         <p class="terminal-note">MES 工厂管家 · 安全采集通道</p>
