@@ -26,6 +26,8 @@ from utils.rate_limiter import SimpleRateLimiter
 from utils.database import close_db, init_db, _init_extra_tables, DB_PATH, BASE_DIR, get_db
 from utils.db_errors import INTEGRITY_ERRORS
 from utils.helpers import login_required, gen_no, _load_session_user, admin_required, permission_required
+from services.production_flow import BusinessError as ProductionBusinessError
+from services.procurement_flow import BusinessError as ProcurementBusinessError
 from blueprints.auth import auth_bp
 from blueprints.system import system_bp
 from blueprints.base_data import base_data_bp
@@ -115,6 +117,14 @@ def create_app():
 
     # 注册 teardown
     app.teardown_appcontext(close_db)
+
+    # 全局业务异常处理：services 抛出的 BusinessError 按自身 status 返回，
+    # 避免"任务不存在"等业务 404 变成 500
+    @app.errorhandler(ProductionBusinessError)
+    @app.errorhandler(ProcurementBusinessError)
+    def handle_business_error(e):
+        status = getattr(e, 'status', 400)
+        return jsonify({'code': status, 'message': str(e)}), status
 
     # 注册蓝图
     app.register_blueprint(auth_bp)
