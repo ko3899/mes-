@@ -33,6 +33,7 @@
 
 **核心职责**：
 - 依据销售订单制定生产计划与排程
+- 在「计划控制」中按产品+阶段码下达/调整计划镭雕数量（见模块手册第十章）
 - 创建/下发生产工单（含工艺路线、BOM 冻结）
 - 跟踪工单执行进度，处理计划变更
 
@@ -205,7 +206,7 @@
 
 | 岗位 | 系统角色 role_key | 建议权限 key |
 |------|------------------|--------------|
-| 生产计划员 | planner | prod:plan:write、prod:workorder:write、prod:batch:write、aps:write |
+| 生产计划员 | planner | prod:plan:write、prod:workorder:write、prod:batch:write、aps:write、plan:control:write |
 | 车间主任/班组长 | workshop_leader | prod:task:write、prod:report:review、prod:report:post、flow:approve |
 | 操作工 | operator | prod:task:list、prod:report:create |
 | 质检员 | quality_inspector | quality:write、qm:process:list |

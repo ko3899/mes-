@@ -95,7 +95,7 @@ docker compose up -d   # 需在 .env 中设置 SECRET_KEY
 
 权限校验链：`login_required`（登录）→ `admin_required`（仅 admin）→ `permission_required('模块:动作')`（细粒度）。
 
-- 权限 key 命名：`模块:资源:动作`，例如 `prod:batch:write`（批次维护）、`inv:write`（库存写）、`flow:approve`（审批）、`doc:write`（文档上传）。
+- 权限 key 命名：`模块:资源:动作`，例如 `prod:batch:write`（批次维护）、`inv:write`（库存写）、`flow:approve`（审批）、`doc:write`（文档上传）、`plan:control:read/write`（计划控制查看/维护）。
 - 权限目录：系统管理 → 权限目录（`sys_ext.ACTION_PERMISSION_CATALOG`）列出全部可用权限 key，新增/编辑角色时勾选。
 - **admin 角色直通**：拥有 admin 角色的用户不受权限 key 限制（系统管理功能建议仅授予 admin）。
 
@@ -191,4 +191,5 @@ SQLite 单文件数据库，直接复制 `database/mes.db` 即可（建议停止
 | AI 智能分析（/api/ai/inspect） | 已接入（DeepSeek） | 在 AI 配置中启用并填写 API Key 后即可使用；未配置返回 503 明确提示 |
 | ERP 同步 | 未启用（501） | 占位保留，未配置时返回明确提示；接入需明确对接系统后实现 |
 | 采购收料闭环 | 已实现 | 到货登记→收料过账→库存更新→采购单联动 |
+| 计划控制 | 已实现 | 按产品×阶段码控制计划镭雕数量（余量=计划-OK，增减校验 9 位数/余量） |
 | 权限双轨 | 兼容模式 | 菜单权限 + 动作权限并存，别名映射为兼容旧配置 |
