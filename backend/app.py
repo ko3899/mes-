@@ -25,7 +25,7 @@ from utils.rate_limiter import SimpleRateLimiter
 
 from utils.database import close_db, init_db, _init_extra_tables, DB_PATH, BASE_DIR, get_db
 from utils.db_errors import INTEGRITY_ERRORS
-from utils.helpers import login_required, gen_no, _load_session_user
+from utils.helpers import login_required, gen_no, _load_session_user, admin_required, permission_required
 from blueprints.auth import auth_bp
 from blueprints.system import system_bp
 from blueprints.base_data import base_data_bp
@@ -461,7 +461,7 @@ def create_app():
         return response
 
     @app.route('/api/import/<table>', methods=['POST'])
-    @login_required
+    @admin_required
     def import_data(table):
         current_user, auth_error = _load_session_user()
         if auth_error:
@@ -616,7 +616,7 @@ def create_app():
         return jsonify({'code': 0, 'data': {'list': [dict(r) for r in rows], 'total': total}})
 
     @app.route('/api/trace/batch/add', methods=['POST'])
-    @login_required
+    @permission_required('prod:batch:write')
     def trace_batch_add():
         d = request.get_json(silent=True)
         if not isinstance(d, dict):
@@ -645,7 +645,7 @@ def create_app():
             return jsonify({'code': 409, 'message': '批次号已存在'}), 409
 
     @app.route('/api/trace/batch/delete', methods=['POST'])
-    @login_required
+    @permission_required('prod:batch:write')
     def trace_batch_delete():
         d = request.get_json(silent=True) or {}
         if not d.get('id'):
@@ -672,7 +672,7 @@ def create_app():
         return jsonify({'code': 0, 'data': {'batch': dict(batch), 'traces': [dict(r) for r in traces]}})
 
     @app.route('/api/trace/add', methods=['POST'])
-    @login_required
+    @permission_required('prod:extension:write')
     def trace_add():
         d = request.get_json(silent=True)
         if not isinstance(d, dict):
@@ -727,7 +727,7 @@ if __name__ == '__main__':
     print("=" * 50)
     print("  MES工厂管家 启动成功!")
     print("  访问地址: http://localhost:8080")
-    print("  默认账号: admin / admin123")
+    print("默认口令已移除，请使用已修改的管理员账号登录")
     print("=" * 50)
     try:
         host = os.environ.get('MES_HOST', '0.0.0.0')

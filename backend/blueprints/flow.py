@@ -5,7 +5,7 @@ import sqlite3
 from flask import Blueprint, jsonify, request, session
 
 from utils.database import get_db
-from utils.helpers import login_required
+from utils.helpers import login_required, permission_required
 from utils.db_errors import INTEGRITY_ERRORS
 
 
@@ -69,7 +69,7 @@ def flow_def_list():
 
 
 @flow_bp.route('/api/flow/definition/add', methods=['POST'])
-@login_required
+@permission_required('flow:write')
 def flow_def_add():
     data = request.get_json(silent=True) or {}
     flow_name = str(data.get('flow_name') or '').strip()
@@ -99,7 +99,7 @@ def flow_def_add():
 
 
 @flow_bp.route('/api/flow/definition/update', methods=['POST'])
-@login_required
+@permission_required('flow:write')
 def flow_def_update():
     data = request.get_json(silent=True) or {}
     try:
@@ -133,7 +133,7 @@ def flow_def_update():
 
 
 @flow_bp.route('/api/flow/definition/delete', methods=['POST'])
-@login_required
+@permission_required('flow:write')
 def flow_def_delete():
     data = request.get_json(silent=True) or {}
     try:
@@ -151,7 +151,7 @@ def flow_def_delete():
 
 
 @flow_bp.route('/api/flow/instance/submit', methods=['POST'])
-@login_required
+@permission_required('flow:write')
 def flow_instance_submit():
     data = request.get_json(silent=True) or {}
     try:
@@ -278,7 +278,7 @@ def _get_pending_task(db, task_id, current_user):
 
 
 @flow_bp.route('/api/flow/task/approve', methods=['POST'])
-@login_required
+@permission_required('flow:approve')
 def flow_task_approve():
     data = request.get_json(silent=True) or {}
     try:
@@ -354,7 +354,7 @@ def flow_task_approve():
 
 
 @flow_bp.route('/api/flow/task/reject', methods=['POST'])
-@login_required
+@permission_required('flow:approve')
 def flow_task_reject():
     data = request.get_json(silent=True) or {}
     try:

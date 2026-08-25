@@ -1,7 +1,7 @@
 """ERP集成蓝图 - 用友/金蝶/SAP对接"""
 from flask import Blueprint, request, jsonify
 from utils.database import get_db
-from utils.helpers import admin_required, login_required
+from utils.helpers import admin_required, login_required, permission_required
 
 erp_bp = Blueprint('erp', __name__)
 
@@ -47,21 +47,21 @@ def erp_config_save():
 
 
 @erp_bp.route('/api/erp/sync/products', methods=['POST'])
-@login_required
+@permission_required('erp:write')
 def erp_sync_products():
     """同步ERP产品数据"""
     return _integration_not_implemented()
 
 
 @erp_bp.route('/api/erp/sync/orders', methods=['POST'])
-@login_required
+@permission_required('erp:write')
 def erp_sync_orders():
     """同步ERP订单数据"""
     return _integration_not_implemented()
 
 
 @erp_bp.route('/api/erp/sync/inventory', methods=['POST'])
-@login_required
+@permission_required('erp:write')
 def erp_sync_inventory():
     """同步ERP库存数据"""
     return _integration_not_implemented()

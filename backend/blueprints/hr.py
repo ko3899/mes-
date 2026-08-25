@@ -1,7 +1,7 @@
 """人力资源蓝图 - 培训/技能矩阵"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no, permission_required
 
 hr_bp = Blueprint('hr', __name__)
 
@@ -14,19 +14,19 @@ def training_list():
 
 
 @hr_bp.route('/api/hr/training/add', methods=['POST'])
-@login_required
+@permission_required('hr:write')
 def training_add():
     return jsonify(crud_add('hr_training', request.json))
 
 
 @hr_bp.route('/api/hr/training/update', methods=['POST'])
-@login_required
+@permission_required('hr:write')
 def training_update():
     return jsonify(crud_update('hr_training', request.json))
 
 
 @hr_bp.route('/api/hr/training/delete', methods=['POST'])
-@login_required
+@permission_required('hr:write')
 def training_delete():
     return jsonify(crud_delete('hr_training', request.json.get('id')))
 
@@ -43,7 +43,7 @@ def training_records(training_id):
 
 
 @hr_bp.route('/api/hr/training/record/add', methods=['POST'])
-@login_required
+@permission_required('hr:write')
 def training_record_add():
     return jsonify(crud_add('hr_training_record', request.json))
 
@@ -62,7 +62,7 @@ def skill_matrix_list():
 
 
 @hr_bp.route('/api/hr/skill-matrix/add', methods=['POST'])
-@login_required
+@permission_required('hr:write')
 def skill_matrix_add():
     d = request.json
     d['evaluator'] = session.get('user_id')
@@ -70,13 +70,13 @@ def skill_matrix_add():
 
 
 @hr_bp.route('/api/hr/skill-matrix/update', methods=['POST'])
-@login_required
+@permission_required('hr:write')
 def skill_matrix_update():
     return jsonify(crud_update('hr_skill_matrix', request.json))
 
 
 @hr_bp.route('/api/hr/skill-matrix/delete', methods=['POST'])
-@login_required
+@permission_required('hr:write')
 def skill_matrix_delete():
     return jsonify(crud_delete('hr_skill_matrix', request.json.get('id')))
 

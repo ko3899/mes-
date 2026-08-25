@@ -27,7 +27,7 @@ def workstation_list():
 
 
 @site_bp.route('/api/site/workstation/add', methods=['POST'])
-@login_required
+@permission_required('site:write')
 def workstation_add():
     data = request.get_json(silent=True) or {}
     if not str(data.get('station_name') or '').strip() or not str(data.get('code') or '').strip():
@@ -38,13 +38,13 @@ def workstation_add():
 
 
 @site_bp.route('/api/site/workstation/update', methods=['POST'])
-@login_required
+@permission_required('site:write')
 def workstation_update():
     return jsonify(crud_update('base_workstation', request.json))
 
 
 @site_bp.route('/api/site/workstation/delete', methods=['POST'])
-@login_required
+@permission_required('site:write')
 def workstation_delete():
     data = request.get_json(silent=True) or {}
     try:
@@ -84,7 +84,7 @@ def andon_list():
 
 
 @site_bp.route('/api/site/andon/call', methods=['POST'])
-@login_required
+@permission_required('site:write')
 def andon_call():
     d = request.get_json(silent=True) or {}
     try:
@@ -120,7 +120,7 @@ def andon_call():
 
 
 @site_bp.route('/api/site/andon/respond', methods=['POST'])
-@login_required
+@permission_required('site:write')
 def andon_respond():
     import datetime
     d = request.get_json(silent=True) or {}
@@ -136,7 +136,7 @@ def andon_respond():
 
 
 @site_bp.route('/api/site/andon/resolve', methods=['POST'])
-@login_required
+@permission_required('site:write')
 def andon_resolve():
     d = request.get_json(silent=True) or {}
     if not d.get('id'):
@@ -234,7 +234,7 @@ def rework_start_task(record_id):
 
 
 @site_bp.route('/api/site/rework/add', methods=['POST'])
-@login_required
+@permission_required('site:write')
 def rework_add():
     d = request.get_json(silent=True) or {}
     try:
@@ -273,13 +273,13 @@ def rework_add():
 
 
 @site_bp.route('/api/site/rework/update', methods=['POST'])
-@login_required
+@permission_required('site:write')
 def rework_update():
     return jsonify({'code': 409, 'message': '返工/报废单提交后不能直接修改，请按流程处理'}), 409
 
 
 @site_bp.route('/api/site/rework/<int:record_id>/complete', methods=['POST'])
-@login_required
+@permission_required('site:write')
 def rework_complete(record_id):
     db = get_db()
     cursor = db.execute('UPDATE prod_rework SET status=1 WHERE id=? AND status=0', (record_id,))

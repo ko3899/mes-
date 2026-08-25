@@ -1,7 +1,7 @@
 """FMEA失效模式分析蓝图"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no, permission_required
 
 fmea_bp = Blueprint('fmea', __name__)
 
@@ -24,7 +24,7 @@ def fmea_list():
 
 
 @fmea_bp.route('/api/fmea/add', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def fmea_add():
     """新增FMEA"""
     d = request.json
@@ -38,7 +38,7 @@ def fmea_add():
 
 
 @fmea_bp.route('/api/fmea/update', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def fmea_update():
     """更新FMEA"""
     d = request.json
@@ -48,7 +48,7 @@ def fmea_update():
 
 
 @fmea_bp.route('/api/fmea/delete', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def fmea_delete():
     """删除FMEA"""
     return jsonify(crud_delete('qm_fmea', request.json.get('id')))

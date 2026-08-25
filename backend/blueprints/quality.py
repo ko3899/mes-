@@ -1,7 +1,7 @@
 """质量管理蓝图"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no, permission_required
 
 quality_bp = Blueprint('quality', __name__)
 
@@ -13,7 +13,7 @@ def qm_incoming_list():
 
 
 @quality_bp.route('/api/qm/incoming/add', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def qm_incoming_add():
     data = request.json
     data['inspect_no'] = gen_no('IQC')
@@ -22,13 +22,13 @@ def qm_incoming_add():
 
 
 @quality_bp.route('/api/qm/incoming/update', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def qm_incoming_update():
     return jsonify(crud_update('qm_incoming_inspection', request.json))
 
 
 @quality_bp.route('/api/qm/incoming/delete', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def qm_incoming_delete():
     return jsonify(crud_delete('qm_incoming_inspection', request.json.get('id')))
 
@@ -40,7 +40,7 @@ def qm_process_list():
 
 
 @quality_bp.route('/api/qm/process/add', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def qm_process_add():
     data = request.json
     data['inspect_no'] = gen_no('PQC')
@@ -49,13 +49,13 @@ def qm_process_add():
 
 
 @quality_bp.route('/api/qm/process/update', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def qm_process_update():
     return jsonify(crud_update('qm_process_inspection', request.json))
 
 
 @quality_bp.route('/api/qm/process/delete', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def qm_process_delete():
     return jsonify(crud_delete('qm_process_inspection', request.json.get('id')))
 
@@ -67,7 +67,7 @@ def qm_outgoing_list():
 
 
 @quality_bp.route('/api/qm/outgoing/add', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def qm_outgoing_add():
     data = request.json
     data['inspect_no'] = gen_no('OQC')
@@ -76,12 +76,12 @@ def qm_outgoing_add():
 
 
 @quality_bp.route('/api/qm/outgoing/update', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def qm_outgoing_update():
     return jsonify(crud_update('qm_outgoing_inspection', request.json))
 
 
 @quality_bp.route('/api/qm/outgoing/delete', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def qm_outgoing_delete():
     return jsonify(crud_delete('qm_outgoing_inspection', request.json.get('id')))

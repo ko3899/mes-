@@ -4,7 +4,7 @@ import sqlite3
 from flask import Blueprint, jsonify, request, session
 
 from utils.database import get_db
-from utils.helpers import crud_list, gen_no_in_transaction, login_required
+from utils.helpers import crud_list, gen_no_in_transaction, login_required, permission_required
 from utils.db_errors import INTEGRITY_ERRORS
 
 
@@ -378,25 +378,25 @@ def inv_inbound_list():
 
 
 @inventory_bp.route('/api/inv/inbound/add', methods=['POST'])
-@login_required
+@permission_required('inv:write')
 def inv_inbound_add():
     return _add_document('inbound')
 
 
 @inventory_bp.route('/api/inv/inbound/update', methods=['POST'])
-@login_required
+@permission_required('inv:write')
 def inv_inbound_update():
     return _update_document('inbound')
 
 
 @inventory_bp.route('/api/inv/inbound/delete', methods=['POST'])
-@login_required
+@permission_required('inv:write')
 def inv_inbound_delete():
     return _delete_document('inbound')
 
 
 @inventory_bp.route('/api/inv/inbound/<int:document_id>/post', methods=['POST'])
-@login_required
+@permission_required('inv:write')
 def inv_inbound_post(document_id):
     return _post_document('inbound', document_id)
 
@@ -408,25 +408,25 @@ def inv_outbound_list():
 
 
 @inventory_bp.route('/api/inv/outbound/add', methods=['POST'])
-@login_required
+@permission_required('inv:write')
 def inv_outbound_add():
     return _add_document('outbound')
 
 
 @inventory_bp.route('/api/inv/outbound/update', methods=['POST'])
-@login_required
+@permission_required('inv:write')
 def inv_outbound_update():
     return _update_document('outbound')
 
 
 @inventory_bp.route('/api/inv/outbound/delete', methods=['POST'])
-@login_required
+@permission_required('inv:write')
 def inv_outbound_delete():
     return _delete_document('outbound')
 
 
 @inventory_bp.route('/api/inv/outbound/<int:document_id>/post', methods=['POST'])
-@login_required
+@permission_required('inv:write')
 def inv_outbound_post(document_id):
     return _post_document('outbound', document_id)
 

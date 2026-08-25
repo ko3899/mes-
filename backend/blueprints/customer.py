@@ -1,7 +1,7 @@
 """客户管理蓝图"""
 from flask import Blueprint, request, jsonify
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, permission_required
 
 customer_bp = Blueprint('customer', __name__)
 
@@ -13,19 +13,19 @@ def customer_list():
 
 
 @customer_bp.route('/api/base/customer/add', methods=['POST'])
-@login_required
+@permission_required('base:write')
 def customer_add():
     return jsonify(crud_add('base_customer', request.json))
 
 
 @customer_bp.route('/api/base/customer/update', methods=['POST'])
-@login_required
+@permission_required('base:write')
 def customer_update():
     return jsonify(crud_update('base_customer', request.json))
 
 
 @customer_bp.route('/api/base/customer/delete', methods=['POST'])
-@login_required
+@permission_required('base:write')
 def customer_delete():
     return jsonify(crud_delete('base_customer', request.json.get('id')))
 

@@ -1,7 +1,7 @@
 """制程管控蓝图 - 过站/跳站/出站/重工/关箱/拆箱/锁料/解料/返线/不良品/料号"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no, permission_required
 
 process_bp = Blueprint('process', __name__)
 
@@ -14,26 +14,26 @@ def station_config_list():
 
 
 @process_bp.route('/api/process/station-config/add', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def station_config_add():
     return jsonify(crud_add('base_station_config', request.json))
 
 
 @process_bp.route('/api/process/station-config/update', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def station_config_update():
     return jsonify(crud_update('base_station_config', request.json))
 
 
 @process_bp.route('/api/process/station-config/delete', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def station_config_delete():
     return jsonify(crud_delete('base_station_config', request.json.get('id')))
 
 
 # ==================== 过站 ====================
 @process_bp.route('/api/process/pass-station', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def pass_station():
     """过站 - 产品通过当前站点（含防呆校验）"""
     d = request.json
@@ -131,7 +131,7 @@ def pass_station():
 
 # ==================== 跳站 ====================
 @process_bp.route('/api/process/skip-station', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def skip_station():
     """跳站 - 跳过当前站点"""
     d = request.json
@@ -156,7 +156,7 @@ def skip_station():
 
 # ==================== 出站 ====================
 @process_bp.route('/api/process/exit-station', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def exit_station():
     """出站 - 离开当前站点"""
     d = request.json
@@ -180,7 +180,7 @@ def exit_station():
 
 # ==================== 重工 ====================
 @process_bp.route('/api/process/rework', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def rework():
     """重工 - 产品返回指定站点重新加工"""
     d = request.json
@@ -207,7 +207,7 @@ def rework():
 
 # ==================== 关箱 ====================
 @process_bp.route('/api/process/close-box', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def close_box():
     """关箱 - 封装产品"""
     d = request.json
@@ -225,7 +225,7 @@ def close_box():
 
 # ==================== 拆箱 ====================
 @process_bp.route('/api/process/open-box', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def open_box():
     """拆箱 - 打开已封装的产品"""
     d = request.json
@@ -247,7 +247,7 @@ def open_box():
 
 # ==================== 锁料 ====================
 @process_bp.route('/api/process/lock-material', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def lock_material():
     """锁料 - 锁定物料"""
     d = request.json
@@ -266,7 +266,7 @@ def lock_material():
 
 # ==================== 解料 ====================
 @process_bp.route('/api/process/unlock-material', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def unlock_material():
     """解料 - 解锁物料"""
     d = request.get_json(silent=True) or {}
@@ -285,7 +285,7 @@ def unlock_material():
 
 # ==================== 返线 ====================
 @process_bp.route('/api/process/return-to-line', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def return_to_line():
     """返线 - 产品返回产线"""
     d = request.json
@@ -311,7 +311,7 @@ def return_to_line():
 
 # ==================== 不良品接收 ====================
 @process_bp.route('/api/process/defect-receive', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def defect_receive():
     """不良品接收"""
     d = request.json
@@ -335,19 +335,19 @@ def material_list():
 
 
 @process_bp.route('/api/process/material/add', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def material_add():
     return jsonify(crud_add('base_material', request.json))
 
 
 @process_bp.route('/api/process/material/update', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def material_update():
     return jsonify(crud_update('base_material', request.json))
 
 
 @process_bp.route('/api/process/material/delete', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def material_delete():
     return jsonify(crud_delete('base_material', request.json.get('id')))
 
@@ -466,7 +466,7 @@ def exception_list():
 
 
 @process_bp.route('/api/process/exception/add', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def exception_add():
     d = request.json
     d['exception_no'] = gen_no('EX')
@@ -474,7 +474,7 @@ def exception_add():
 
 
 @process_bp.route('/api/process/exception/resolve', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def exception_resolve():
     d = request.json
     db = get_db()

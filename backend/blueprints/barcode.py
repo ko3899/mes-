@@ -1,13 +1,13 @@
 """条码管理蓝图 - 生成/打印/扫描/查询"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import crud_list, login_required, gen_no
+from utils.helpers import crud_list, login_required, gen_no, permission_required
 
 barcode_bp = Blueprint('barcode', __name__)
 
 
 @barcode_bp.route('/api/barcode/generate', methods=['POST'])
-@login_required
+@permission_required('base:write')
 def barcode_generate():
     """生成条码"""
     d = request.json
@@ -68,7 +68,7 @@ def barcode_list():
 
 
 @barcode_bp.route('/api/barcode/batch-generate', methods=['POST'])
-@login_required
+@permission_required('base:write')
 def barcode_batch_generate():
     """批量生成条码"""
     d = request.json

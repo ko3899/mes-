@@ -1,7 +1,7 @@
 """电子SOP和线边仓管理蓝图"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no, permission_required
 
 sop_bp = Blueprint('sop', __name__)
 
@@ -50,14 +50,14 @@ def line_warehouse_list():
 
 
 @sop_bp.route('/api/line-warehouse/add', methods=['POST'])
-@login_required
+@permission_required('inv:write')
 def line_warehouse_add():
     """添加线边仓库存"""
     return jsonify(crud_add('inv_line_warehouse', request.json))
 
 
 @sop_bp.route('/api/line-warehouse/replenish', methods=['POST'])
-@login_required
+@permission_required('inv:write')
 def line_warehouse_replenish():
     """补货请求"""
     d = request.get_json(silent=True) or {}

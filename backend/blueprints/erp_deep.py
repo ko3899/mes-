@@ -2,27 +2,27 @@
 import json
 from flask import Blueprint, request, jsonify
 from utils.database import get_db
-from utils.helpers import admin_required, login_required
+from utils.helpers import admin_required, login_required, permission_required
 
 erp_deep_bp = Blueprint('erp_deep', __name__)
 
 
 @erp_deep_bp.route('/api/erp/yonyou/sync', methods=['POST'])
-@login_required
+@permission_required('erp:write')
 def yonyou_sync():
     """用友U8/U9对接"""
     return _integration_not_implemented()
 
 
 @erp_deep_bp.route('/api/erp/kingdee/sync', methods=['POST'])
-@login_required
+@permission_required('erp:write')
 def kingdee_sync():
     """金蝶云星空对接"""
     return _integration_not_implemented()
 
 
 @erp_deep_bp.route('/api/erp/sap/sync', methods=['POST'])
-@login_required
+@permission_required('erp:write')
 def sap_sync():
     """SAP对接"""
     return _integration_not_implemented()

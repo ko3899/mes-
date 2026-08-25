@@ -3,13 +3,13 @@ from datetime import date
 
 from flask import Blueprint, request, jsonify
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no, permission_required
 
 aps_bp = Blueprint('aps', __name__)
 
 
 @aps_bp.route('/api/aps/schedule', methods=['POST'])
-@login_required
+@permission_required('aps:write')
 def aps_schedule():
     """返回经过日期校验且不持久化的 APS 排程预览。"""
     d = request.get_json(silent=True)

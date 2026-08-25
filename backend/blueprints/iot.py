@@ -3,7 +3,7 @@ import hmac
 import os
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required
+from utils.helpers import login_required, permission_required
 
 iot_bp = Blueprint('iot', __name__)
 
@@ -18,7 +18,7 @@ def iot_device_list():
 
 
 @iot_bp.route('/api/iot/data/push', methods=['POST'])
-@login_required
+@permission_required('iot:write')
 def iot_data_push():
     """接收IoT设备数据"""
     d = request.get_json(silent=True) or {}

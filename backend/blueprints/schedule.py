@@ -1,7 +1,7 @@
 """排班管理蓝图"""
 from flask import Blueprint, request, jsonify
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, permission_required
 
 schedule_bp = Blueprint('schedule', __name__)
 
@@ -13,19 +13,19 @@ def sched_team_list():
 
 
 @schedule_bp.route('/api/sched/team/add', methods=['POST'])
-@login_required
+@permission_required('sched:write')
 def sched_team_add():
     return jsonify(crud_add('sched_team', request.json))
 
 
 @schedule_bp.route('/api/sched/team/update', methods=['POST'])
-@login_required
+@permission_required('sched:write')
 def sched_team_update():
     return jsonify(crud_update('sched_team', request.json))
 
 
 @schedule_bp.route('/api/sched/team/delete', methods=['POST'])
-@login_required
+@permission_required('sched:write')
 def sched_team_delete():
     return jsonify(crud_delete('sched_team', request.json.get('id')))
 
@@ -42,18 +42,18 @@ def sched_plan_list():
 
 
 @schedule_bp.route('/api/sched/plan/add', methods=['POST'])
-@login_required
+@permission_required('sched:write')
 def sched_plan_add():
     return jsonify(crud_add('sched_plan', request.json))
 
 
 @schedule_bp.route('/api/sched/plan/update', methods=['POST'])
-@login_required
+@permission_required('sched:write')
 def sched_plan_update():
     return jsonify(crud_update('sched_plan', request.json))
 
 
 @schedule_bp.route('/api/sched/plan/delete', methods=['POST'])
-@login_required
+@permission_required('sched:write')
 def sched_plan_delete():
     return jsonify(crud_delete('sched_plan', request.json.get('id')))

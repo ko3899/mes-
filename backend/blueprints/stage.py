@@ -1,7 +1,7 @@
 """阶段码管理蓝图"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no, permission_required
 
 stage_bp = Blueprint('stage', __name__)
 
@@ -16,7 +16,7 @@ def stage_code_list():
 
 
 @stage_bp.route('/api/stage/code/add', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def stage_code_add():
     d = request.json
     db = get_db()
@@ -36,19 +36,19 @@ def stage_code_add():
 
 
 @stage_bp.route('/api/stage/code/update', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def stage_code_update():
     return jsonify(crud_update('base_stage_code', request.json))
 
 
 @stage_bp.route('/api/stage/code/delete', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def stage_code_delete():
     return jsonify(crud_delete('base_stage_code', request.json.get('id')))
 
 
 @stage_bp.route('/api/stage/code/reorder', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def stage_code_reorder():
     """阶段码调序"""
     d = request.json
@@ -102,7 +102,7 @@ def stage_record_list():
 
 
 @stage_bp.route('/api/stage/record/add', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def stage_record_add():
     d = request.get_json(silent=True)
     if not isinstance(d, dict):
@@ -148,13 +148,13 @@ def stage_record_add():
 
 
 @stage_bp.route('/api/stage/record/update', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def stage_record_update():
     return jsonify(crud_update('prod_stage_record', request.json))
 
 
 @stage_bp.route('/api/stage/record/complete', methods=['POST'])
-@login_required
+@permission_required('process:write')
 def stage_record_complete():
     """完成阶段"""
     import datetime

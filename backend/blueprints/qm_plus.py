@@ -1,7 +1,7 @@
 """质量增强蓝图 - CAPA/控制计划/变更管理"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no, permission_required
 
 qm_plus_bp = Blueprint('qm_plus', __name__)
 
@@ -14,7 +14,7 @@ def capa_list():
 
 
 @qm_plus_bp.route('/api/qm/capa/add', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def capa_add():
     d = request.json
     d['capa_no'] = gen_no('CP')
@@ -22,13 +22,13 @@ def capa_add():
 
 
 @qm_plus_bp.route('/api/qm/capa/update', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def capa_update():
     return jsonify(crud_update('qm_capa', request.json))
 
 
 @qm_plus_bp.route('/api/qm/capa/delete', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def capa_delete():
     return jsonify(crud_delete('qm_capa', request.json.get('id')))
 
@@ -47,19 +47,19 @@ def control_plan_list():
 
 
 @qm_plus_bp.route('/api/qm/control-plan/add', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def control_plan_add():
     return jsonify(crud_add('qm_control_plan', request.json))
 
 
 @qm_plus_bp.route('/api/qm/control-plan/update', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def control_plan_update():
     return jsonify(crud_update('qm_control_plan', request.json))
 
 
 @qm_plus_bp.route('/api/qm/control-plan/delete', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def control_plan_delete():
     return jsonify(crud_delete('qm_control_plan', request.json.get('id')))
 
@@ -72,7 +72,7 @@ def eco_list():
 
 
 @qm_plus_bp.route('/api/qm/eco/add', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def eco_add():
     d = request.json
     d['eco_no'] = gen_no('ECO')
@@ -81,12 +81,12 @@ def eco_add():
 
 
 @qm_plus_bp.route('/api/qm/eco/update', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def eco_update():
     return jsonify(crud_update('qm_eco', request.json))
 
 
 @qm_plus_bp.route('/api/qm/eco/delete', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def eco_delete():
     return jsonify(crud_delete('qm_eco', request.json.get('id')))

@@ -2,7 +2,7 @@
 from flask import Blueprint, jsonify, request, session
 
 from utils.database import get_db
-from utils.helpers import crud_add, crud_delete, crud_list, crud_update, gen_no_in_transaction, login_required
+from utils.helpers import crud_add, crud_delete, crud_list, crud_update, gen_no_in_transaction, login_required, permission_required
 
 
 tool_bp = Blueprint('tool', __name__)
@@ -22,7 +22,7 @@ def tool_type_list():
 
 
 @tool_bp.route('/api/tool/type/add', methods=['POST'])
-@login_required
+@permission_required('tool:write')
 def tool_type_add():
     return jsonify(crud_add('tool_type', request.get_json(silent=True)))
 
@@ -44,7 +44,7 @@ def tool_ledger_list():
 
 
 @tool_bp.route('/api/tool/ledger/add', methods=['POST'])
-@login_required
+@permission_required('tool:write')
 def tool_ledger_add():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
@@ -60,7 +60,7 @@ def tool_ledger_add():
 
 
 @tool_bp.route('/api/tool/ledger/update', methods=['POST'])
-@login_required
+@permission_required('tool:write')
 def tool_ledger_update():
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or not data.get('id'):
@@ -85,7 +85,7 @@ def tool_ledger_update():
 
 
 @tool_bp.route('/api/tool/ledger/delete', methods=['POST'])
-@login_required
+@permission_required('tool:write')
 def tool_ledger_delete():
     data = request.get_json(silent=True) or {}
     tool_id = data.get('id')
@@ -115,7 +115,7 @@ def tool_borrow_list():
 
 
 @tool_bp.route('/api/tool/borrow/add', methods=['POST'])
-@login_required
+@permission_required('tool:write')
 def tool_borrow_add():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
@@ -175,7 +175,7 @@ def tool_borrow_add():
 
 
 @tool_bp.route('/api/tool/borrow/return', methods=['POST'])
-@login_required
+@permission_required('tool:write')
 def tool_borrow_return():
     data = request.get_json(silent=True) or {}
     if not data.get('id'):
@@ -228,7 +228,7 @@ def tool_borrow_return():
 
 
 @tool_bp.route('/api/tool/borrow/delete', methods=['POST'])
-@login_required
+@permission_required('tool:write')
 def tool_borrow_delete():
     data = request.get_json(silent=True) or {}
     record_id = data.get('id')

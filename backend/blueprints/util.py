@@ -1,7 +1,7 @@
 """公共事业蓝图 - 能耗/环境"""
 from flask import Blueprint, request, jsonify
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_delete
+from utils.helpers import login_required, crud_list, crud_add, crud_delete, permission_required
 
 util_bp = Blueprint('util', __name__)
 
@@ -23,13 +23,13 @@ def energy_list():
 
 
 @util_bp.route('/api/util/energy/add', methods=['POST'])
-@login_required
+@permission_required('util:write')
 def energy_add():
     return jsonify(crud_add('util_energy', request.json))
 
 
 @util_bp.route('/api/util/energy/delete', methods=['POST'])
-@login_required
+@permission_required('util:write')
 def energy_delete():
     return jsonify(crud_delete('util_energy', request.json.get('id')))
 
@@ -60,7 +60,7 @@ def environment_list():
 
 
 @util_bp.route('/api/util/environment/add', methods=['POST'])
-@login_required
+@permission_required('util:write')
 def environment_add():
     return jsonify(crud_add('util_environment', request.json))
 

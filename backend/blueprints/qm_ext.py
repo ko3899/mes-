@@ -1,7 +1,7 @@
 """质量管理增强蓝图 - 不良品处理、首件检验、8D报告、供方评审"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no, permission_required
 
 qm_ext_bp = Blueprint('qm_ext', __name__)
 
@@ -24,7 +24,7 @@ def defect_process_list():
 
 
 @qm_ext_bp.route('/api/qm/defect/add', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def defect_process_add():
     data = request.json
     data['process_no'] = gen_no('DP')
@@ -33,7 +33,7 @@ def defect_process_add():
 
 
 @qm_ext_bp.route('/api/qm/defect/update', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def defect_process_update():
     return jsonify(crud_update('qm_defect_process', request.json))
 
@@ -56,7 +56,7 @@ def first_inspect_list():
 
 
 @qm_ext_bp.route('/api/qm/first/add', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def first_inspect_add():
     data = request.json
     data['inspect_no'] = gen_no('FI')
@@ -65,7 +65,7 @@ def first_inspect_add():
 
 
 @qm_ext_bp.route('/api/qm/first/update', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def first_inspect_update():
     return jsonify(crud_update('qm_first_inspect', request.json))
 
@@ -84,7 +84,7 @@ def report_8d_list():
 
 
 @qm_ext_bp.route('/api/qm/8d/add', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def report_8d_add():
     data = request.json
     data['report_no'] = gen_no('8D')
@@ -92,13 +92,13 @@ def report_8d_add():
 
 
 @qm_ext_bp.route('/api/qm/8d/update', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def report_8d_update():
     return jsonify(crud_update('qm_8d_report', request.json))
 
 
 @qm_ext_bp.route('/api/qm/8d/delete', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def report_8d_delete():
     return jsonify(crud_delete('qm_8d_report', request.json.get('id')))
 
@@ -120,7 +120,7 @@ def supplier_eval_list():
 
 
 @qm_ext_bp.route('/api/qm/supplier-eval/add', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def supplier_eval_add():
     data = request.json
     data['evaluator'] = session.get('user_id')

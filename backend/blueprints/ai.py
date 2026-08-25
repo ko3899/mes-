@@ -1,13 +1,13 @@
 """AI质检蓝图 - 视觉检测/智能分析"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import admin_required, login_required, crud_list, crud_add
+from utils.helpers import admin_required, login_required, crud_list, crud_add, permission_required
 
 ai_bp = Blueprint('ai', __name__)
 
 
 @ai_bp.route('/api/ai/inspect', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def ai_inspect():
     """AI视觉检测（当前尚无可用适配器）。"""
     return jsonify({

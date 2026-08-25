@@ -1,7 +1,7 @@
 """设备点检和排班日历蓝图"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, permission_required
 
 eqp_schedule_bp = Blueprint('eqp_schedule', __name__)
 
@@ -14,19 +14,19 @@ def check_project_list():
 
 
 @eqp_schedule_bp.route('/api/eqp/check-project/add', methods=['POST'])
-@login_required
+@permission_required('eqp:write')
 def check_project_add():
     return jsonify(crud_add('eqp_check_project', request.json))
 
 
 @eqp_schedule_bp.route('/api/eqp/check-project/update', methods=['POST'])
-@login_required
+@permission_required('eqp:write')
 def check_project_update():
     return jsonify(crud_update('eqp_check_project', request.json))
 
 
 @eqp_schedule_bp.route('/api/eqp/check-project/delete', methods=['POST'])
-@login_required
+@permission_required('eqp:write')
 def check_project_delete():
     return jsonify(crud_delete('eqp_check_project', request.json.get('id')))
 
@@ -86,19 +86,19 @@ def calendar_list():
 
 
 @eqp_schedule_bp.route('/api/sched/calendar/add', methods=['POST'])
-@login_required
+@permission_required('sched:write')
 def calendar_add():
     return jsonify(crud_add('sched_calendar', request.json))
 
 
 @eqp_schedule_bp.route('/api/sched/calendar/update', methods=['POST'])
-@login_required
+@permission_required('sched:write')
 def calendar_update():
     return jsonify(crud_update('sched_calendar', request.json))
 
 
 @eqp_schedule_bp.route('/api/sched/calendar/delete', methods=['POST'])
-@login_required
+@permission_required('sched:write')
 def calendar_delete():
     return jsonify(crud_delete('sched_calendar', request.json.get('id')))
 
@@ -111,19 +111,19 @@ def qm_template_list():
 
 
 @eqp_schedule_bp.route('/api/qm/template/add', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def qm_template_add():
     return jsonify(crud_add('qm_inspect_template', request.json))
 
 
 @eqp_schedule_bp.route('/api/qm/template/update', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def qm_template_update():
     return jsonify(crud_update('qm_inspect_template', request.json))
 
 
 @eqp_schedule_bp.route('/api/qm/template/delete', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def qm_template_delete():
     return jsonify(crud_delete('qm_inspect_template', request.json.get('id')))
 
@@ -146,7 +146,7 @@ def routing_card_list():
 
 
 @eqp_schedule_bp.route('/api/routing-card/generate', methods=['POST'])
-@login_required
+@permission_required('prod:extension:write')
 def routing_card_generate():
     d = request.json
     workorder_id = d.get('workorder_id')

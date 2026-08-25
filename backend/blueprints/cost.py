@@ -1,7 +1,7 @@
 """成本核算蓝图"""
 from flask import Blueprint, request, jsonify
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_delete
+from utils.helpers import login_required, crud_list, crud_add, crud_delete, permission_required
 
 cost_bp = Blueprint('cost', __name__)
 
@@ -22,13 +22,13 @@ def cost_list():
 
 
 @cost_bp.route('/api/cost/add', methods=['POST'])
-@login_required
+@permission_required('cost:write')
 def cost_add():
     return jsonify(crud_add('prod_cost', request.json))
 
 
 @cost_bp.route('/api/cost/delete', methods=['POST'])
-@login_required
+@permission_required('cost:write')
 def cost_delete():
     return jsonify(crud_delete('prod_cost', request.json.get('id')))
 

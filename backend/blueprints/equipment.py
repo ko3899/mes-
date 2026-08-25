@@ -5,7 +5,7 @@ import datetime
 from flask import Blueprint, jsonify, request, session
 
 from utils.database import get_db
-from utils.helpers import crud_add, crud_list, gen_no_in_transaction, login_required
+from utils.helpers import crud_add, crud_list, gen_no_in_transaction, login_required, permission_required
 
 
 equipment_bp = Blueprint('equipment', __name__)
@@ -65,7 +65,7 @@ def eqp_type_list():
 
 
 @equipment_bp.route('/api/eqp/type/add', methods=['POST'])
-@login_required
+@permission_required('eqp:write')
 def eqp_type_add():
     return jsonify(crud_add('eqp_type', request.get_json(silent=True)))
 
@@ -85,7 +85,7 @@ def eqp_ledger_list():
 
 
 @equipment_bp.route('/api/eqp/ledger/add', methods=['POST'])
-@login_required
+@permission_required('eqp:write')
 def eqp_ledger_add():
     data = request.get_json(silent=True) or {}
     if not str(data.get('equipment_name') or '').strip() or not str(data.get('code') or '').strip():
@@ -97,7 +97,7 @@ def eqp_ledger_add():
 
 
 @equipment_bp.route('/api/eqp/ledger/update', methods=['POST'])
-@login_required
+@permission_required('eqp:write')
 def eqp_ledger_update():
     data = request.get_json(silent=True) or {}
     try:
@@ -132,7 +132,7 @@ def eqp_ledger_update():
 
 
 @equipment_bp.route('/api/eqp/ledger/delete', methods=['POST'])
-@login_required
+@permission_required('eqp:write')
 def eqp_ledger_delete():
     data = request.get_json(silent=True) or {}
     try:
@@ -172,7 +172,7 @@ def eqp_repair_list():
 
 
 @equipment_bp.route('/api/eqp/repair/add', methods=['POST'])
-@login_required
+@permission_required('eqp:write')
 def eqp_repair_add():
     data = request.get_json(silent=True) or {}
     try:
@@ -212,7 +212,7 @@ def eqp_repair_add():
 
 
 @equipment_bp.route('/api/eqp/repair/<int:repair_id>/start', methods=['POST'])
-@login_required
+@permission_required('eqp:write')
 def eqp_repair_start(repair_id):
     db = get_db()
     cursor = db.execute(
@@ -228,7 +228,7 @@ def eqp_repair_start(repair_id):
 
 
 @equipment_bp.route('/api/eqp/repair/<int:repair_id>/complete', methods=['POST'])
-@login_required
+@permission_required('eqp:write')
 def eqp_repair_complete(repair_id):
     data = request.get_json(silent=True) or {}
     repair_desc = str(data.get('repair_desc') or '').strip()
@@ -258,7 +258,7 @@ def eqp_repair_complete(repair_id):
 
 
 @equipment_bp.route('/api/eqp/repair/delete', methods=['POST'])
-@login_required
+@permission_required('eqp:write')
 def eqp_repair_delete():
     data = request.get_json(silent=True) or {}
     try:
@@ -321,7 +321,7 @@ def _validate_maintenance_payload(data, db):
 
 
 @equipment_bp.route('/api/eqp/maintenance/add', methods=['POST'])
-@login_required
+@permission_required('eqp:write')
 def eqp_maint_add():
     data = request.get_json(silent=True) or {}
     db = get_db()
@@ -341,7 +341,7 @@ def eqp_maint_add():
 
 
 @equipment_bp.route('/api/eqp/maintenance/update', methods=['POST'])
-@login_required
+@permission_required('eqp:write')
 def eqp_maint_update():
     data = request.get_json(silent=True) or {}
     try:
@@ -366,7 +366,7 @@ def eqp_maint_update():
 
 
 @equipment_bp.route('/api/eqp/maintenance/delete', methods=['POST'])
-@login_required
+@permission_required('eqp:write')
 def eqp_maint_delete():
     data = request.get_json(silent=True) or {}
     try:
@@ -398,7 +398,7 @@ def eqp_maint_overdue():
 
 
 @equipment_bp.route('/api/eqp/check/add', methods=['POST'])
-@login_required
+@permission_required('eqp:write')
 def eqp_check_add():
     data = request.get_json(silent=True) or {}
     try:

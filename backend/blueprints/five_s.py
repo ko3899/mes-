@@ -1,7 +1,7 @@
 """5S管理蓝图"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no, permission_required
 
 five_s_bp = Blueprint('five_s', __name__)
 
@@ -23,7 +23,7 @@ def audit_5s_list():
 
 
 @five_s_bp.route('/api/5s/audit/add', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def audit_5s_add():
     d = request.json
     d['audit_no'] = gen_no('5S')
@@ -37,7 +37,7 @@ def audit_5s_add():
 
 
 @five_s_bp.route('/api/5s/audit/update', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def audit_5s_update():
     d = request.json
     scores = [int(d.get('sort_score', 0)), int(d.get('set_in_order_score', 0)),
@@ -48,7 +48,7 @@ def audit_5s_update():
 
 
 @five_s_bp.route('/api/5s/audit/delete', methods=['POST'])
-@login_required
+@permission_required('quality:write')
 def audit_5s_delete():
     return jsonify(crud_delete('sys_5s_audit', request.json.get('id')))
 

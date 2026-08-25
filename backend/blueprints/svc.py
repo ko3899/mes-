@@ -1,7 +1,7 @@
 """售后管理蓝图"""
 from flask import Blueprint, request, jsonify, session
 from utils.database import get_db
-from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no
+from utils.helpers import login_required, crud_list, crud_add, crud_update, crud_delete, gen_no, permission_required
 
 svc_bp = Blueprint('svc', __name__)
 
@@ -24,7 +24,7 @@ def complaint_list():
 
 
 @svc_bp.route('/api/svc/complaint/add', methods=['POST'])
-@login_required
+@permission_required('svc:write')
 def complaint_add():
     d = request.get_json(silent=True)
     if not isinstance(d, dict):
@@ -46,13 +46,13 @@ def complaint_add():
 
 
 @svc_bp.route('/api/svc/complaint/update', methods=['POST'])
-@login_required
+@permission_required('svc:write')
 def complaint_update():
     return jsonify(crud_update('svc_complaint', request.json))
 
 
 @svc_bp.route('/api/svc/complaint/delete', methods=['POST'])
-@login_required
+@permission_required('svc:write')
 def complaint_delete():
     return jsonify(crud_delete('svc_complaint', request.json.get('id')))
 
@@ -75,7 +75,7 @@ def return_list():
 
 
 @svc_bp.route('/api/svc/return/add', methods=['POST'])
-@login_required
+@permission_required('svc:write')
 def return_add():
     d = request.get_json(silent=True)
     if not isinstance(d, dict):
@@ -109,7 +109,7 @@ def return_add():
 
 
 @svc_bp.route('/api/svc/return/update', methods=['POST'])
-@login_required
+@permission_required('svc:write')
 def return_update():
     d = request.get_json(silent=True)
     if not isinstance(d, dict) or not d.get('id'):
