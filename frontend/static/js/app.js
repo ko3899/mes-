@@ -84,38 +84,22 @@
     pages = kit.createCollectorPages({document: doc, api: api, scanner: scanner, container: byId('pageContent'), ui: {toast: toast, navigate: navigate, openReport: openReport}});
     setAuthenticatedView(true); setNetworkState(); navigate(localStorage.getItem('mes.collector.page') || 'home'); if (navigator.onLine !== false) syncOfflineQueue();
   }
-    var captchaKey = window._captchaKey || '';
     async function login(event) {
       event.preventDefault(); var username = byId('usernameInput').value.trim(); var password = byId('passwordInput').value; var error = byId('loginError');
       if (!username || !password) { error.textContent = '请输入工号和密码'; return; }
       var body = {username: username, password: password};
-      if (captchaKey) { body.captcha_key = captchaKey; body.captcha_code = byId('captchaInput').value; }
       var button = byId('loginButton'); button.disabled = true; button.textContent = '正在验证…'; error.textContent = '';
       var result = await api.login(body); button.disabled = false; button.textContent = '进入工作台';
       if (!result.ok) {
         error.textContent = result.message;
-        if (result.status === 429) showCaptcha();
         return;
       }
-      byId('passwordInput').value = ''; captchaKey = ''; byId('captchaField').classList.add('is-hidden'); activate(result.data);
-    }
-    function loadCaptcha() {
-      return apiClient.request('/api/captcha', {method:'GET'}).then(function(r) {
-        if (r && r.ok && r.data && r.data.key) {
-          captchaKey = r.data.key;
-          byId('captchaImage').src = '/api/captcha/image/' + encodeURIComponent(captchaKey) + '?t=' + Date.now();
-        }
-      });
-    }
-    function showCaptcha() {
-      byId('captchaField').classList.remove('is-hidden');
-      loadCaptcha();
-      byId('captchaInput').focus();
+      byId('passwordInput').value = ''; activate(result.data);
     }
   async function logout() { if (pages) pages.destroy(); await api.logout(); currentUser = null; queue = null; pages = null; closeModal(); setAuthenticatedView(false); byId('passwordInput').value = ''; }
 
   doc.addEventListener('DOMContentLoaded', async function () {
-    setAuthenticatedView(false); byId('loginForm').addEventListener('submit', login); byId('userButton').addEventListener('click', logout); byId('networkState').addEventListener('click', syncOfflineQueue); byId('syncButton').addEventListener('click', syncOfflineQueue); byId('captchaImage').addEventListener('click', loadCaptcha);
+    setAuthenticatedView(false); byId('loginForm').addEventListener('submit', login); byId('userButton').addEventListener('click', logout); byId('networkState').addEventListener('click', syncOfflineQueue); byId('syncButton').addEventListener('click', syncOfflineQueue);
     byId('bottomNav').addEventListener('click', function (event) { var item = event.target.closest('[data-page]'); if (item) navigate(item.dataset.page); });
     window.addEventListener('online', function () { setNetworkState(); syncOfflineQueue(); }); window.addEventListener('offline', setNetworkState);
     var session = await api.userInfo(); if (session.ok) activate(session.data);

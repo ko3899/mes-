@@ -111,9 +111,10 @@ def login():
     attempts = [t for t in _login_attempts.get(attempt_key, []) if now - t < 300]
     _login_attempts[attempt_key] = attempts
 
-    # 失败次数达到阈值时必须提供验证码
+    # 失败次数达到阈值时锁定 5 分钟（验证码为可选解锁方式，不强制）
+    # 采集端等终端不携带验证码也可登录；带 captcha_key 的客户端（如管理后台）可提前解锁
     if len(attempts) >= 5 and not captcha_key:
-        return jsonify({'code': 429, 'message': '登录失败次数过多，请先获取验证码'}), 429
+        return jsonify({'code': 429, 'message': '登录失败次数过多，请5分钟后再试'}), 429
 
     if captcha_key:
         captcha = _captcha_store.get(captcha_key)
