@@ -47,6 +47,7 @@
     }
     function taskStatus(task) {
       if (Number(task.status) === 3) return {label: '已完成', className: 'done'};
+      if (Number(task.status) === 2) return {label: '已暂停', className: 'paused'};
       if (Number(task.status) > 0) return {label: '进行中', className: 'running'};
       return {label: '待开始', className: ''};
     }
@@ -64,7 +65,7 @@
       var track = node('div', 'progress-track'); var fill = node('i'); fill.style.width = progress + '%'; track.append(fill);
       footer.append(track, node('span', 'progress-text', progress + '%'));
       card.append(head, meta, footer);
-      if (showActions && Number(task.status) < 3) {
+      if (showActions && [0, 1].includes(Number(task.status))) {
         var actions = node('div', 'action-row');
         if (Number(task.status) === 0) actions.append(button('开始任务', 'button-secondary', async function () {
           var result = await api.startTask(task.id); ui.toast(result.ok ? '任务已开始' : result.message); if (result.ok) render('task');
@@ -124,7 +125,7 @@
       var result = await api.tasks(); if (token !== generation) return; clear(host);
       if (!result.ok) { host.append(empty('任务读取失败', result.message)); return; }
       var tasks = result.data.list || [];
-      if (reportMode) tasks = tasks.filter(function (task) { return Number(task.status) < 3; });
+      if (reportMode) tasks = tasks.filter(function (task) { return [0, 1].includes(Number(task.status)); });
       if (!tasks.length) { host.append(empty(reportMode ? '暂无可报工任务' : '暂无个人任务', '新任务分配后会显示在这里。')); return; }
       tasks.forEach(function (task) { host.append(taskCard(task, true)); });
       if (reportMode) {

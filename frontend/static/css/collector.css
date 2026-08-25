@@ -108,6 +108,7 @@ button { cursor: pointer; }
 .status-tag { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 7px; color: #1d4ed8; font-size: 10px; font-weight: 800; background: #eff6ff; }
 .status-tag::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .status-tag.running { color: var(--warning); background: #fffbeb; }
+.status-tag.paused { color: #b45309; background: #fffbeb; }
 .status-tag.done { color: var(--success); background: #f0fdf4; }
 .progress-track { flex: 1; height: 6px; overflow: hidden; border-radius: 3px; background: #e9eef5; }
 .progress-track i { display: block; height: 100%; border-radius: inherit; background: var(--primary-600); }
